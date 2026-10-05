@@ -33,6 +33,7 @@ ON CONFLICT (role_id, permission_id) DO NOTHING;
 INSERT INTO users (user_id, username, full_name, email, phone, password_hash, role_id, is_active) VALUES
 ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'surveyor',   'Surveyor',             'surveyor@industries.punjab.gov.pk',   '03001234567', '$2b$10$cFxt257Td1g3EemBp4/nCO3K60Fw0BdPZjc0637w9fiJ2gENKtG72', 1, TRUE),
 ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', 'supervisor', 'Supervisor',           'supervisor@industries.punjab.gov.pk', '03007654321', '$2b$10$BU1Kiwk.veJNHr0x7ZqOMuSG77fUTA2akkrJWya0LhhvosgU/5sTW', 2, TRUE),
+('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33', 'admin',      'Database Admin',       'admin@industries.punjab.gov.pk',      '03001112222', '$2b$10$sH7uUkD/q0ExGTF0.T7q8eaT4psaGZfAf2sLDmnZjRRODL2/MpjrG', 3, TRUE)
 
 ON CONFLICT (user_id) DO UPDATE
   SET username      = EXCLUDED.username,
