@@ -1,30 +1,35 @@
 /**
- * IndexedDB wrapper using `idb` library
- * Stores: survey form, offline responses, sync log
+ * IndexedDB wrapper — idb library
  *
- * v3 — wipes survey_form store to force re-download of updated questionnaire
+ * v5 — aligns keyPaths with real API response shapes:
+ *   survey_form      → keyPath: 'form_id'  (survey_forms.id aliased as form_id in API)
+ *   offline_responses→ keyPath: 'response_id'
+ *   sync_log         → autoIncrement
+ *
+ * Bump DB version any time a store schema changes.
  */
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import type { SurveyForm, OfflineResponse, SurveySubmissionDraft } from '../types';
+import type { SurveyForm, OfflineResponse } from '../types';
 
 interface SurveyDB extends DBSchema {
   survey_form: {
     key: number;
-    value: SurveyForm;
+    value: SurveyForm;        // keyed by SurveyForm.form_id
   };
   offline_responses: {
     key: string;
-    value: OfflineResponse;
-    indexes: { 'by-status': string };
-  };
-  offline_submissions: {
-    key: string;
-    value: SurveySubmissionDraft;
+    value: OfflineResponse;   // keyed by OfflineResponse.response_id
     indexes: { 'by-status': string };
   };
   sync_log: {
     key: number;
-    value: { id?: number; at: string; sync_id: number; status: string; results: any[] };
+    value: {
+      id?:     number;
+      at:      string;
+      sync_id: number;
+      status:  string;
+      results: any[];
+    };
   };
 }
 
@@ -32,67 +37,40 @@ let db: IDBPDatabase<SurveyDB> | null = null;
 
 export async function getDB(): Promise<IDBPDatabase<SurveyDB>> {
   if (db) return db;
-  db = await openDB<SurveyDB>('survey-pwa', 4, {
+
+  db = await openDB<SurveyDB>('survey-pwa', 5, {
     upgrade(database, oldVersion) {
-      // v1 → create all stores fresh
+      // ── Fresh install ──────────────────────────────────────────────────────
       if (oldVersion < 1) {
+        // survey_form keyed by form_id (number, matches API response)
         database.createObjectStore('survey_form', { keyPath: 'form_id' });
+
         const responseStore = database.createObjectStore('offline_responses', {
           keyPath: 'response_id',
         });
         responseStore.createIndex('by-status', 'sync_status');
-        const submissionStore = database.createObjectStore('offline_submissions', { keyPath: 'survey_id' });
-        submissionStore.createIndex('by-status', 'sync_status');
+
         database.createObjectStore('sync_log', {
-          keyPath: 'id',
+          keyPath:       'id',
           autoIncrement: true,
         });
       }
-      // v3 → clear the cached form so the new 296-question questionnaire is downloaded
-      if (oldVersion < 3 && oldVersion >= 1) {
-        // survey_form store already exists — just clear its contents
-        // (we can't use async clear() here, so we delete and recreate)
-        database.deleteObjectStore('survey_form');
-        database.createObjectStore('survey_form', { keyPath: 'form_id' });
-      }
-      if (oldVersion < 4) {
-        if (!database.objectStoreNames.contains('offline_submissions')) {
-          const submissionStore = database.createObjectStore('offline_submissions', { keyPath: 'survey_id' });
-          submissionStore.createIndex('by-status', 'sync_status');
+
+      // ── v2/v3/v4 legacy: wipe stale form cache ────────────────────────────
+      if (oldVersion >= 1 && oldVersion < 5) {
+        if (database.objectStoreNames.contains('survey_form')) {
+          database.deleteObjectStore('survey_form');
         }
+        // Re-create with correct keyPath (form_id)
+        database.createObjectStore('survey_form', { keyPath: 'form_id' });
       }
     },
   });
+
   return db;
 }
 
-export async function saveSubmission(submission: SurveySubmissionDraft): Promise<void> {
-  const database = await getDB();
-  await database.put('offline_submissions', submission);
-}
-
-export async function getSubmission(id: string): Promise<SurveySubmissionDraft | undefined> {
-  const database = await getDB();
-  return database.get('offline_submissions', id);
-}
-
-export async function getAllSubmissions(): Promise<SurveySubmissionDraft[]> {
-  const database = await getDB();
-  return database.getAll('offline_submissions');
-}
-
-export async function getPendingSubmissions(): Promise<SurveySubmissionDraft[]> {
-  const database = await getDB();
-  const submissions = await database.getAll('offline_submissions');
-  return submissions.filter((submission) => submission.sync_status === 'pending_sync' || submission.sync_status === 'failed');
-}
-
-export async function deleteSubmission(id: string): Promise<void> {
-  const database = await getDB();
-  await database.delete('offline_submissions', id);
-}
-
-// ── Form ─────────────────────────────────────────────────────
+// ── Survey Form ───────────────────────────────────────────────
 export async function saveSurveyForm(form: SurveyForm): Promise<void> {
   const database = await getDB();
   await database.put('survey_form', form);
@@ -101,7 +79,7 @@ export async function saveSurveyForm(form: SurveyForm): Promise<void> {
 export async function getSurveyForm(): Promise<SurveyForm | undefined> {
   const database = await getDB();
   const all = await database.getAll('survey_form');
-  return all.find((f) => f.form_id);
+  return all[0];
 }
 
 export async function clearSurveyForm(): Promise<void> {
@@ -109,7 +87,7 @@ export async function clearSurveyForm(): Promise<void> {
   await database.clear('survey_form');
 }
 
-// ── Responses ────────────────────────────────────────────────
+// ── Offline Responses ─────────────────────────────────────────
 export async function saveResponse(response: OfflineResponse): Promise<void> {
   const database = await getDB();
   await database.put('offline_responses', response);
@@ -135,11 +113,11 @@ export async function deleteResponse(id: string): Promise<void> {
   await database.delete('offline_responses', id);
 }
 
-// ── Sync log ─────────────────────────────────────────────────
+// ── Sync Log ──────────────────────────────────────────────────
 export async function saveSyncLog(entry: {
-  at: string;
+  at:      string;
   sync_id: number;
-  status: string;
+  status:  string;
   results: any[];
 }): Promise<void> {
   const database = await getDB();
@@ -151,5 +129,5 @@ export async function getSyncLogs(): Promise<
 > {
   const database = await getDB();
   const all = await database.getAll('sync_log');
-  return all.reverse();
+  return all.reverse(); // newest first
 }

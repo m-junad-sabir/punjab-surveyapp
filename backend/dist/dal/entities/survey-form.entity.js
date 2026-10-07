@@ -18,29 +18,29 @@ exports.SurveyForm = SurveyForm;
 __decorate([
     (0, typeorm_1.PrimaryGeneratedColumn)(),
     __metadata("design:type", Number)
-], SurveyForm.prototype, "form_id", void 0);
+], SurveyForm.prototype, "id", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ length: 150 }),
+    (0, typeorm_1.Column)({ unique: true, length: 50 }),
+    __metadata("design:type", String)
+], SurveyForm.prototype, "code", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text' }),
     __metadata("design:type", String)
 ], SurveyForm.prototype, "title", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ length: 20 }),
-    __metadata("design:type", String)
+    (0, typeorm_1.Column)({ default: 1 }),
+    __metadata("design:type", Number)
 ], SurveyForm.prototype, "version", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
-    __metadata("design:type", String)
-], SurveyForm.prototype, "description", void 0);
 __decorate([
     (0, typeorm_1.Column)({ default: true }),
     __metadata("design:type", Boolean)
 ], SurveyForm.prototype, "is_active", void 0);
 __decorate([
-    (0, typeorm_1.CreateDateColumn)({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' }),
+    (0, typeorm_1.CreateDateColumn)({ type: 'timestamptz' }),
     __metadata("design:type", Date)
 ], SurveyForm.prototype, "created_at", void 0);
 __decorate([
-    (0, typeorm_1.OneToMany)(() => survey_section_entity_1.SurveySection, (section) => section.form),
+    (0, typeorm_1.OneToMany)(() => survey_section_entity_1.SurveySection, (s) => s.form, { eager: false }),
     __metadata("design:type", Array)
 ], SurveyForm.prototype, "sections", void 0);
 exports.SurveyForm = SurveyForm = __decorate([

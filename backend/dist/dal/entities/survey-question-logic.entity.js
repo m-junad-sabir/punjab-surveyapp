@@ -11,12 +11,11 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SurveyQuestionLogic = void 0;
 const typeorm_1 = require("typeorm");
-const survey_question_entity_1 = require("./survey-question.entity");
 let SurveyQuestionLogic = class SurveyQuestionLogic {
 };
 exports.SurveyQuestionLogic = SurveyQuestionLogic;
 __decorate([
-    (0, typeorm_1.PrimaryGeneratedColumn)(),
+    (0, typeorm_1.PrimaryColumn)(),
     __metadata("design:type", Number)
 ], SurveyQuestionLogic.prototype, "logic_id", void 0);
 __decorate([
@@ -24,19 +23,9 @@ __decorate([
     __metadata("design:type", Number)
 ], SurveyQuestionLogic.prototype, "question_id", void 0);
 __decorate([
-    (0, typeorm_1.ManyToOne)(() => survey_question_entity_1.SurveyQuestion, { onDelete: 'CASCADE' }),
-    (0, typeorm_1.JoinColumn)({ name: 'question_id' }),
-    __metadata("design:type", survey_question_entity_1.SurveyQuestion)
-], SurveyQuestionLogic.prototype, "question", void 0);
-__decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", Number)
 ], SurveyQuestionLogic.prototype, "condition_question_id", void 0);
-__decorate([
-    (0, typeorm_1.ManyToOne)(() => survey_question_entity_1.SurveyQuestion),
-    (0, typeorm_1.JoinColumn)({ name: 'condition_question_id' }),
-    __metadata("design:type", survey_question_entity_1.SurveyQuestion)
-], SurveyQuestionLogic.prototype, "conditionQuestion", void 0);
 __decorate([
     (0, typeorm_1.Column)({ length: 10 }),
     __metadata("design:type", String)
@@ -49,6 +38,10 @@ __decorate([
     (0, typeorm_1.Column)({ length: 15 }),
     __metadata("design:type", String)
 ], SurveyQuestionLogic.prototype, "action", void 0);
+__decorate([
+    (0, typeorm_1.CreateDateColumn)({ type: 'timestamptz' }),
+    __metadata("design:type", Date)
+], SurveyQuestionLogic.prototype, "created_at", void 0);
 exports.SurveyQuestionLogic = SurveyQuestionLogic = __decorate([
     (0, typeorm_1.Entity)({ name: 'survey_question_logic' })
 ], SurveyQuestionLogic);

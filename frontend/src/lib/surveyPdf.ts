@@ -1,13 +1,7 @@
 import { jsPDF } from 'jspdf';
-import type { SurveySubmissionDraft } from '../types';
+import type { OfflineResponse } from '../types';
 
-type PdfSurvey = Partial<SurveySubmissionDraft> & {
-  unit_code?: string;
-  unit_name?: string;
-  sections?: Record<string, unknown>;
-};
-
-const sectionTitles: Record<string, string> = {
+const SECTION_TITLES: Record<string, string> = {
   A: 'Establishment Identity',
   B: 'Operational Details',
   C: 'Core and Secondary Activities',
@@ -21,82 +15,80 @@ const sectionTitles: Record<string, string> = {
   K: 'Future Collaborations and Barriers',
 };
 
-const labelFor = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
-
 function displayValue(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.join(', ');
   if (typeof value === 'object') {
-    const object = value as Record<string, unknown>;
-    if (object.preview) return `[Photo: ${object.file_name || 'attached'}]`;
-    return Object.entries(object).map(([key, item]) => `${labelFor(key)}: ${displayValue(item)}`).join('; ');
+    const o = value as Record<string, unknown>;
+    if (o.preview)   return `[Photo: ${o.file_name ?? 'attached'}]`;
+    if ('lat' in o)  return `${(o.lat as number).toFixed(6)}, ${(o.lng as number).toFixed(6)}`;
+    return Object.entries(o).map(([k, v]) => `${k}: ${displayValue(v)}`).join('; ');
   }
   return String(value);
 }
 
-export function downloadSurveyPdf(survey: PdfSurvey, filenameId?: string) {
-  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
-  const margin = 16;
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  let y = 18;
+/**
+ * Generates a PDF of an OfflineResponse and triggers download.
+ */
+export function downloadSurveyPdf(response: OfflineResponse): void {
+  const pdf      = new jsPDF({ unit: 'mm', format: 'a4' });
+  const margin   = 16;
+  const pageW    = pdf.internal.pageSize.getWidth();
+  const pageH    = pdf.internal.pageSize.getHeight();
+  let y          = 18;
 
-  const ensureSpace = (height: number) => {
-    if (y + height > pageHeight - 18) {
-      pdf.addPage();
-      y = 18;
-    }
+  const ensureSpace = (h: number) => {
+    if (y + h > pageH - 18) { pdf.addPage(); y = 18; }
   };
 
   const write = (text: string, size = 9, bold = false) => {
     pdf.setFont('helvetica', bold ? 'bold' : 'normal');
     pdf.setFontSize(size);
-    const lines = pdf.splitTextToSize(text, pageWidth - margin * 2);
+    const lines = pdf.splitTextToSize(text, pageW - margin * 2);
     ensureSpace(lines.length * 4.5);
     pdf.text(lines, margin, y);
     y += lines.length * 4.5;
   };
 
+  // ── Header ──────────────────────────────────────────────────
   pdf.setTextColor(15, 30, 48);
-  write('Punjab Industrial Survey', 18, true);
-  write(survey.unit_name || survey.sections?.A && displayValue((survey.sections.A as Record<string, unknown>).establishment_name) || 'Industrial Unit Survey', 12, true);
-  write(`Survey ID: ${survey.survey_id || '—'}   Unit Code: ${survey.unit_code || '—'}`, 9);
-  write(`Enumerator: ${survey.enumerator_name || '—'}   Interview date: ${survey.interview_date || '—'}`, 9);
+  write('Government of Punjab — Industrial Unit Survey', 14, true);
+  write(`Response ID: ${response.response_id}`, 9);
+  const responseDate = response.submitted_at ?? response.created_at ?? response.started_at;
+  write(`Date: ${responseDate ? new Date(responseDate).toLocaleString() : '—'}   GPS: ${response.gps_lat ? `${response.gps_lat.toFixed(5)}, ${response.gps_lng!.toFixed(5)}` : '—'}`, 9);
   y += 4;
 
-  const sections = survey.sections || {};
-  Object.keys(sections).sort().forEach((sectionKey) => {
-    const raw = sections[sectionKey];
-    const rows = Array.isArray(raw) ? raw : [raw];
-    ensureSpace(14);
-    pdf.setFillColor(26, 46, 74);
-    pdf.rect(margin, y - 4, pageWidth - margin * 2, 8, 'F');
-    pdf.setTextColor(255, 255, 255);
+  // ── Answers ─────────────────────────────────────────────────
+  const sortedAnswers = [...response.answers].sort((a, b) => a.question_id - b.question_id);
+  write('Survey Answers', 11, true);
+  y += 2;
+
+  for (const ans of sortedAnswers) {
+    ensureSpace(8);
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(10);
-    pdf.text(`Section ${sectionKey}: ${sectionTitles[sectionKey] || 'Survey Data'}`, margin + 3, y + 1.5);
-    pdf.setTextColor(15, 30, 48);
-    y += 10;
+    pdf.setFontSize(8);
+    pdf.text(`Q${ans.question_id}:`, margin, y);
+    pdf.setFont('helvetica', 'normal');
+    const valText = displayValue(ans.answer_value);
+    const lines = pdf.splitTextToSize(valText, pageW - margin * 2 - 14);
+    pdf.text(lines, margin + 14, y);
+    y += Math.max(4.5, lines.length * 4.5);
+  }
 
-    rows.forEach((row, rowIndex) => {
-      if (!row || typeof row !== 'object') return;
-      if (rows.length > 1) write(`Record ${rowIndex + 1}`, 9, true);
-      Object.entries(row as Record<string, unknown>)
-        .filter(([key]) => key !== 'survey_id')
-        .forEach(([key, value]) => write(`${labelFor(key)}: ${displayValue(value)}`, 8));
-      y += 2;
-    });
-  });
-
-  const pageCount = pdf.getNumberOfPages();
-  for (let page = 1; page <= pageCount; page += 1) {
-    pdf.setPage(page);
+  // ── Footer ───────────────────────────────────────────────────
+  const total = pdf.getNumberOfPages();
+  for (let p = 1; p <= total; p++) {
+    pdf.setPage(p);
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(8);
     pdf.setTextColor(120, 130, 145);
-    pdf.text(`Punjab Industrial Survey | Page ${page} of ${pageCount}`, margin, pageHeight - 8);
+    pdf.text(`Punjab Industrial Survey · Page ${p} of ${total}`, margin, pageH - 8);
   }
 
-  const safeId = filenameId || survey.survey_id || 'survey';
-  pdf.save(`industrial-survey-${safeId}.pdf`);
+  pdf.save(`survey-${response.response_id.slice(0, 8)}.pdf`);
 }
+
+// Keep legacy export name for any remaining imports
+export { downloadSurveyPdf as downloadSurveyPdfLegacy };
+export { SECTION_TITLES };

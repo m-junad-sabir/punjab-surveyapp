@@ -19,26 +19,30 @@ exports.SurveySection = SurveySection;
 __decorate([
     (0, typeorm_1.PrimaryGeneratedColumn)(),
     __metadata("design:type", Number)
-], SurveySection.prototype, "section_id", void 0);
+], SurveySection.prototype, "id", void 0);
 __decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", Number)
 ], SurveySection.prototype, "form_id", void 0);
 __decorate([
-    (0, typeorm_1.ManyToOne)(() => survey_form_entity_1.SurveyForm, (form) => form.sections, { onDelete: 'CASCADE' }),
+    (0, typeorm_1.Column)({ type: 'char', length: 1 }),
+    __metadata("design:type", String)
+], SurveySection.prototype, "section_code", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text' }),
+    __metadata("design:type", String)
+], SurveySection.prototype, "title", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'smallint', default: 0 }),
+    __metadata("design:type", Number)
+], SurveySection.prototype, "sort_order", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => survey_form_entity_1.SurveyForm, (f) => f.sections),
     (0, typeorm_1.JoinColumn)({ name: 'form_id' }),
     __metadata("design:type", survey_form_entity_1.SurveyForm)
 ], SurveySection.prototype, "form", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ length: 150 }),
-    __metadata("design:type", String)
-], SurveySection.prototype, "title", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ default: 0 }),
-    __metadata("design:type", Number)
-], SurveySection.prototype, "sort_order", void 0);
-__decorate([
-    (0, typeorm_1.OneToMany)(() => survey_question_entity_1.SurveyQuestion, (question) => question.section),
+    (0, typeorm_1.OneToMany)(() => survey_question_entity_1.SurveyQuestion, (q) => q.section, { eager: false }),
     __metadata("design:type", Array)
 ], SurveySection.prototype, "questions", void 0);
 exports.SurveySection = SurveySection = __decorate([

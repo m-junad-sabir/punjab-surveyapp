@@ -11,20 +11,19 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SurveyResponse = void 0;
 const typeorm_1 = require("typeorm");
-const survey_answer_entity_1 = require("./survey-answer.entity");
 let SurveyResponse = class SurveyResponse {
 };
 exports.SurveyResponse = SurveyResponse;
 __decorate([
     (0, typeorm_1.PrimaryColumn)('uuid'),
     __metadata("design:type", String)
-], SurveyResponse.prototype, "response_id", void 0);
+], SurveyResponse.prototype, "id", void 0);
 __decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", Number)
 ], SurveyResponse.prototype, "form_id", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'uuid', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'uuid' }),
     __metadata("design:type", String)
 ], SurveyResponse.prototype, "unit_id", void 0);
 __decorate([
@@ -48,41 +47,41 @@ __decorate([
     __metadata("design:type", Number)
 ], SurveyResponse.prototype, "gps_accuracy_m", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
+    (0, typeorm_1.Column)({ length: 20, default: 'DRAFT' }),
+    __metadata("design:type", String)
+], SurveyResponse.prototype, "status", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ length: 20, default: 'PENDING' }),
+    __metadata("design:type", String)
+], SurveyResponse.prototype, "sync_status", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'timestamptz' }),
     __metadata("design:type", Date)
 ], SurveyResponse.prototype, "started_at", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
     __metadata("design:type", Date)
+], SurveyResponse.prototype, "completed_at", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
+    __metadata("design:type", Date)
 ], SurveyResponse.prototype, "submitted_at", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ length: 15, default: 'draft' }),
+    (0, typeorm_1.Column)({ type: 'uuid', nullable: true }),
     __metadata("design:type", String)
-], SurveyResponse.prototype, "sync_status", void 0);
+], SurveyResponse.prototype, "confirmed_by", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: true }),
-    __metadata("design:type", Boolean)
-], SurveyResponse.prototype, "is_offline_capture", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ type: 'numeric', precision: 5, scale: 2, nullable: true }),
-    __metadata("design:type", Number)
-], SurveyResponse.prototype, "completeness_score", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ default: false }),
-    __metadata("design:type", Boolean)
-], SurveyResponse.prototype, "is_duplicate", void 0);
-__decorate([
-    (0, typeorm_1.CreateDateColumn)({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' }),
+    (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
     __metadata("design:type", Date)
-], SurveyResponse.prototype, "created_at", void 0);
+], SurveyResponse.prototype, "confirmed_at", void 0);
 __decorate([
-    (0, typeorm_1.UpdateDateColumn)({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' }),
+    (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
     __metadata("design:type", Date)
-], SurveyResponse.prototype, "updated_at", void 0);
+], SurveyResponse.prototype, "synced_at", void 0);
 __decorate([
-    (0, typeorm_1.OneToMany)(() => survey_answer_entity_1.SurveyAnswer, (answer) => answer.response),
-    __metadata("design:type", Array)
-], SurveyResponse.prototype, "answers", void 0);
+    (0, typeorm_1.Column)({ length: 20, nullable: true }),
+    __metadata("design:type", String)
+], SurveyResponse.prototype, "app_version", void 0);
 exports.SurveyResponse = SurveyResponse = __decorate([
     (0, typeorm_1.Entity)({ name: 'survey_responses' })
 ], SurveyResponse);

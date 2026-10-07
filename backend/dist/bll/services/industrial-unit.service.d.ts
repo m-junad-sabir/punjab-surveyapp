@@ -1,14 +1,19 @@
-import { EntityManager } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { IndustrialUnit } from '../../dal/entities/industrial-unit.entity';
+export interface ApproveRejectDto {
+    response_id?: string;
+    remarks?: string;
+}
 export declare class IndustrialUnitService {
-    private readonly entityManager;
-    constructor(entityManager: EntityManager);
-    findAll(): Promise<any>;
-    findOne(unitId: string): Promise<any>;
-    approveUnit(unitId: string, actionedBy: string): Promise<{
+    private readonly unitRepo;
+    private readonly dataSource;
+    constructor(unitRepo: Repository<IndustrialUnit>, dataSource: DataSource);
+    findAll(): Promise<IndustrialUnit[]>;
+    findOne(unitId: string): Promise<IndustrialUnit>;
+    approveUnit(unitId: string, supervisorId: string, dto?: ApproveRejectDto): Promise<{
         message: string;
     }>;
-    rejectUnit(unitId: string): Promise<{
+    rejectUnit(unitId: string, supervisorId: string, dto?: ApproveRejectDto): Promise<{
         message: string;
     }>;
-    private ensureExists;
 }

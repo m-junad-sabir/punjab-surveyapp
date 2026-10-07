@@ -15,25 +15,42 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
 const auth_service_1 = require("../bll/services/auth.service");
+const rbac_guard_1 = require("../common/guards/rbac.guard");
+const permissions_decorator_1 = require("../common/decorators/permissions.decorator");
+const user_decorator_1 = require("../common/decorators/user.decorator");
 let AuthController = class AuthController {
     constructor(authService) {
         this.authService = authService;
     }
-    async register(body) {
-        return this.authService.register(body);
-    }
     async login(body) {
-        return this.authService.login(body.username, body.password_hash);
+        const dto = {
+            username: body.username,
+            password: body.password,
+        };
+        return this.authService.login(dto);
+    }
+    async register(body) {
+        const dto = {
+            username: body.username,
+            full_name: body.full_name,
+            email: body.email,
+            phone: body.phone,
+            password: body.password,
+            role_id: body.role_id,
+        };
+        return this.authService.register(dto);
+    }
+    async listUsers() {
+        return this.authService.listUsers();
+    }
+    async setUserStatus(userId, body) {
+        return this.authService.setActiveStatus(userId, body.is_active);
+    }
+    async me(user) {
+        return user;
     }
 };
 exports.AuthController = AuthController;
-__decorate([
-    (0, common_1.Post)('register'),
-    __param(0, (0, common_1.Body)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", Promise)
-], AuthController.prototype, "register", null);
 __decorate([
     (0, common_1.Post)('login'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
@@ -42,6 +59,41 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "login", null);
+__decorate([
+    (0, common_1.Post)('register'),
+    (0, common_1.UseGuards)(rbac_guard_1.RbacGuard),
+    (0, permissions_decorator_1.RequirePermissions)('USER_CREATE'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "register", null);
+__decorate([
+    (0, common_1.Get)('users'),
+    (0, common_1.UseGuards)(rbac_guard_1.RbacGuard),
+    (0, permissions_decorator_1.RequirePermissions)('USER_CREATE'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "listUsers", null);
+__decorate([
+    (0, common_1.Patch)('users/:id/status'),
+    (0, common_1.UseGuards)(rbac_guard_1.RbacGuard),
+    (0, permissions_decorator_1.RequirePermissions)('USER_REMOVE'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "setUserStatus", null);
+__decorate([
+    (0, common_1.Get)('me'),
+    (0, common_1.UseGuards)(rbac_guard_1.RbacGuard),
+    __param(0, (0, user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "me", null);
 exports.AuthController = AuthController = __decorate([
     (0, common_1.Controller)('auth'),
     __metadata("design:paramtypes", [auth_service_1.AuthService])

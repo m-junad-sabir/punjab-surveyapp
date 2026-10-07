@@ -11,13 +11,11 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SurveyAnswer = void 0;
 const typeorm_1 = require("typeorm");
-const survey_response_entity_1 = require("./survey-response.entity");
-const survey_question_entity_1 = require("./survey-question.entity");
 let SurveyAnswer = class SurveyAnswer {
 };
 exports.SurveyAnswer = SurveyAnswer;
 __decorate([
-    (0, typeorm_1.PrimaryGeneratedColumn)({ type: 'bigint' }),
+    (0, typeorm_1.PrimaryGeneratedColumn)('increment', { type: 'bigint' }),
     __metadata("design:type", Number)
 ], SurveyAnswer.prototype, "answer_id", void 0);
 __decorate([
@@ -25,25 +23,15 @@ __decorate([
     __metadata("design:type", String)
 ], SurveyAnswer.prototype, "response_id", void 0);
 __decorate([
-    (0, typeorm_1.ManyToOne)(() => survey_response_entity_1.SurveyResponse, (response) => response.answers, { onDelete: 'CASCADE' }),
-    (0, typeorm_1.JoinColumn)({ name: 'response_id' }),
-    __metadata("design:type", survey_response_entity_1.SurveyResponse)
-], SurveyAnswer.prototype, "response", void 0);
-__decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", Number)
 ], SurveyAnswer.prototype, "question_id", void 0);
-__decorate([
-    (0, typeorm_1.ManyToOne)(() => survey_question_entity_1.SurveyQuestion),
-    (0, typeorm_1.JoinColumn)({ name: 'question_id' }),
-    __metadata("design:type", survey_question_entity_1.SurveyQuestion)
-], SurveyAnswer.prototype, "question", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'jsonb', nullable: true }),
     __metadata("design:type", Object)
 ], SurveyAnswer.prototype, "answer_value", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' }),
+    (0, typeorm_1.CreateDateColumn)({ type: 'timestamptz' }),
     __metadata("design:type", Date)
 ], SurveyAnswer.prototype, "answered_at", void 0);
 exports.SurveyAnswer = SurveyAnswer = __decorate([

@@ -13,17 +13,21 @@ const jwt_1 = require("@nestjs/jwt");
 const database_config_1 = require("./database/database.config");
 const user_entity_1 = require("./dal/entities/user.entity");
 const role_entity_1 = require("./dal/entities/role.entity");
-const survey_submission_entity_1 = require("./dal/entities/survey-submission.entity");
-const reference_entity_1 = require("./dal/entities/reference.entity");
-const section_record_entity_1 = require("./dal/entities/section-record.entity");
-const sync_log_entity_1 = require("./dal/entities/sync-log.entity");
+const survey_form_entity_1 = require("./dal/entities/survey-form.entity");
+const survey_section_entity_1 = require("./dal/entities/survey-section.entity");
+const survey_question_entity_1 = require("./dal/entities/survey-question.entity");
+const survey_response_entity_1 = require("./dal/entities/survey-response.entity");
+const response_choice_entity_1 = require("./dal/entities/response-choice.entity");
+const industrial_unit_entity_1 = require("./dal/entities/industrial-unit.entity");
+const duplicate_flag_entity_1 = require("./dal/entities/duplicate-flag.entity");
+const lookup_value_entity_1 = require("./dal/entities/lookup-value.entity");
 const auth_service_1 = require("./bll/services/auth.service");
-const sync_service_1 = require("./bll/services/sync.service");
 const survey_form_service_1 = require("./bll/services/survey-form.service");
+const sync_service_1 = require("./bll/services/sync.service");
 const industrial_unit_service_1 = require("./bll/services/industrial-unit.service");
 const auth_controller_1 = require("./controllers/auth.controller");
-const sync_controller_1 = require("./controllers/sync.controller");
 const survey_form_controller_1 = require("./controllers/survey-form.controller");
+const sync_controller_1 = require("./controllers/sync.controller");
 const industrial_unit_controller_1 = require("./controllers/industrial-unit.controller");
 let AppModule = class AppModule {
 };
@@ -35,28 +39,14 @@ exports.AppModule = AppModule = __decorate([
             typeorm_1.TypeOrmModule.forFeature([
                 user_entity_1.User,
                 role_entity_1.Role,
-                survey_submission_entity_1.SurveySubmission,
-                reference_entity_1.District,
-                reference_entity_1.Tehsil,
-                reference_entity_1.Sector,
-                reference_entity_1.IndustrialEstate,
-                section_record_entity_1.SectionAEstablishmentIdentity,
-                section_record_entity_1.SectionAAssociatedEstablishment,
-                section_record_entity_1.SectionBOperationalDetails,
-                section_record_entity_1.SectionCCoreSecondaryActivities,
-                section_record_entity_1.SectionCProduct,
-                section_record_entity_1.SectionDWorkforce,
-                section_record_entity_1.SectionEBackwardLinkages,
-                section_record_entity_1.SectionERawMaterial,
-                section_record_entity_1.SectionFForwardLinkages,
-                section_record_entity_1.SectionFProductSale,
-                section_record_entity_1.SectionGTechnologyProduction,
-                section_record_entity_1.SectionGCriticalMachine,
-                section_record_entity_1.SectionHEnergyWaste,
-                section_record_entity_1.SectionICertificationsCompliances,
-                section_record_entity_1.SectionJStrategicBusinessPlan,
-                section_record_entity_1.SectionKCollaborationsBarriers,
-                sync_log_entity_1.SyncLog,
+                survey_form_entity_1.SurveyForm,
+                survey_section_entity_1.SurveySection,
+                survey_question_entity_1.SurveyQuestion,
+                survey_response_entity_1.SurveyResponse,
+                response_choice_entity_1.ResponseChoice,
+                industrial_unit_entity_1.IndustrialUnit,
+                duplicate_flag_entity_1.DuplicateFlag,
+                lookup_value_entity_1.LookupValue,
             ]),
             jwt_1.JwtModule.register({
                 secret: process.env.JWT_SECRET || 'punjab-industries-survey-secret-key-2026',
@@ -65,17 +55,16 @@ exports.AppModule = AppModule = __decorate([
         ],
         controllers: [
             auth_controller_1.AuthController,
-            sync_controller_1.SyncController,
             survey_form_controller_1.SurveyFormController,
+            sync_controller_1.SyncController,
             industrial_unit_controller_1.IndustrialUnitController,
         ],
         providers: [
             auth_service_1.AuthService,
-            sync_service_1.SyncService,
             survey_form_service_1.SurveyFormService,
+            sync_service_1.SyncService,
             industrial_unit_service_1.IndustrialUnitService,
         ],
-        exports: [auth_service_1.AuthService, sync_service_1.SyncService, survey_form_service_1.SurveyFormService, industrial_unit_service_1.IndustrialUnitService],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

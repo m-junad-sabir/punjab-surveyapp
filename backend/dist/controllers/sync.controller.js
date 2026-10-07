@@ -23,10 +23,13 @@ let SyncController = class SyncController {
         this.syncService = syncService;
     }
     async syncBatch(body, user) {
+        if (!Array.isArray(body?.responses) || body.responses.length === 0) {
+            throw new common_1.BadRequestException('Request must include a non-empty responses array');
+        }
         const payload = {
-            device_id: body.device_id || 'unknown_device',
+            device_id: body.device_id || 'unknown',
             user_id: user.user_id,
-            responses: body.responses || [],
+            responses: body.responses,
         };
         return this.syncService.syncBatch(payload);
     }

@@ -1,28 +1,32 @@
-// Load .env before anything else
 import * as path from 'path';
-import * as fs from 'fs';
+import * as fs   from 'fs';
 
-// Manually load .env file (no extra dependency needed)
+// ─── Load .env before NestJS boots ───────────────────────────────────────────
+// Using a manual parser so we avoid pulling in @nestjs/config as a dependency.
 const envPath = path.resolve(__dirname, '..', '.env');
 if (fs.existsSync(envPath)) {
-  const lines = fs.readFileSync(envPath, 'utf-8').split('\n');
+  const lines = fs.readFileSync(envPath, 'utf-8').split(/\r?\n/);
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx < 0) continue;
-    const key = trimmed.substring(0, eqIdx).trim();
-    const val = trimmed.substring(eqIdx + 1).trim();
+    const eq = trimmed.indexOf('=');
+    if (eq < 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    // Strip surrounding quotes from the value
+    let val = trimmed.slice(eq + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
     if (key && !(key in process.env)) {
       process.env[key] = val;
     }
   }
 }
 
-import { NestFactory } from '@nestjs/core';
+import { NestFactory }      from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
-import * as express from 'express';
-import { AppModule } from './app.module';
+import { AppModule }         from './app.module';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -31,48 +35,38 @@ async function bootstrap() {
     logger: ['log', 'error', 'warn'],
   });
 
-  // Survey photos are sent as compressed data URLs with the offline submission.
-  // Keep enough room for a batch while avoiding the small Express default limit.
-  const httpAdapter = app.getHttpAdapter().getInstance();
-  httpAdapter.use(express.json({ limit: '25mb' }));
-  httpAdapter.use(express.urlencoded({ limit: '25mb', extended: true }));
+  // ── Body size limit (photos are sent as base64 in sync payload) ────────────
+  app.use(require('express').json({ limit: '25mb' }));
+  app.use(require('express').urlencoded({ limit: '25mb', extended: true }));
 
+  // ── CORS ───────────────────────────────────────────────────────────────────
+  // credentials:true is intentionally omitted — the app uses Bearer tokens,
+  // not cookies, so it isn't needed and would break origin:* in browsers.
   app.enableCors({
-    origin: '*',
+    origin:  '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true,
   });
 
+  // ── Global validation pipe ─────────────────────────────────────────────────
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,
-      transform: true,
+      whitelist:            true,
+      transform:            true,
       forbidNonWhitelisted: false,
     }),
   );
 
-  const port = process.env.PORT || 3000;
+  const port = parseInt(process.env.PORT ?? '3002', 10);
+
   await app.listen(port);
 
-  logger.log(`✅ Backend running on http://localhost:${port}`);
-  logger.log(`🗄️  Database: ${process.env.DB_DATABASE} @ ${process.env.DB_HOST}:${process.env.DB_PORT} (user: ${process.env.DB_USERNAME})`);
+  logger.log(`✅ Backend running  → http://localhost:${port}`);
+  logger.log(`🗄️  Database        → ${process.env.DB_DATABASE}@${process.env.DB_HOST}:${process.env.DB_PORT}`);
+  logger.log(`🔑 JWT expires in  → 1d`);
 }
 
 bootstrap().catch((err) => {
-  console.error('\n❌ Backend failed to start!\n');
+  console.error('❌ Backend failed to start!');
   console.error('Reason:', err.message);
-  if (err.message?.includes('password authentication')) {
-    console.error('\n🔑 Fix: Wrong PostgreSQL password in .env file');
-    console.error('   Open: backend/.env');
-    console.error('   Set:  DB_PASSWORD=your_actual_postgres_password\n');
-  }
-  if (err.message?.includes('does not exist')) {
-    console.error('\n🗄️  Fix: Database not created yet');
-    console.error('   Run: SETUP_DATABASE.bat\n');
-  }
-  if (err.message?.includes('ECONNREFUSED')) {
-    console.error('\n🔌 Fix: PostgreSQL is not running');
-    console.error('   Open Services (Win+R → services.msc) and start PostgreSQL\n');
-  }
   process.exit(1);
 });

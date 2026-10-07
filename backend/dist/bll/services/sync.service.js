@@ -8,143 +8,208 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SyncService = void 0;
 const common_1 = require("@nestjs/common");
-const typeorm_1 = require("typeorm");
-const sectionTables = {
-    A: 'section_a_establishment_identity',
-    B: 'section_b_operational_details',
-    C: 'section_c_core_secondary_activities',
-    D: 'section_d_workforce',
-    E: 'section_e_backward_linkages',
-    F: 'section_f_forward_linkages',
-    G: 'section_g_technology_production',
-    H: 'section_h_energy_waste',
-    I: 'section_i_certifications_compliances',
-    J: 'section_j_strategic_business_plan',
-    K: 'section_k_collaborations_barriers',
-};
+const typeorm_1 = require("@nestjs/typeorm");
+const typeorm_2 = require("typeorm");
+const survey_response_entity_1 = require("../../dal/entities/survey-response.entity");
+const duplicate_flag_entity_1 = require("../../dal/entities/duplicate-flag.entity");
+const survey_response_writer_1 = require("./survey-response-writer");
+function nameSimilarity(a, b) {
+    const s1 = (a ?? '').toLowerCase().trim();
+    const s2 = (b ?? '').toLowerCase().trim();
+    if (s1 === s2)
+        return 1;
+    if (!s1 || !s2)
+        return 0;
+    const m = s1.length, n = s2.length;
+    const dp = Array.from({ length: m + 1 }, (_, i) => Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
+    for (let i = 1; i <= m; i++)
+        for (let j = 1; j <= n; j++)
+            dp[i][j] = s1[i - 1] === s2[j - 1]
+                ? dp[i - 1][j - 1]
+                : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    return 1 - dp[m][n] / Math.max(m, n);
+}
+function finiteNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value))
+        return value;
+    if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value)))
+        return Number(value);
+    return null;
+}
 let SyncService = class SyncService {
-    constructor(entityManager) {
-        this.entityManager = entityManager;
+    constructor(responseRepo, dataSource) {
+        this.responseRepo = responseRepo;
+        this.dataSource = dataSource;
     }
     async syncBatch(payload) {
-        if (!payload || !Array.isArray(payload.responses)) {
-            throw new common_1.BadRequestException('responses must be an array');
-        }
-        const log = await this.entityManager.query(`INSERT INTO sync_log (device_id, user_id, sync_started_at, status)
-       VALUES ($1, $2, NOW(), 'partial') RETURNING sync_id`, [payload.device_id || 'unknown_device', payload.user_id]);
-        const syncId = log[0].sync_id;
+        const { device_id, user_id, responses } = payload;
+        let successCount = 0;
         const results = [];
-        let recordsPushed = 0;
-        for (const response of payload.responses) {
+        const [logRow] = await this.dataSource.query(`INSERT INTO sync_log (surveyor_id, device_id, started_at, status)
+       VALUES ($1, $2, NOW(), 'IN_PROGRESS') RETURNING id`, [user_id, device_id]);
+        const syncLogId = logRow.id;
+        for (const resp of responses) {
             try {
-                const surveyId = await this.saveSubmission(payload.user_id, payload.device_id, response);
-                recordsPushed += 1;
-                results.push({ survey_id: surveyId, response_id: response.response_id || surveyId, status: 'synced', is_duplicate: false, message: 'Survey submission synced successfully.' });
+                const result = await this.dataSource.transaction(async (trx) => {
+                    const existing = await trx.findOne(survey_response_entity_1.SurveyResponse, { where: { id: resp.response_id } });
+                    if (existing) {
+                        return {
+                            response_id: resp.response_id,
+                            status: 'already_synced',
+                            is_duplicate: false,
+                            message: 'Response was already synced.',
+                        };
+                    }
+                    const questionIds = [...new Set(resp.answers.map((answer) => answer.question_id))];
+                    const questions = questionIds.length
+                        ? await trx.query(`SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
+                   FROM survey_questions q
+                   JOIN survey_sections s ON s.id = q.section_id
+                  WHERE q.id = ANY($1::int[]) AND s.form_id = $2`, [questionIds, resp.form_id])
+                        : [];
+                    if (questions.length !== questionIds.length) {
+                        throw new Error('The response contains a question that does not belong to its survey form.');
+                    }
+                    const questionById = new Map(questions.map((question) => [question.id, question]));
+                    const answers = new Map();
+                    for (const answer of resp.answers) {
+                        const question = questionById.get(answer.question_id);
+                        if (!question)
+                            throw new Error(`Question ${answer.question_id} is not part of this form.`);
+                        answers.set(question.question_code, answer.answer_value);
+                    }
+                    const gpsValue = answers.get('A_LOCATION_GPS');
+                    const gpsRecord = gpsValue && typeof gpsValue === 'object'
+                        ? gpsValue.location
+                        : undefined;
+                    const gpsLocation = gpsRecord && typeof gpsRecord === 'object'
+                        ? gpsRecord
+                        : gpsValue && typeof gpsValue === 'object'
+                            ? gpsValue
+                            : {};
+                    const gpsLat = resp.gps_lat ?? finiteNumber(gpsLocation.lat);
+                    const gpsLng = resp.gps_lng ?? finiteNumber(gpsLocation.lng);
+                    const gpsAccuracy = resp.gps_accuracy_m ?? finiteNumber(gpsLocation.accuracy);
+                    const nameValue = answers.get('A_ESTABLISHMENT_NAME');
+                    const structuredName = nameValue && typeof nameValue === 'object'
+                        ? nameValue.name
+                        : nameValue;
+                    const textAnswer = resp.answers.find((answer) => typeof answer.answer_value === 'string' && answer.answer_value.trim().length > 0);
+                    const unitName = typeof structuredName === 'string' && structuredName.trim()
+                        ? structuredName.trim()
+                        : textAnswer?.answer_value ?? 'Unnamed Unit';
+                    let isDuplicate = false;
+                    let matchedUnitId = null;
+                    let matchReason = '';
+                    let similarity = 0;
+                    let distanceM = 0;
+                    if (gpsLat !== null && gpsLng !== null) {
+                        const nearby = await trx.query(`SELECT id, name,
+                      ST_Distance(
+                        location::geography,
+                        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
+                      ) AS distance
+                 FROM industrial_units
+                WHERE ST_DWithin(
+                        location::geography,
+                        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+                        50.0
+                      )
+                  AND approval_status != 'REJECTED'`, [gpsLng, gpsLat]);
+                        for (const u of nearby) {
+                            const sim = nameSimilarity(unitName, u.name);
+                            if (sim > 0.6) {
+                                isDuplicate = true;
+                                matchedUnitId = u.id;
+                                similarity = sim;
+                                distanceM = u.distance;
+                                matchReason = `${Math.round(u.distance)}m from "${u.name}" (${Math.round(sim * 100)}% name match)`;
+                                break;
+                            }
+                        }
+                    }
+                    const linkedUnitId = resp.unit_id ?? await (0, survey_response_writer_1.createIndustrialUnit)(trx, user_id, answers, unitName, {
+                        lat: gpsLat,
+                        lng: gpsLng,
+                        accuracy: gpsAccuracy,
+                    }, !questions.some((question) => question.question_code === 'A_LOCATION'));
+                    const surveyResp = trx.create(survey_response_entity_1.SurveyResponse, {
+                        id: resp.response_id,
+                        form_id: resp.form_id,
+                        unit_id: linkedUnitId,
+                        surveyor_id: user_id,
+                        device_id,
+                        gps_lat: gpsLat,
+                        gps_lng: gpsLng,
+                        gps_accuracy_m: gpsAccuracy,
+                        started_at: new Date(resp.started_at),
+                        submitted_at: new Date(resp.submitted_at),
+                        status: 'PENDING_CONFIRMATION',
+                        sync_status: isDuplicate ? 'DUPLICATE' : 'SYNCED',
+                        synced_at: new Date(),
+                    });
+                    await trx.save(survey_response_entity_1.SurveyResponse, surveyResp);
+                    await (0, survey_response_writer_1.saveNormalizedSurveyAnswers)(trx, resp.response_id, answers, questions);
+                    if (isDuplicate && matchedUnitId) {
+                        await trx.save(duplicate_flag_entity_1.DuplicateFlag, trx.create(duplicate_flag_entity_1.DuplicateFlag, {
+                            unit_id: linkedUnitId,
+                            matched_unit_id: matchedUnitId,
+                            reason: matchReason,
+                            name_similarity: similarity,
+                            distance_m: distanceM,
+                            resolution: 'OPEN',
+                        }));
+                    }
+                    return {
+                        response_id: resp.response_id,
+                        status: (isDuplicate ? 'duplicate_flagged' : 'synced'),
+                        is_duplicate: isDuplicate,
+                        message: isDuplicate
+                            ? `Duplicate flagged — ${matchReason}. Held for supervisor review.`
+                            : 'Response synced successfully.',
+                    };
+                });
+                results.push(result);
+                if (result.status === 'synced' || result.status === 'already_synced')
+                    successCount++;
             }
-            catch (error) {
-                const message = this.readableDatabaseError(error);
-                results.push({ survey_id: response.survey_id || response.response_id, response_id: response.response_id, status: 'failed', is_duplicate: false, message });
+            catch (err) {
+                results.push({
+                    response_id: resp.response_id,
+                    status: 'failed',
+                    is_duplicate: false,
+                    message: err?.message ?? 'Unexpected error during sync.',
+                });
             }
         }
-        const status = recordsPushed === payload.responses.length ? 'success' : recordsPushed ? 'partial' : 'failed';
-        await this.entityManager.query(`UPDATE sync_log SET sync_completed_at = NOW(), records_pushed = $1, status = $2 WHERE sync_id = $3`, [recordsPushed, status, syncId]);
-        return { sync_id: syncId, status, results };
-    }
-    async saveSubmission(userId, deviceId, response) {
-        return this.entityManager.transaction(async (manager) => {
-            const surveyId = response.survey_id || response.response_id;
-            if (!surveyId)
-                throw new common_1.BadRequestException('Each response needs survey_id or response_id');
-            const existing = await manager.query('SELECT survey_id FROM survey_submissions WHERE survey_id = $1', [surveyId]);
-            if (existing.length)
-                return surveyId;
-            const sections = response.sections || this.legacyAnswersToSections(response.answers || []);
-            const identity = this.asRecord(sections.A);
-            const gps = this.asRecord(identity.gps || identity.coordinates);
-            const latitude = Number(response.coordinates_lat ?? gps.lat);
-            const longitude = Number(response.coordinates_lng ?? gps.lng);
-            if (!Number.isFinite(latitude) || !Number.isFinite(longitude))
-                throw new common_1.BadRequestException('A valid latitude and longitude are required');
-            const missingIdentity = ['establishment_name', 'address', 'city', 'tehsil', 'district']
-                .filter((field) => this.isEmpty(identity[field]));
-            if (missingIdentity.length) {
-                throw new common_1.BadRequestException(`Section A is incomplete. Required fields missing: ${missingIdentity.join(', ')}`);
-            }
-            const operational = this.asRecord(sections.B);
-            if (this.isEmpty(operational.operational_status)) {
-                throw new common_1.BadRequestException('Section B is incomplete. Current operational status is required.');
-            }
-            const unitCode = String(identity.unit_code || `PB-${Date.now().toString(36).toUpperCase()}`);
-            await manager.query(`INSERT INTO survey_submissions
-          (survey_id, unit_code, survey_ref_no, interview_date, enumerator_name, coordinates_lat, coordinates_lng, gps_accuracy_m, geom, device_id, sync_status)
-         VALUES ($1::uuid, $2::varchar, $3::varchar, COALESCE($4::date, CURRENT_DATE), $5::varchar,
-           $6::numeric, $7::numeric, $8::numeric,
-           ST_SetSRID(ST_MakePoint($7::double precision, $6::double precision), 4326),
-           $9::varchar, 'synced')`, [surveyId, unitCode, response.form_id ? String(response.form_id) : null, response.interview_date || null, response.enumerator_name || userId, latitude, longitude, response.gps_accuracy_m ?? gps.accuracy, deviceId || response.device_id || null]);
-            for (const [section, value] of Object.entries(sections)) {
-                const table = sectionTables[section.toUpperCase()];
-                if (table)
-                    await this.insertSection(manager, table, surveyId, value);
-            }
-            return surveyId;
-        });
-    }
-    async insertSection(manager, table, surveyId, value) {
-        const rows = Array.isArray(value) ? value : [value];
-        const columns = (await manager.query(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name <> 'survey_id'`, [table])).map((item) => item.column_name);
-        for (const row of rows) {
-            const entries = Object.entries(this.asRecord(row)).filter(([key, item]) => columns.includes(key) && item !== undefined);
-            if (!entries.length)
-                continue;
-            const names = ['survey_id', ...entries.map(([key]) => `"${key}"`)].join(', ');
-            const values = [surveyId, ...entries.map(([, item]) => item)];
-            const placeholders = values.map((_, index) => `$${index + 1}`).join(', ');
-            await manager.query(`INSERT INTO ${table} (${names}) VALUES (${placeholders})`, values);
-        }
-    }
-    legacyAnswersToSections(answers) {
-        const identity = {};
-        const gps = {};
-        for (const answer of answers) {
-            if (answer.question_id === 1 && answer.answer_value && typeof answer.answer_value === 'object')
-                Object.assign(gps, answer.answer_value);
-            if (answer.question_id === 4)
-                identity.establishment_name = answer.answer_value;
-            if (answer.question_id === 6)
-                identity.address = answer.answer_value;
-            if (answer.question_id === 19)
-                identity.ownership_type = answer.answer_value;
-        }
-        identity.gps = gps;
-        return { A: identity };
-    }
-    asRecord(value) {
-        return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-    }
-    isEmpty(value) {
-        return value === undefined || value === null || value === '';
-    }
-    readableDatabaseError(error) {
-        const message = error instanceof Error ? error.message : 'Unknown database error.';
-        if (message.includes('duplicate key') && message.includes('unit_code'))
-            return 'This survey could not be saved because its unit code already exists. Please retry.';
-        if (message.includes('violates not-null constraint'))
-            return 'A required survey field is missing. Open the survey, complete the required fields, and retry.';
-        if (message.includes('violates check constraint'))
-            return 'One selected value is not accepted by the database. Reopen the survey and choose a valid dropdown option.';
-        if (message.includes('invalid input syntax'))
-            return 'One numeric or date value is invalid. Correct the highlighted field and retry.';
-        if (message.includes('relation') && message.includes('does not exist'))
-            return 'The server database is missing a required survey table. Run the latest database migration and restart the backend.';
-        return message;
+        const duplicates = results.filter((r) => r.status === 'duplicate_flagged').length;
+        const failed = results.filter((r) => r.status === 'failed').length;
+        const finalStatus = failed === 0 ? 'SUCCESS'
+            : failed === responses.length ? 'FAILED'
+                : 'PARTIAL';
+        await this.dataSource.query(`UPDATE sync_log
+          SET finished_at       = NOW(),
+              records_sent      = $1,
+              records_synced    = $2,
+              records_duplicate = $3,
+              records_rejected  = $4,
+              status            = $5
+        WHERE id = $6`, [responses.length, successCount, duplicates, failed, finalStatus, syncLogId]);
+        return { sync_id: syncLogId, status: finalStatus.toLowerCase(), results };
     }
 };
 exports.SyncService = SyncService;
 exports.SyncService = SyncService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [typeorm_1.EntityManager])
+    __param(0, (0, typeorm_1.InjectRepository)(survey_response_entity_1.SurveyResponse)),
+    __param(1, (0, typeorm_1.InjectDataSource)()),
+    __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.DataSource])
 ], SyncService);
 //# sourceMappingURL=sync.service.js.map

@@ -1,15 +1,17 @@
 import { Role } from './role.entity';
 export declare class User {
-    user_id: string;
+    id: string;
     username: string;
     full_name: string;
+    designation: string;
     email: string;
     phone: string;
     password_hash: string;
     role_id: number;
-    role: Role;
+    supervisor_id: string;
     is_active: boolean;
-    last_login_at: Date;
+    created_by: string;
     created_at: Date;
-    updated_at: Date;
+    deactivated_at: Date;
+    role: Role;
 }

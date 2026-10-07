@@ -1,363 +1,121 @@
-# Database Diagram & Structure — Punjab Industrial Survey
+# Database Diagram and Structure
 
-**Database:** `punjab_industrial_survey`  
-**Engine:** PostgreSQL 14+ with PostGIS 3+  
-**Extensions:** `uuid-ossp`, `pgcrypto`, `postgis`
+This ER overview reflects [`../database/schema.sql`](../database/schema.sql) and the current application write path. The deployed questionnaire is version 2, with A–K responses linked through `survey_responses`.
 
----
+## Core entity relationships
 
-## Entity Relationship Overview
+```mermaid
+erDiagram
+    ROLES ||--o{ USERS : assigns
+    USERS ||--o{ USERS : supervises
+    ROLES ||--o{ ROLE_PERMISSIONS : grants
+    PERMISSIONS ||--o{ ROLE_PERMISSIONS : includes
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         AUTH & ACCESS CONTROL                           │
-│                                                                         │
-│  roles ──────────────── role_permissions ──────── permissions          │
-│    │                                                                     │
-│    └──────────────────── users                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+    SURVEY_FORMS ||--o{ SURVEY_SECTIONS : contains
+    SURVEY_SECTIONS ||--o{ SURVEY_QUESTIONS : registers
+    SURVEY_QUESTIONS ||--o{ MATRIX_ITEMS : defines
+    LOOKUP_TYPES ||--o{ LOOKUP_VALUES : categorizes
+    LOOKUP_VALUES ||--o{ LOOKUP_VALUE_LINKS : links
 
-┌─────────────────────────────────────────────────────────────────────────┐
-│                       ADMINISTRATIVE GEOGRAPHY                          │
-│                                                                         │
-│  provinces → divisions → districts → tehsils                           │
-│                                ↓                                        │
-│                       industrial_estates                                │
-│                                                                         │
-│  sectors (self-referencing hierarchy: parent_sector_id)                │
-└─────────────────────────────────────────────────────────────────────────┘
+    INDUSTRIAL_UNITS ||--o{ SURVEY_RESPONSES : surveyed_in
+    SURVEY_FORMS ||--o{ SURVEY_RESPONSES : uses
+    USERS ||--o{ SURVEY_RESPONSES : completes
+    INDUSTRIAL_UNITS ||--o| UNIT_PARENT_COMPANIES : may_have
+    INDUSTRIAL_UNITS ||--o{ UNIT_ASSOCIATED_ESTABLISHMENTS : includes
+    INDUSTRIAL_UNITS ||--o{ UNIT_APPROVAL_LOG : has_history
 
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    QUESTIONNAIRE DEFINITION                             │
-│                                                                         │
-│  survey_forms                                                           │
-│      └── survey_sections (sort_order)                                  │
-│              └── survey_questions (sort_order)                         │
-│                      └── survey_question_logic (skip rules)            │
-│                                                                         │
-│  system_settings (key/value config: GPS accuracy, duplicate radius)    │
-└─────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────┐
-│                       RESPONSE & UNIT STORAGE                          │
-│                                                                         │
-│  industrial_units  ←──────── survey_responses ──────── survey_answers  │
-│        ↓                           ↓                                   │
-│  unit_approval_log          duplicate_flags                             │
-│                                    ↓                                   │
-│                               sync_log                                 │
-└─────────────────────────────────────────────────────────────────────────┘
+    SURVEY_RESPONSES ||--o| SEC_B_OPERATIONS : answers
+    SURVEY_RESPONSES ||--o{ PRODUCTS : answers
+    SURVEY_RESPONSES ||--o{ WORKFORCE_EMPLOYMENT : answers
+    SURVEY_RESPONSES ||--o{ WORKFORCE_SKILLS : answers
+    SURVEY_RESPONSES ||--o| SEC_E_SUPPLY_CHAIN : answers
+    SURVEY_RESPONSES ||--o{ MAJOR_INPUTS : answers
+    SURVEY_RESPONSES ||--o| SEC_F_MARKET : answers
+    SURVEY_RESPONSES ||--o| SEC_G_TECHNOLOGY : answers
+    SURVEY_RESPONSES ||--o| SEC_H_ENVIRONMENT : answers
+    SURVEY_RESPONSES ||--o| SEC_I_COMPLIANCE : answers
+    SURVEY_RESPONSES ||--o| SEC_J_STRATEGY : answers
+    SURVEY_RESPONSES ||--o| SEC_K_FUTURE : answers
+    SURVEY_RESPONSES ||--o{ RESPONSE_CHOICES : stores
+    SURVEY_RESPONSES ||--o{ RESPONSE_SHARES : stores
+    SURVEY_RESPONSES ||--o{ RESPONSE_MATRIX_ANSWERS : stores
+    SURVEY_RESPONSES ||--o{ SURVEY_ATTACHMENTS : references
+    SURVEY_RESPONSES ||--o{ RESPONSE_EDIT_LOG : tracks
+    SURVEY_RESPONSES ||--o{ COLLABORATIONS : records
+    COLLABORATIONS ||--o{ COLLABORATION_PURPOSES : has
+    INDUSTRIAL_UNITS ||--o{ DUPLICATE_FLAGS : may_be_flagged
+    USERS ||--o{ SYNC_LOG : starts
 ```
 
----
+`SYNC_LOG` is a sync-batch record linked to the surveyor/device, not a parent record for individual responses. A batch can contain multiple responses, and the SQL schema does not put a `sync_log_id` foreign key on `survey_responses`.
 
-## Table Reference
+## Table groups
 
-### 1. AUTH & USER MANAGEMENT
+The database contains 64 application tables. The connected database snapshot reports 65 base tables because PostGIS also installs `spatial_ref_sys`.
 
-#### `roles`
-| Column | Type | Notes |
-|---|---|---|
-| role_id | INTEGER PK | 1=Surveyor, 2=Supervisor, 3=DB Admin |
-| role_name | VARCHAR(50) UNIQUE | |
-| description | TEXT | |
-
-#### `permissions`
-| Column | Type | Notes |
-|---|---|---|
-| permission_id | INTEGER PK | |
-| permission_code | VARCHAR(100) UNIQUE | UNIT_CREATE, UNIT_APPROVE, SURVEY_SUBMIT, USER_MANAGE |
-| description | TEXT | |
-
-#### `role_permissions`
-| Column | Type | Notes |
-|---|---|---|
-| role_id | INTEGER FK → roles | Composite PK |
-| permission_id | INTEGER FK → permissions | Composite PK |
-
-**Permission matrix:**
-```
-Role          UNIT_CREATE   UNIT_APPROVE   SURVEY_SUBMIT   USER_MANAGE
-─────────────────────────────────────────────────────────────────────────
-Surveyor          ✓                            ✓
-Supervisor        ✓              ✓             ✓
-DB Admin          ✓              ✓             ✓               ✓
-```
-
-#### `users`
-| Column | Type | Notes |
-|---|---|---|
-| user_id | UUID PK | uuid_generate_v4() |
-| username | VARCHAR(60) UNIQUE | |
-| full_name | VARCHAR(150) | |
-| email | VARCHAR(150) UNIQUE | nullable |
-| phone | VARCHAR(20) | nullable |
-| password_hash | TEXT | bcrypt, salt=10 |
-| role_id | INTEGER FK → roles | |
-| is_active | BOOLEAN | default TRUE |
-| last_login_at | TIMESTAMPTZ | updated on login |
-
-**Seeded accounts:**
-```
-username      password        role
-surveyor1     surveyor123     Surveyor
-supervisor1   supervisor123   Supervisor
-admin         admin123        DB Admin
-```
-
----
-
-### 2. ADMINISTRATIVE GEOGRAPHY
-
-All geography tables carry a `geom geometry(MultiPolygon, 4326)` column for PostGIS spatial queries.
-
-```
-provinces (1)
-    └── divisions (1)
-            └── districts (1)
-                    ├── tehsils (2: Lahore City, Shalimar)
-                    └── industrial_estates (1: Sundar Industrial Estate)
-
-sectors (15 seeded, self-referencing)
-    ├── Textile and Apparel
-    │       ├── Spinning and Weaving
-    │       └── Garments and Ready-made
-    ├── Leather and Footwear
-    │       └── Tanning and Processing
-    ├── Chemical and Allied
-    │       └── Pharmaceuticals
-    ├── Food and Beverages
-    ├── Engineering and Metals
-    ├── Printing and Packaging
-    ├── Wood and Furniture
-    ├── Plastics and Rubber
-    ├── Construction Materials
-    ├── Electronics and Electrical
-    └── Other Manufacturing
-```
-
----
-
-### 3. QUESTIONNAIRE DEFINITION
-
-#### `survey_forms`
-| Column | Type | Notes |
-|---|---|---|
-| form_id | INTEGER PK | |
-| title | VARCHAR(150) | |
-| version | VARCHAR(20) | current: "2.0" |
-| description | TEXT | |
-| is_active | BOOLEAN | only one active at a time |
-
-#### `survey_sections`
-| Column | Type | Notes |
-|---|---|---|
-| section_id | INTEGER PK | 1–11 |
-| form_id | INTEGER FK → survey_forms | |
-| title | VARCHAR(150) | "Section A: Establishment Identity" etc. |
-| sort_order | INTEGER | display order |
-
-**11 sections:**
-```
-ID   Title                                    Questions
-─────────────────────────────────────────────────────────
- 1   Section A: Establishment Identity            27
- 2   Section B: Operational Details               6
- 3   Section C: Core and Secondary Activities     25
- 4   Section D: Workforce                         19
- 5   Section E: Backward Linkages                 34
- 6   Section F: Forward Linkages                  47
- 7   Section G: Technology and Production         50
- 8   Section H: Energy and Waste Management       33
- 9   Section I: Certifications and Compliances    16
-10   Section J: Strategic Business Plan           19
-11   Section K: Future Collaborations & Barriers  20
-                                          TOTAL: 296
-```
-
-#### `survey_questions`
-| Column | Type | Notes |
-|---|---|---|
-| question_id | INTEGER PK | 1–296 |
-| section_id | INTEGER FK → survey_sections | |
-| question_code | VARCHAR(30) | HDR.GPS, A.1, B.3a, K.4 etc. |
-| question_text | TEXT | display label |
-| question_type | VARCHAR(20) | see types below |
-| is_mandatory | BOOLEAN | drives completeness score |
-| validation_rule | JSONB | `{"min":0,"max":100}` or `{"regex":"..."}` |
-| options | JSONB | string array for select/multiselect |
-| sort_order | INTEGER | display order within section |
-
-**Question types:**
-```
-text          → plain text input
-number        → numeric input with optional min/max validation
-date          → date picker
-select        → single-choice dropdown
-multiselect   → multi-checkbox list
-boolean       → Yes/No toggle
-gps           → GPS coordinate capture (lat/lng/accuracy)
-photo         → camera capture / file upload
-```
-
-**Special question IDs (hardcoded in app logic):**
-```
-question_id=1   HDR.GPS   GPS location — feeds duplicate detection
-question_id=4   A.1       Name of Establishment — feeds unit_name
-question_id=19  A.9       Ownership — feeds ownership_type
-```
-
-#### `survey_question_logic`
-Skip/show rules evaluated client-side.
-
-| Column | Type | Notes |
-|---|---|---|
-| logic_id | INTEGER PK | |
-| question_id | INTEGER FK | the question being shown/hidden |
-| condition_question_id | INTEGER FK | the trigger question |
-| condition_operator | VARCHAR(10) | `=` `!=` `>` `<` `>=` `<=` `in` |
-| condition_value | TEXT | value to compare against |
-| action | VARCHAR(15) | `show` or `hide` |
-
-**29 rules seeded.** Key examples:
-```
-Show A.8x (specify)     if A.8  = "Other"
-Show A.10x (specify)    if A.10 = "Others"
-Show B.1s (period)      if B.1  = "Seasonal"
-Show B.2  (closure)     if B.1  = "Temporarily Closed" OR "Permanently Closed"
-Show G.4  (reasons)     if G.3  = "40-59%" OR "60-74%"
-Show H.7ad (disposal)   if H.7a = true  (scrap generated)
-Show E.6r (reasons)     if E.6  = true  (disruption occurred)
-Show J.6-J.7 (planning) if J.5 != "No expansion plans currently"
-```
-
----
-
-### 4. RESPONSE & UNIT STORAGE
-
-#### `industrial_units`
-Auto-created by sync service when a new unique survey is submitted.
-
-| Column | Type | Notes |
-|---|---|---|
-| unit_id | UUID PK | uuid_generate_v4() |
-| unit_code | VARCHAR(30) UNIQUE | Format: `PK-PB-LHR-XXXXX` |
-| unit_name | VARCHAR(200) | From answer question_id=4 |
-| sector_id | INTEGER | FK → sectors |
-| province_id / division_id / district_id / tehsil_id | INTEGER | FK → geography |
-| ownership_type | VARCHAR(30) | From answer question_id=19 |
-| employment_size | INTEGER | |
-| operational_status | VARCHAR(20) | Default: `Unverified` → `Active` after approval |
-| geom | geometry(Point, 4326) | PostGIS point from GPS answer |
-| gps_accuracy_m | NUMERIC(6,2) | |
-| is_verified | BOOLEAN | Default FALSE; TRUE after supervisor approval |
-| verified_by | VARCHAR(150) | Supervisor name |
-| verified_at | TIMESTAMPTZ | |
-| created_by | UUID | surveyor user_id |
-
-#### `survey_responses`
-One row per survey submission.
-
-| Column | Type | Notes |
-|---|---|---|
-| response_id | UUID PK | **Client-generated** (enables idempotent sync) |
-| form_id | INTEGER FK | |
-| unit_id | UUID FK → industrial_units | nullable, linked at sync time |
-| surveyor_id | UUID | |
-| device_id | VARCHAR(100) | Format: `DEV-XXXXXXXX` |
-| gps_lat / gps_lng | NUMERIC(9,6) | From GPS answer |
-| gps_accuracy_m | NUMERIC(6,2) | |
-| started_at / submitted_at | TIMESTAMPTZ | |
-| sync_status | VARCHAR(15) | `draft` → `pending_sync` → `synced` / `rejected` |
-| is_offline_capture | BOOLEAN | Always TRUE from field app |
-| completeness_score | NUMERIC(5,2) | 0–100, mandatory answered / total mandatory |
-| is_duplicate | BOOLEAN | Set by duplicate detection |
-
-#### `survey_answers`
-One row per question per response.
-
-| Column | Type | Notes |
-|---|---|---|
-| answer_id | BIGSERIAL PK | |
-| response_id | UUID FK → survey_responses | |
-| question_id | INTEGER FK → survey_questions | |
-| answer_value | JSONB | Any type: string, number, array, `{lat,lng,accuracy}` |
-| answered_at | TIMESTAMPTZ | |
-
-#### `duplicate_flags`
-Created when two surveys are within 50m and name similarity > 60%.
-
-| Column | Type | Notes |
-|---|---|---|
-| flag_id | BIGSERIAL PK | |
-| response_id | UUID FK | the new (duplicate) response |
-| matched_unit_id | UUID FK | the existing unit it matched |
-| match_reason | TEXT | distance + similarity score description |
-| is_resolved | BOOLEAN | resolved by supervisor |
-| resolved_by / resolved_at | UUID / TIMESTAMPTZ | |
-
-#### `sync_log`
-Audit trail of every sync operation.
-
-| Column | Type | Notes |
-|---|---|---|
-| sync_id | BIGSERIAL PK | |
-| device_id | VARCHAR(100) | |
-| user_id | UUID FK → users | |
-| sync_started_at | TIMESTAMPTZ | |
-| sync_completed_at | TIMESTAMPTZ | |
-| records_pushed | INTEGER | successful records in batch |
-| status | VARCHAR(20) | `success` / `partial` / `failed` |
-
----
-
-## Duplicate Detection Logic
-
-```
-For each incoming response:
-  1. Find all industrial_units within 50 metres (PostGIS ST_DWithin on geography)
-  2. For each nearby unit, compute Levenshtein string similarity:
-       similarity = 1 - (edit_distance / max_length)
-  3. If similarity > 0.60 → mark as duplicate
-     → response.sync_status = 'pending_sync' (held for supervisor review)
-     → duplicate_flags row created with distance + similarity in match_reason
-  4. If NOT duplicate → create new industrial_unit, response.sync_status = 'synced'
-```
-
----
-
-## Key Indexes
-
-```sql
--- Spatial
-CREATE INDEX idx_industrial_units_geom    ON industrial_units    USING GIST (geom);
-CREATE INDEX idx_survey_submissions_geom  ON survey_submissions  USING GIST (geom);
-
--- Query performance
-CREATE INDEX idx_survey_submissions_sync  ON survey_submissions  (sync_status);
-CREATE INDEX idx_sec_a_assoc_survey       ON section_a_associated_establishments (survey_id);
-CREATE INDEX idx_sec_c_products_survey    ON section_c_products  (survey_id);
-CREATE INDEX idx_sec_e_raw_materials_survey ON section_e_raw_materials (survey_id);
-CREATE INDEX idx_sec_f_sales_survey       ON section_f_product_sales (survey_id);
-CREATE INDEX idx_sec_g_machines_survey    ON section_g_critical_machines (survey_id);
-CREATE INDEX idx_sec_g_boilers_survey     ON section_g_boilers_pressure_vessels (survey_id);
-CREATE INDEX idx_sec_g_weights_survey     ON section_g_weights_measures (survey_id);
-```
-
----
-
-## SQL Files
-
-| File | Purpose |
+| Area | Tables |
 |---|---|
-| `database/create_tables.sql` | Creates all tables, indexes, and extensions |
-| `database/seed.sql` | Inserts roles, users, geography, form, 296 questions, 29 logic rules |
-| `database/schema.sql` | Extended section tables (A–K) for future detailed storage |
-| `database/update_schema_to_new_design.sql` | Migration script |
-| `database/update_credentials.sql` | Update user passwords |
+| Accounts and permissions | `roles`, `permissions`, `role_permissions`, `users` |
+| Geography | `provinces`, `divisions`, `districts`, `tehsils` |
+| Classification and measurement | `psic_divisions`, `psic_groups`, `psic_classes`, `hs_codes`, `measurement_units` |
+| Forms and lookups | `survey_forms`, `survey_sections`, `survey_questions`, `matrix_items`, `lookup_types`, `lookup_values`, `lookup_value_links` |
+| Establishment identity (A) | `industrial_units`, `industrial_estates`, `industrial_clusters`, `unit_parent_companies`, `unit_associated_establishments` |
+| Response lifecycle | `survey_responses`, `survey_attachments`, `response_edit_log`, `unit_approval_log` |
+| Operations, products, workforce (B–D) | `sec_b_operations`, `products`, `product_transformation_stages`, `workforce_employment`, `workforce_skills` |
+| Supply and markets (E–F) | `sec_e_supply_chain`, `major_inputs`, `sec_f_market` |
+| Technology and environment (G–H) | `sec_g_technology`, `critical_machines`, `machinery_age_profile`, `boilers_pressure_vessels`, `weights_measures_equipment`, `sec_h_environment`, `energy_consumption`, `energy_generation`, `solid_waste_streams`, `solid_waste_disposals` |
+| Compliance, strategy, future (I–K) | `sec_i_compliance`, `sec_j_strategy`, `sec_k_future`, `collaborations`, `collaboration_purposes` |
+| Generic answers | `response_choices`, `response_shares`, `response_matrix_answers` |
+| Sync and GIS | `sync_log`, `duplicate_flags`, `gis_quality_log`, `base_map_layers` |
+| Audit and reporting support | `audit_log`, `backup_log`, `system_settings`, `dashboard_kpi_definitions`, `dashboard_saved_filters` |
 
-**Run order:**
-```powershell
-psql -U postgres -d punjab_industrial_survey -f database/create_tables.sql
-psql -U postgres -d punjab_industrial_survey -f database/seed.sql
+## Reference-data relationships
+
+```mermaid
+erDiagram
+    PROVINCES ||--o{ DIVISIONS : contains
+    DIVISIONS ||--o{ DISTRICTS : contains
+    DISTRICTS ||--o{ TEHSILS : contains
+    PSIC_DIVISIONS ||--o{ PSIC_GROUPS : contains
+    PSIC_GROUPS ||--o{ PSIC_CLASSES : contains
+    DISTRICTS ||--o{ INDUSTRIAL_ESTATES : locates
+    DISTRICTS ||--o{ INDUSTRIAL_CLUSTERS : locates
+    LOOKUP_TYPES ||--o{ LOOKUP_VALUES : lists
+    LOOKUP_VALUES ||--o{ LOOKUP_VALUE_LINKS : parent_or_child
+    MEASUREMENT_UNITS ||--o{ PRODUCTS : measures
+    PSIC_CLASSES ||--o{ UNIT_ASSOCIATED_ESTABLISHMENTS : classifies
 ```
+
+These reference tables exist in the schema. The application currently accepts text for geography, PSIC, HS code, estate, and cluster entries because the corresponding official datasets are not loaded; the migration made the geography foreign keys nullable and added text columns. See [Database Design](./database_design.md).
+
+## Section records
+
+Most section records reference `survey_responses.id`; one-to-one section tables use `response_id` as their primary key, while repeating data tables have their own primary key and response foreign key. Section A is stored against the establishment master (`industrial_units`) and its related identity tables.
+
+| Section | Data tables |
+|---|---|
+| A | `industrial_units`, `unit_parent_companies`, `unit_associated_establishments` |
+| B | `sec_b_operations` |
+| C | `products`, `product_transformation_stages` |
+| D | `workforce_employment`, `workforce_skills` |
+| E | `sec_e_supply_chain`, `major_inputs` |
+| F | `sec_f_market` |
+| G | `sec_g_technology`, `critical_machines`, `machinery_age_profile`, `boilers_pressure_vessels`, `weights_measures_equipment` |
+| H | `sec_h_environment`, `energy_consumption`, `energy_generation`, `solid_waste_streams`, `solid_waste_disposals` |
+| I | `sec_i_compliance` |
+| J | `sec_j_strategy` |
+| K | `sec_k_future`, `collaborations`, `collaboration_purposes` |
+
+The application writes multi-select, share, and matrix answers to generic response tables. It writes compound and repeating fields to their corresponding normalized tables. All writes for one synced response occur inside a database transaction.
+
+## Status and integrity
+
+- `survey_responses.status` tracks `DRAFT`, `PENDING_CONFIRMATION`, `CONFIRMED`, `RETURNED`, or `REJECTED`.
+- `survey_responses.sync_status` separately tracks `PENDING`, `SYNCED`, `REJECTED`, or `DUPLICATE`.
+- `duplicate_flags` links a newly captured unit to a possible matching unit and records the reason, similarity, distance, and resolution.
+- Database checks, unique constraints, and triggers enforce valid answer forms, option membership, rating/share bounds, product constraints, and confirmation rules.
+- The schema defines three materialized dashboard views and a percentage-check view.
+
+## Applying schema changes
+
+For a fresh database, apply `database/schema.sql` followed by `database/seed.sql`. To upgrade an existing version-1 survey database, apply `database/migrate_full_questionnaire.sql`. `synchronize` is disabled in TypeORM; SQL files are authoritative for DDL.

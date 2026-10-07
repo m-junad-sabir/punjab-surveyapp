@@ -1,9 +1,9 @@
 import { SurveySection } from './survey-section.entity';
 export declare class SurveyForm {
-    form_id: number;
+    id: number;
+    code: string;
     title: string;
-    version: string;
-    description: string;
+    version: number;
     is_active: boolean;
     created_at: Date;
     sections: SurveySection[];

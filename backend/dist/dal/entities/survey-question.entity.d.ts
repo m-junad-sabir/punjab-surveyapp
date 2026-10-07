@@ -1,13 +1,13 @@
 import { SurveySection } from './survey-section.entity';
 export declare class SurveyQuestion {
-    question_id: number;
+    id: number;
     section_id: number;
-    section: SurveySection;
     question_code: string;
+    question_no: string;
     question_text: string;
-    question_type: string;
-    is_mandatory: boolean;
-    validation_rule: any;
-    options: any;
-    sort_order: number;
+    answer_type: string;
+    lookup_type_id: number;
+    is_required: boolean;
+    stored_in: string;
+    section: SurveySection;
 }
