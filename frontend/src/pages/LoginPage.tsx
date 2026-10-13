@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const ACCOUNTS = [
-  { u: 'admin',      p: 'admin123',      r: 'DB Admin',   color: '#0D47A1' },
-  { u: 'surveyor',   p: 'surveyor123',   r: 'Surveyor',   color: '#1B5E20' },
-  { u: 'supervisor', p: 'supervisor123', r: 'Supervisor',  color: '#E65100' },
+  { u: 'admin',       p: 'admin123',      r: 'DB Admin',   color: '#0D47A1' },
+  { u: 'surveyor1',   p: 'surveyor123',   r: 'Surveyor',   color: '#1B5E20' },
+  { u: 'supervisor1', p: 'supervisor123', r: 'Supervisor', color: '#E65100' },
 ];
 
 export default function LoginPage() {

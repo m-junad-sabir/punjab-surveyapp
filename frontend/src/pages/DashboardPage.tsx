@@ -2,19 +2,19 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSurvey } from '../context/SurveyContext';
-import { getAllResponses } from '../lib/db';
+import { getAllSubmissions } from '../lib/db';
 import { api } from '../lib/api';
-import type { OfflineResponse } from '../types';
+import type { SurveySubmissionDraft } from '../types';
 
 export default function DashboardPage() {
   const { user, hasPermission } = useAuth();
   const { form, fetchForm, formLoading, isOnline, pendingCount } = useSurvey();
-  const [responses, setResponses] = useState<OfflineResponse[]>([]);
+  const [responses, setResponses] = useState<SurveySubmissionDraft[]>([]);
   const [pendingUnits, setPendingUnits] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
-    getAllResponses().then(setResponses);
+    getAllSubmissions().then(setResponses);
   }, []);
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export default function DashboardPage() {
           }}>
             {form ? (
               <span style={{ fontSize: 12, color: '#fff' }}>
-                ✅ Form v{form.version} ready · {form.sections.reduce((n,s) => n+s.questions.length,0)} questions
+                ✅ Form v{form.version} ready · {form.sections.length} typed sections
               </span>
             ) : (
               <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)' }}>
@@ -158,13 +158,13 @@ export default function DashboardPage() {
             <Link to="/surveys" style={{ fontSize: 12, color: 'var(--primary)', textDecoration: 'none', fontWeight: 600 }}>See All</Link>
           </div>
           {recentResponses.map(r => {
-            const name = r.answers.find(a => a.question_id === 1)?.answer_value || 'Unnamed Unit';
+            const name = r.sections.A?.establishment_name || 'Unnamed Unit';
             const statusColors: Record<string, string> = {
               draft: 'chip-neutral', pending_sync: 'chip-warning',
               synced: 'chip-success', failed: 'chip-danger',
             };
             return (
-              <div key={r.response_id} className="list-item">
+              <div key={r.survey_id} className="list-item">
                 <div className="list-item-icon" style={{ fontSize: 18 }}>🏭</div>
                 <div className="list-item-body">
                   <div className="list-item-title truncate">{name}</div>

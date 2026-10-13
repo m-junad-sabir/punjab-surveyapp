@@ -37,6 +37,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  useEffect(() => {
+    const handleUnauthorized = () => logout();
+    window.addEventListener('survey:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('survey:unauthorized', handleUnauthorized);
+  }, [logout]);
+
   const hasPermission = useCallback(
     (perm: string) => user?.permissions?.includes(perm) ?? false,
     [user],

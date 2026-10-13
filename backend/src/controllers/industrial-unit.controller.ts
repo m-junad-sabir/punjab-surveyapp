@@ -28,7 +28,7 @@ export class IndustrialUnitController {
     @Body() body: { response_id?: string; remarks?: string },
     @CurrentUser() user: any,
   ) {
-    return this.unitService.approveUnit(id, body.response_id, user.user_id, body.remarks);
+    return this.unitService.approveUnit(id, user.user_id);
   }
 
   @Post(':id/reject')
@@ -39,6 +39,6 @@ export class IndustrialUnitController {
     @Body() body: { response_id?: string; remarks?: string },
     @CurrentUser() user: any,
   ) {
-    return this.unitService.rejectUnit(id, body.response_id, user.user_id, body.remarks);
+    return this.unitService.rejectUnit(id);
   }
 }

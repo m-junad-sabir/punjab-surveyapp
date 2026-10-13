@@ -1,85 +1,75 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, EntityManager } from 'typeorm';
-import { IndustrialUnit } from '../../dal/entities/industrial-unit.entity';
+import { EntityManager } from 'typeorm';
 
 @Injectable()
 export class IndustrialUnitService {
-  constructor(
-    @InjectRepository(IndustrialUnit)
-    private unitRepository: Repository<IndustrialUnit>,
-    private entityManager: EntityManager,
-  ) {}
+  constructor(private readonly entityManager: EntityManager) {}
 
   async findAll() {
-    return this.unitRepository.find({
-      order: { created_at: 'DESC' },
-    });
+    return this.entityManager.query(
+      `SELECT s.survey_id AS unit_id, s.unit_code, a.establishment_name AS unit_name,
+              a.ownership_type, s.sync_status AS operational_status, s.is_verified,
+              s.gps_accuracy_m, s.created_at, s.updated_at
+       FROM survey_submissions s
+       LEFT JOIN section_a_establishment_identity a ON a.survey_id = s.survey_id
+       ORDER BY s.created_at DESC`,
+    );
   }
 
-  async findOne(unit_id: string) {
-    const unit = await this.unitRepository.findOne({ where: { unit_id } });
-    if (!unit) {
-      throw new NotFoundException(`Industrial Unit with ID ${unit_id} not found`);
+  async findOne(unitId: string) {
+    const rows = await this.entityManager.query(
+      `SELECT s.*, a.* FROM survey_submissions s
+       LEFT JOIN section_a_establishment_identity a ON a.survey_id = s.survey_id
+       WHERE s.survey_id = $1`,
+      [unitId],
+    );
+    if (!rows.length) throw new NotFoundException(`Survey submission with ID ${unitId} not found`);
+
+    const sectionTables = [
+      'section_a_establishment_identity',
+      'section_b_operational_details',
+      'section_c_core_secondary_activities',
+      'section_d_workforce',
+      'section_e_backward_linkages',
+      'section_f_forward_linkages',
+      'section_g_technology_production',
+      'section_h_energy_waste',
+      'section_i_certifications_compliances',
+      'section_j_strategic_business_plan',
+      'section_k_collaborations_barriers',
+    ];
+    const sections: Record<string, unknown[]> = {};
+    for (const table of sectionTables) {
+      const section = table.match(/^section_([a-k])_/)?.[1].toUpperCase();
+      if (section) sections[section] = await this.entityManager.query(
+        `SELECT * FROM ${table} WHERE survey_id = $1`,
+        [unitId],
+      );
     }
-    return unit;
+
+    return { ...rows[0], sections };
   }
 
-  async approveUnit(unit_id: string, response_id: string, actioned_by: string, remarks?: string) {
-    const unit = await this.findOne(unit_id);
-    
-    await this.entityManager.transaction(async (transactionalEntityManager) => {
-      // 1. Update unit status
-      unit.is_verified = true;
-      unit.operational_status = 'Active';
-      unit.verified_by = actioned_by;
-      unit.verified_at = new Date();
-      await transactionalEntityManager.save(unit);
-
-      // 2. Add approval log
-      await transactionalEntityManager.query(
-        `INSERT INTO unit_approval_log (unit_id, response_id, action, actioned_by, remarks, actioned_at)
-         VALUES ($1, $2, 'approved', $3, $4, NOW())`,
-        [unit_id, response_id, actioned_by, remarks || 'Approved by Supervisor'],
-      );
-
-      // 3. Mark response as synced/approved (optional check)
-      if (response_id) {
-        await transactionalEntityManager.query(
-          `UPDATE survey_responses SET sync_status = 'synced' WHERE response_id = $1`,
-          [response_id],
-        );
-      }
-    });
-
-    return { message: 'Industrial unit successfully verified and approved' };
+  async approveUnit(unitId: string, actionedBy: string) {
+    await this.ensureExists(unitId);
+    await this.entityManager.query(
+      `UPDATE survey_submissions SET is_verified = TRUE, verified_by = $2, verified_at = NOW(), sync_status = 'synced' WHERE survey_id = $1`,
+      [unitId, actionedBy],
+    );
+    return { message: 'Survey submission successfully verified' };
   }
 
-  async rejectUnit(unit_id: string, response_id: string, actioned_by: string, remarks?: string) {
-    const unit = await this.findOne(unit_id);
+  async rejectUnit(unitId: string) {
+    await this.ensureExists(unitId);
+    await this.entityManager.query(
+      `UPDATE survey_submissions SET is_verified = FALSE, sync_status = 'rejected' WHERE survey_id = $1`,
+      [unitId],
+    );
+    return { message: 'Survey submission rejected' };
+  }
 
-    await this.entityManager.transaction(async (transactionalEntityManager) => {
-      // 1. Update unit status
-      unit.is_verified = false;
-      unit.operational_status = 'Unverified';
-      await transactionalEntityManager.save(unit);
-
-      // 2. Add approval log
-      await transactionalEntityManager.query(
-        `INSERT INTO unit_approval_log (unit_id, response_id, action, actioned_by, remarks, actioned_at)
-         VALUES ($1, $2, 'rejected', $3, $4, NOW())`,
-        [unit_id, response_id, actioned_by, remarks || 'Rejected during verification check'],
-      );
-
-      // 3. Update response status to rejected
-      if (response_id) {
-        await transactionalEntityManager.query(
-          `UPDATE survey_responses SET sync_status = 'rejected' WHERE response_id = $1`,
-          [response_id],
-        );
-      }
-    });
-
-    return { message: 'Industrial unit rejected' };
+  private async ensureExists(unitId: string) {
+    const rows = await this.entityManager.query('SELECT survey_id FROM survey_submissions WHERE survey_id = $1', [unitId]);
+    if (!rows.length) throw new NotFoundException(`Survey submission with ID ${unitId} not found`);
   }
 }

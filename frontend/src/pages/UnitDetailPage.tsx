@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
+import { downloadSurveyPdf } from '../lib/surveyPdf';
 
 export default function UnitDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -66,6 +67,9 @@ export default function UnitDetailPage() {
       <div className="flex items-center gap-12" style={{ marginBottom: 20 }}>
         <button className="btn btn-ghost" onClick={() => navigate('/supervisor')}>← Back</button>
         <h1 style={{ flex: 1 }}>{unit.unit_name}</h1>
+        <button className="btn btn-outline btn-sm" onClick={() => downloadSurveyPdf(unit, unit.unit_code || id)}>
+          ⇩ Download PDF
+        </button>
         <span className={`badge ${unit.is_verified ? 'badge-green' : 'badge-yellow'}`} style={{ fontSize: '0.9rem', padding: '6px 14px' }}>
           {unit.is_verified ? 'Verified' : 'Unverified'}
         </span>

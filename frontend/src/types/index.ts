@@ -53,6 +53,28 @@ export interface SurveyForm {
   logic: LogicRule[];
 }
 
+export type SurveySectionKey = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K';
+
+export interface TypedSurveySection {
+  key: SurveySectionKey;
+  title: string;
+  data: Record<string, any>;
+}
+
+export interface SurveySubmissionDraft {
+  survey_id: string;
+  unit_code?: string;
+  enumerator_name: string;
+  interview_date: string;
+  coordinates_lat?: number;
+  coordinates_lng?: number;
+  gps_accuracy_m?: number;
+  device_id: string;
+  sync_status: 'draft' | 'pending_sync' | 'synced' | 'failed';
+  created_at: string;
+  sections: Record<SurveySectionKey, Record<string, any>>;
+}
+
 // Response types
 export interface AnswerValue {
   question_id: number;
@@ -72,6 +94,7 @@ export interface OfflineResponse {
   answers: AnswerValue[];
   sync_status: 'draft' | 'pending_sync' | 'synced' | 'failed';
   created_at: string;
+  sections?: Record<SurveySectionKey, Record<string, any>>;
 }
 
 // Industrial Unit
@@ -91,7 +114,8 @@ export interface IndustrialUnit {
 
 // Sync
 export interface SyncResult {
-  response_id: string;
+  response_id?: string;
+  survey_id?: string;
   status: 'synced' | 'duplicate_flagged' | 'failed';
   is_duplicate: boolean;
   message: string;

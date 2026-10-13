@@ -1,253 +1,162 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, EntityManager } from 'typeorm';
-import { SurveyResponse } from '../../dal/entities/survey-response.entity';
-import { SurveyAnswer } from '../../dal/entities/survey-answer.entity';
-import { IndustrialUnit } from '../../dal/entities/industrial-unit.entity';
-import { DuplicateFlag } from '../../dal/entities/duplicate-flag.entity';
-import { SurveyQuestion } from '../../dal/entities/survey-question.entity';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { EntityManager } from 'typeorm';
+
+type SectionPayload = Record<string, Record<string, unknown> | Array<Record<string, unknown>>>;
+
+interface SyncResponse {
+  survey_id?: string;
+  response_id?: string;
+  form_id?: number;
+  interview_date?: string;
+  enumerator_name?: string;
+  coordinates_lat?: number;
+  coordinates_lng?: number;
+  gps_accuracy_m?: number;
+  device_id?: string;
+  sections?: SectionPayload;
+  answers?: Array<{ question_id: number; answer_value: unknown }>;
+}
+
+const sectionTables: Record<string, string> = {
+  A: 'section_a_establishment_identity',
+  B: 'section_b_operational_details',
+  C: 'section_c_core_secondary_activities',
+  D: 'section_d_workforce',
+  E: 'section_e_backward_linkages',
+  F: 'section_f_forward_linkages',
+  G: 'section_g_technology_production',
+  H: 'section_h_energy_waste',
+  I: 'section_i_certifications_compliances',
+  J: 'section_j_strategic_business_plan',
+  K: 'section_k_collaborations_barriers',
+};
 
 @Injectable()
 export class SyncService {
-  constructor(
-    @InjectRepository(SurveyResponse)
-    private responseRepository: Repository<SurveyResponse>,
-    @InjectRepository(IndustrialUnit)
-    private unitRepository: Repository<IndustrialUnit>,
-    private entityManager: EntityManager,
-  ) {}
+  constructor(private readonly entityManager: EntityManager) {}
 
-  // Basic string similarity helper (Levenshtein distance ratio)
-  private calculateNameSimilarity(str1: string, str2: string): number {
-    const s1 = (str1 || '').toLowerCase().trim();
-    const s2 = (str2 || '').toLowerCase().trim();
-    if (s1 === s2) return 1.0;
-    if (!s1 || !s2) return 0.0;
-
-    const m = s1.length;
-    const n = s2.length;
-    const d = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
-
-    for (let i = 0; i <= m; i++) d[i][0] = i;
-    for (let j = 0; j <= n; j++) d[0][j] = j;
-
-    for (let i = 1; i <= m; i++) {
-      for (let j = 1; j <= n; j++) {
-        const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
-        d[i][j] = Math.min(
-          d[i - 1][j] + 1, // deletion
-          d[i][j - 1] + 1, // insertion
-          d[i - 1][j - 1] + cost, // substitution
-        );
-      }
+  async syncBatch(payload: { device_id: string; user_id: string; responses: SyncResponse[] }) {
+    if (!payload || !Array.isArray(payload.responses)) {
+      throw new BadRequestException('responses must be an array');
     }
 
-    const maxLength = Math.max(m, n);
-    return 1 - d[m][n] / maxLength;
-  }
-
-  async syncBatch(
-    payload: {
-      device_id: string;
-      user_id: string;
-      responses: Array<{
-        response_id: string;
-        form_id: number;
-        gps_lat?: number;
-        gps_lng?: number;
-        gps_accuracy_m?: number;
-        started_at: string;
-        submitted_at: string;
-        answers: Array<{
-          question_id: number;
-          answer_value: any;
-        }>;
-      }>;
-    },
-  ) {
-    const { device_id, user_id, responses } = payload;
-    let recordsPushed = 0;
-    const results: Array<{ response_id: string; status: string; is_duplicate: boolean; message: string }> = [];
-
-    // Create sync log header
-    const syncLogInsert = await this.entityManager.query(
-      `INSERT INTO sync_log (device_id, user_id, sync_started_at, status) 
+    const log = await this.entityManager.query(
+      `INSERT INTO sync_log (device_id, user_id, sync_started_at, status)
        VALUES ($1, $2, NOW(), 'partial') RETURNING sync_id`,
-      [device_id, user_id],
+      [payload.device_id || 'unknown_device', payload.user_id],
     );
-    const syncId = syncLogInsert[0].sync_id;
+    const syncId = log[0].sync_id;
+    const results: Array<Record<string, unknown>> = [];
+    let recordsPushed = 0;
 
-    // Load active form's mandatory questions to compute completeness scores
-    const activeQuestions = await this.entityManager.getRepository(SurveyQuestion).find();
-    const mandatoryQuestions = activeQuestions.filter((q) => q.is_mandatory);
-
-    for (const response of responses) {
+    for (const response of payload.responses) {
       try {
-        await this.entityManager.transaction(async (trxManager) => {
-          // Check if response already exists
-          const existingResponse = await trxManager.findOne(SurveyResponse, {
-            where: { response_id: response.response_id },
-          });
-          if (existingResponse) {
-            results.push({
-              response_id: response.response_id,
-              status: 'synced',
-              is_duplicate: existingResponse.is_duplicate,
-              message: 'Already synced previously.',
-            });
-            return;
-          }
-
-          // 1. Calculate completeness score
-          const answeredQuestionIds = response.answers
-            .filter((a) => a.answer_value !== null && a.answer_value !== undefined && a.answer_value !== '')
-            .map((a) => a.question_id);
-
-          const mandatoryAnswered = mandatoryQuestions.filter((q) =>
-            answeredQuestionIds.includes(q.question_id),
-          ).length;
-
-          const completenessScore = mandatoryQuestions.length > 0
-            ? Math.round((mandatoryAnswered / mandatoryQuestions.length) * 100)
-            : 100;
-
-          // Extract basic unit answers (Q1.1 Name, Q1.3 Ownership, Q1.4 Sector etc.)
-          // (Matching seed configuration: question_id 1 = Unit Name, 3 = Ownership, 4 = Sector)
-          const nameAnswer = response.answers.find((a) => a.question_id === 1)?.answer_value || 'Unnamed Unit';
-          const ownershipAnswer = response.answers.find((a) => a.question_id === 3)?.answer_value || 'Private Limited';
-          
-          // 2. Perform duplicate checks (Proximity < 50m AND Name Similarity > 0.6)
-          let isDuplicate = false;
-          let matchedUnitId: string | null = null;
-          let matchReason = '';
-
-          if (response.gps_lat && response.gps_lng) {
-            // Find units within 50 meters using PostGIS
-            const nearbyUnits: Array<{ unit_id: string; unit_name: string; distance: number }> = await trxManager.query(
-              `SELECT unit_id, unit_name, 
-                      ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) as distance
-               FROM industrial_units
-               WHERE ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, 50.0)`,
-              [response.gps_lng, response.gps_lat],
-            );
-
-            for (const unit of nearbyUnits) {
-              const similarity = this.calculateNameSimilarity(nameAnswer, unit.unit_name);
-              if (similarity > 0.6) {
-                isDuplicate = true;
-                matchedUnitId = unit.unit_id;
-                matchReason = `Spatial proximity check: Located ${Math.round(unit.distance)}m away from existing unit "${unit.unit_name}" (ID: ${unit.unit_id}) with ${Math.round(similarity * 100)}% name match.`;
-                break;
-              }
-            }
-          }
-
-          // 3. Create or Link Industrial Unit
-          let linkedUnitId: string | null = null;
-
-          if (!isDuplicate) {
-            // Create a new industrial unit since no duplicate is found
-            const randomCodeSuffix = Math.floor(10000 + Math.random() * 90000);
-            const unitCode = `PK-PB-LHR-${randomCodeSuffix}`;
-            
-            const newUnit = new IndustrialUnit();
-            newUnit.unit_code = unitCode;
-            newUnit.unit_name = nameAnswer;
-            newUnit.ownership_type = ownershipAnswer;
-            newUnit.operational_status = 'Unverified'; // Surveyor capture is unverified by default
-            newUnit.gps_accuracy_m = response.gps_accuracy_m || 0.0;
-            newUnit.created_by = user_id;
-            
-            // Geographic tagging mapping
-            newUnit.province_id = 1;
-            newUnit.division_id = 1;
-            newUnit.district_id = 1;
-            newUnit.tehsil_id = 1; // Defaulting to seeded Lahore District
-            
-            if (response.gps_lat && response.gps_lng) {
-              newUnit.geom = {
-                type: 'Point',
-                coordinates: [response.gps_lng, response.gps_lat],
-              };
-            }
-
-            const savedUnit = await trxManager.save(IndustrialUnit, newUnit);
-            linkedUnitId = savedUnit.unit_id;
-          } else {
-            // Link to the duplicate unit for log history
-            linkedUnitId = matchedUnitId;
-          }
-
-          // 4. Save Survey Response header
-          const newResponse = new SurveyResponse();
-          newResponse.response_id = response.response_id;
-          newResponse.form_id = response.form_id;
-          newResponse.unit_id = linkedUnitId;
-          newResponse.surveyor_id = user_id;
-          newResponse.device_id = device_id;
-          newResponse.gps_lat = response.gps_lat;
-          newResponse.gps_lng = response.gps_lng;
-          newResponse.gps_accuracy_m = response.gps_accuracy_m;
-          newResponse.started_at = new Date(response.started_at);
-          newResponse.submitted_at = new Date(response.submitted_at);
-          newResponse.completeness_score = completenessScore;
-          newResponse.is_duplicate = isDuplicate;
-          newResponse.sync_status = isDuplicate ? 'pending_sync' : 'synced'; // Duplicates are held for supervisor review
-          newResponse.is_offline_capture = true;
-
-          await trxManager.save(SurveyResponse, newResponse);
-
-          // 5. Save Survey Answers
-          const answerEntities = response.answers.map((ans) => {
-            const answer = new SurveyAnswer();
-            answer.response_id = response.response_id;
-            answer.question_id = ans.question_id;
-            answer.answer_value = ans.answer_value;
-            return answer;
-          });
-          await trxManager.save(SurveyAnswer, answerEntities);
-
-          // 6. Write Duplicate Flag if needed
-          if (isDuplicate && linkedUnitId) {
-            const flag = new DuplicateFlag();
-            flag.response_id = response.response_id;
-            flag.matched_unit_id = linkedUnitId;
-            flag.match_reason = matchReason;
-            flag.is_resolved = false;
-            await trxManager.save(DuplicateFlag, flag);
-          }
-
-          recordsPushed++;
-          results.push({
-            response_id: response.response_id,
-            status: isDuplicate ? 'duplicate_flagged' : 'synced',
-            is_duplicate: isDuplicate,
-            message: isDuplicate ? matchReason : 'Response synced and industrial unit created successfully.',
-          });
-        });
-      } catch (err) {
-        results.push({
-          response_id: response.response_id,
-          status: 'failed',
-          is_duplicate: false,
-          message: err.message || 'Unknown database error occurred during transaction.',
-        });
+        const surveyId = await this.saveSubmission(payload.user_id, payload.device_id, response);
+        recordsPushed += 1;
+        results.push({ survey_id: surveyId, response_id: response.response_id || surveyId, status: 'synced', is_duplicate: false, message: 'Survey submission synced successfully.' });
+      } catch (error) {
+        const message = this.readableDatabaseError(error);
+        results.push({ survey_id: response.survey_id || response.response_id, response_id: response.response_id, status: 'failed', is_duplicate: false, message });
       }
     }
 
-    // Update sync log status
-    const status = recordsPushed === responses.length ? 'success' : recordsPushed > 0 ? 'partial' : 'failed';
+    const status = recordsPushed === payload.responses.length ? 'success' : recordsPushed ? 'partial' : 'failed';
     await this.entityManager.query(
-      `UPDATE sync_log 
-       SET sync_completed_at = NOW(), records_pushed = $1, status = $2 
-       WHERE sync_id = $3`,
+      `UPDATE sync_log SET sync_completed_at = NOW(), records_pushed = $1, status = $2 WHERE sync_id = $3`,
       [recordsPushed, status, syncId],
     );
+    return { sync_id: syncId, status, results };
+  }
 
-    return {
-      sync_id: syncId,
-      status,
-      results,
-    };
+  private async saveSubmission(userId: string, deviceId: string, response: SyncResponse): Promise<string> {
+    return this.entityManager.transaction(async (manager) => {
+      const surveyId = response.survey_id || response.response_id;
+      if (!surveyId) throw new BadRequestException('Each response needs survey_id or response_id');
+
+      const existing = await manager.query('SELECT survey_id FROM survey_submissions WHERE survey_id = $1', [surveyId]);
+      if (existing.length) return surveyId;
+
+      const sections = response.sections || this.legacyAnswersToSections(response.answers || []);
+      const identity = this.asRecord(sections.A);
+      const gps = this.asRecord(identity.gps || identity.coordinates);
+      const latitude = Number(response.coordinates_lat ?? gps.lat);
+      const longitude = Number(response.coordinates_lng ?? gps.lng);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) throw new BadRequestException('A valid latitude and longitude are required');
+
+      const missingIdentity = ['establishment_name', 'address', 'city', 'tehsil', 'district']
+        .filter((field) => this.isEmpty(identity[field]));
+      if (missingIdentity.length) {
+        throw new BadRequestException(`Section A is incomplete. Required fields missing: ${missingIdentity.join(', ')}`);
+      }
+
+      const operational = this.asRecord(sections.B);
+      if (this.isEmpty(operational.operational_status)) {
+        throw new BadRequestException('Section B is incomplete. Current operational status is required.');
+      }
+
+      const unitCode = String(identity.unit_code || `PB-${Date.now().toString(36).toUpperCase()}`);
+      await manager.query(
+        `INSERT INTO survey_submissions
+          (survey_id, unit_code, survey_ref_no, interview_date, enumerator_name, coordinates_lat, coordinates_lng, gps_accuracy_m, geom, device_id, sync_status)
+         VALUES ($1::uuid, $2::varchar, $3::varchar, COALESCE($4::date, CURRENT_DATE), $5::varchar,
+           $6::numeric, $7::numeric, $8::numeric,
+           ST_SetSRID(ST_MakePoint($7::double precision, $6::double precision), 4326),
+           $9::varchar, 'synced')`,
+        [surveyId, unitCode, response.form_id ? String(response.form_id) : null, response.interview_date || null, response.enumerator_name || userId, latitude, longitude, response.gps_accuracy_m ?? gps.accuracy, deviceId || response.device_id || null],
+      );
+
+      for (const [section, value] of Object.entries(sections)) {
+        const table = sectionTables[section.toUpperCase()];
+        if (table) await this.insertSection(manager, table, surveyId, value);
+      }
+      return surveyId;
+    });
+  }
+
+  private async insertSection(manager: EntityManager, table: string, surveyId: string, value: unknown) {
+    const rows = Array.isArray(value) ? value : [value];
+    const columns = (await manager.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name <> 'survey_id'`,
+      [table],
+    )).map((item: { column_name: string }) => item.column_name);
+    for (const row of rows) {
+      const entries = Object.entries(this.asRecord(row)).filter(([key, item]) => columns.includes(key) && item !== undefined);
+      if (!entries.length) continue;
+      const names = ['survey_id', ...entries.map(([key]) => `"${key}"`)].join(', ');
+      const values = [surveyId, ...entries.map(([, item]) => item)];
+      const placeholders = values.map((_, index) => `$${index + 1}`).join(', ');
+      await manager.query(`INSERT INTO ${table} (${names}) VALUES (${placeholders})`, values);
+    }
+  }
+
+  private legacyAnswersToSections(answers: Array<{ question_id: number; answer_value: unknown }>): SectionPayload {
+    const identity: Record<string, unknown> = {};
+    const gps: Record<string, unknown> = {};
+    for (const answer of answers) {
+      if (answer.question_id === 1 && answer.answer_value && typeof answer.answer_value === 'object') Object.assign(gps, answer.answer_value);
+      if (answer.question_id === 4) identity.establishment_name = answer.answer_value;
+      if (answer.question_id === 6) identity.address = answer.answer_value;
+      if (answer.question_id === 19) identity.ownership_type = answer.answer_value;
+    }
+    identity.gps = gps;
+    return { A: identity };
+  }
+
+  private asRecord(value: unknown): Record<string, any> {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
+  }
+
+  private isEmpty(value: unknown): boolean {
+    return value === undefined || value === null || value === '';
+  }
+
+  private readableDatabaseError(error: unknown): string {
+    const message = error instanceof Error ? error.message : 'Unknown database error.';
+    if (message.includes('duplicate key') && message.includes('unit_code')) return 'This survey could not be saved because its unit code already exists. Please retry.';
+    if (message.includes('violates not-null constraint')) return 'A required survey field is missing. Open the survey, complete the required fields, and retry.';
+    if (message.includes('violates check constraint')) return 'One selected value is not accepted by the database. Reopen the survey and choose a valid dropdown option.';
+    if (message.includes('invalid input syntax')) return 'One numeric or date value is invalid. Correct the highlighted field and retry.';
+    if (message.includes('relation') && message.includes('does not exist')) return 'The server database is missing a required survey table. Run the latest database migration and restart the backend.';
+    return message;
   }
 }

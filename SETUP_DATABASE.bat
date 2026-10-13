@@ -11,11 +11,11 @@ echo This will create the database, schema, and seed data.
 echo PostgreSQL must be running first.
 echo.
 
-set PGPASSWORD=dev@ai
+set PGPASSWORD=postgres123
 set PGUSER=postgres
 set PGHOST=localhost
 set PGPORT=5432
-set DBNAME=survey-pidb
+set DBNAME=punjab_industrial_survey
 
 :: ── Find psql ───────────────────────────────────
 set PSQL=psql

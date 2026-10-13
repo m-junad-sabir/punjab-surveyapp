@@ -21,6 +21,7 @@ if (fs.existsSync(envPath)) {
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import * as express from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -29,6 +30,12 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: ['log', 'error', 'warn'],
   });
+
+  // Survey photos are sent as compressed data URLs with the offline submission.
+  // Keep enough room for a batch while avoiding the small Express default limit.
+  const httpAdapter = app.getHttpAdapter().getInstance();
+  httpAdapter.use(express.json({ limit: '25mb' }));
+  httpAdapter.use(express.urlencoded({ limit: '25mb', extended: true }));
 
   app.enableCors({
     origin: '*',

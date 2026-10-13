@@ -26,6 +26,9 @@ async function request<T>(
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      window.dispatchEvent(new Event('survey:unauthorized'));
+    }
     let message = `HTTP ${response.status}`;
     try {
       const err = await response.json();
@@ -66,6 +69,11 @@ export const api = {
   sync: {
     push: (payload: { device_id: string; responses: any[] }) =>
       request<any>('POST', '/sync', payload),
+  },
+
+  submissions: {
+    list: () => request<any[]>('GET', '/industrial-units'),
+    get: (id: string) => request<any>('GET', `/industrial-units/${id}`),
   },
 
   // ── Industrial Units ──────────────────────────────────────

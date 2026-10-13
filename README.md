@@ -45,9 +45,9 @@ Open **http://localhost:5173** in your browser.
 
 | Username      | Password      | Role        |
 |---------------|---------------|-------------|
-| `surveyor1`   | `password123` | Surveyor    |
-| `supervisor1` | `password123` | Supervisor  |
-| `admin`       | `password123` | DB Admin    |
+| `surveyor`   | `surveyor123` | Surveyor    |
+| `supervisor` | `supervisor123` | Supervisor  |
+| `admin`      | `admin123` | DB Admin    |
 
 ---
 

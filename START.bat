@@ -79,7 +79,7 @@ if not exist "%~dp0frontend\node_modules\react" (
 
 :: ── Start Backend in new window ───────────────────
 echo [3/4] Starting Backend on http://localhost:3000 ...
-start "Survey Backend :3000" cmd /k "title Survey Backend :3000 && cd /d "%~dp0backend" && npm.cmd run start:dev"
+start "Survey Backend :3000" cmd /k "title Survey Backend :3000 && cd /d "%~dp0backend" && set DB_PASSWORD=postgres123&& set DB_USERNAME=postgres&& set DB_DATABASE=punjab_industrial_survey&& set DB_HOST=localhost&& set DB_PORT=5432&& set PORT=3000&& npm.cmd run start:dev"
 
 :: Wait 5 seconds for NestJS to boot
 timeout /t 5 /nobreak >nul
