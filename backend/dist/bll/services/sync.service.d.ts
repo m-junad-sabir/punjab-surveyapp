@@ -1,38 +1,37 @@
-import { EntityManager } from 'typeorm';
-type SectionPayload = Record<string, Record<string, unknown> | Array<Record<string, unknown>>>;
-interface SyncResponse {
-    survey_id?: string;
-    response_id?: string;
-    form_id?: number;
-    interview_date?: string;
-    enumerator_name?: string;
-    coordinates_lat?: number;
-    coordinates_lng?: number;
-    gps_accuracy_m?: number;
-    device_id?: string;
-    sections?: SectionPayload;
-    answers?: Array<{
-        question_id: number;
-        answer_value: unknown;
+import { Repository, DataSource } from 'typeorm';
+import { SurveyResponse } from '../../dal/entities/survey-response.entity';
+export interface AnswerPayload {
+    question_id: number;
+    answer_value: any;
+}
+export interface SyncPayload {
+    device_id: string;
+    user_id: string;
+    responses: Array<{
+        response_id: string;
+        form_id: number;
+        unit_id?: string;
+        gps_lat?: number;
+        gps_lng?: number;
+        gps_accuracy_m?: number;
+        started_at: string;
+        submitted_at: string;
+        answers: AnswerPayload[];
     }>;
+}
+export interface SyncItemResult {
+    response_id: string;
+    status: 'synced' | 'duplicate_flagged' | 'already_synced' | 'failed';
+    is_duplicate: boolean;
+    message: string;
 }
 export declare class SyncService {
-    private readonly entityManager;
-    constructor(entityManager: EntityManager);
-    syncBatch(payload: {
-        device_id: string;
-        user_id: string;
-        responses: SyncResponse[];
-    }): Promise<{
-        sync_id: any;
+    private readonly responseRepo;
+    private readonly dataSource;
+    constructor(responseRepo: Repository<SurveyResponse>, dataSource: DataSource);
+    syncBatch(payload: SyncPayload): Promise<{
+        sync_id: number;
         status: string;
-        results: Record<string, unknown>[];
+        results: SyncItemResult[];
     }>;
-    private saveSubmission;
-    private insertSection;
-    private legacyAnswersToSections;
-    private asRecord;
-    private isEmpty;
-    private readableDatabaseError;
 }
-export {};

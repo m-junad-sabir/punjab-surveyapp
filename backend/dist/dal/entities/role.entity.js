@@ -16,13 +16,17 @@ let Role = class Role {
 };
 exports.Role = Role;
 __decorate([
-    (0, typeorm_1.PrimaryGeneratedColumn)(),
+    (0, typeorm_1.PrimaryGeneratedColumn)({ type: 'smallint' }),
     __metadata("design:type", Number)
-], Role.prototype, "role_id", void 0);
+], Role.prototype, "id", void 0);
 __decorate([
     (0, typeorm_1.Column)({ unique: true, length: 50 }),
     __metadata("design:type", String)
-], Role.prototype, "role_name", void 0);
+], Role.prototype, "code", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ length: 80 }),
+    __metadata("design:type", String)
+], Role.prototype, "name", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'text', nullable: true }),
     __metadata("design:type", String)

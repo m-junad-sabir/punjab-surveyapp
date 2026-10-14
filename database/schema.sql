@@ -1,512 +1,945 @@
--- ============================================================================
--- GOVERNMENT OF THE PUNJAB - DIRECTORATE GENERAL OF INDUSTRIES
--- MAPPING OF MANUFACTURING UNITS IN PUNJAB
--- CENTRALIZED INDUSTRIAL SURVEY DATABASE SCHEMA (Based on Questionnaire 1.docx)
--- 
--- PostgreSQL 14+ / PostGIS 3+
--- Implements Master Survey Header + 9 Core Section Tables (A to I) + J & K
--- ============================================================================
-
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+-- Punjab Industries Survey App - PostgreSQL 16 / PostGIS schema
+-- Generated from the schema definition. Run first, then 02_seed_reference_data.sql
 CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
--- ============================================================================
--- 0. SURVEY SUBMISSION MASTER (Header & Enumeration Details)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS survey_submissions (
-    survey_id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    unit_code                   VARCHAR(50) UNIQUE NOT NULL,      -- Unique Unit ID (with sector & district identifier)
-    survey_ref_no               VARCHAR(50),                      -- Survey Reference No.
-    interview_date              DATE NOT NULL DEFAULT CURRENT_DATE,
-    enumerator_name             VARCHAR(150) NOT NULL,
-    enumerator_signature        TEXT,                             -- Digital signature or URI
-    coordinates_lat             NUMERIC(9,6) NOT NULL,            -- GPS Latitude
-    coordinates_lng             NUMERIC(9,6) NOT NULL,            -- GPS Longitude
-    gps_accuracy_m              NUMERIC(6,2),                     -- Horizontal accuracy in meters
-    geom                        geometry(Point, 4326),            -- PostGIS Point feature (G9/G11)
-    photo_interview_session     TEXT,                             -- Standardized timestamped geotagged photo: 1) Interview session
-    photo_entrance_signboard    TEXT,                             -- 2) Enumerator at entrance with sign board
-    device_id                   VARCHAR(100),
-    sync_status                 VARCHAR(20) DEFAULT 'draft' CHECK (sync_status IN ('draft','pending_sync','synced','rejected')),
-    is_verified                 BOOLEAN DEFAULT FALSE,
-    verified_by                 VARCHAR(100),
-    verified_at                 TIMESTAMPTZ,
-    created_at                  TIMESTAMPTZ DEFAULT now(),
-    updated_at                  TIMESTAMPTZ DEFAULT now()
+
+-- ===== M1: People & Access =====
+-- The three app roles: ADMIN, SUPERVISOR, SURVEYOR.
+CREATE TABLE roles (
+  id smallserial NOT NULL PRIMARY KEY,
+  code varchar(30) NOT NULL UNIQUE,
+  name varchar(60) NOT NULL,
+  description text
 );
 
-CREATE INDEX IF NOT EXISTS idx_survey_submissions_geom ON survey_submissions USING GIST (geom);
-CREATE INDEX IF NOT EXISTS idx_survey_submissions_sync ON survey_submissions (sync_status);
-CREATE INDEX IF NOT EXISTS idx_survey_submissions_unit_code ON survey_submissions (unit_code);
-
-CREATE TABLE IF NOT EXISTS sync_log (
-    sync_id           BIGSERIAL PRIMARY KEY,
-    device_id         VARCHAR(100) NOT NULL,
-    user_id           UUID NOT NULL REFERENCES users(user_id),
-    sync_started_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    sync_completed_at TIMESTAMPTZ,
-    records_pushed    INTEGER NOT NULL DEFAULT 0,
-    status            VARCHAR(20) NOT NULL DEFAULT 'partial'
+-- Small, separate rights (e.g. USER_CREATE, SURVEY_APPROVE).
+CREATE TABLE permissions (
+  id smallserial NOT NULL PRIMARY KEY,
+  code varchar(60) NOT NULL UNIQUE,
+  description text
 );
 
--- ============================================================================
--- 1. SECTION A: ESTABLISHMENT IDENTITY (Table 1)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS section_a_establishment_identity (
-    survey_id                   UUID PRIMARY KEY REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    establishment_name          VARCHAR(255) NOT NULL,            -- A.1 Name of Establishment
-    year_of_establishment       INTEGER,                          -- A.2 Year of Establishment
-    address                     TEXT NOT NULL,                    -- A.3 Address of Establishment
-    city                        VARCHAR(100) NOT NULL,            -- A.4 City
-    tehsil                      VARCHAR(100) NOT NULL,            -- A.4 Tehsil
-    district                    VARCHAR(100) NOT NULL,            -- A.4 District
-    phone_cell                  VARCHAR(50),                      -- A.5 Ph/Cell Number
-    email                       VARCHAR(150),                     -- A.5 Email
-    website                     VARCHAR(200),                     -- A.5 Website
-    unit_type                   VARCHAR(150),                     -- A.6 Type of Unit (List L-1)
-    psic_division               VARCHAR(50),                      -- A.7 PSIC Division
-    psic_group                  VARCHAR(50),                      -- A.7 PSIC Group
-    psic_class                  VARCHAR(50),                      -- A.7 PSIC Class
-    area_zone_type              VARCHAR(60) CHECK (area_zone_type IN (
-                                    'Industrial Area', 'Residential Area', 'Commercial Area', 
-                                    'Rural / Agricultural', 'Special Economic Zone / Industrial Estate', 'Other'
-                                )),                               -- A.8 Area/Zone Type
-    area_zone_other_specify     TEXT,                             -- A.8 If Other, specify
-    ownership_type              VARCHAR(50) CHECK (ownership_type IN (
-                                    'State owned/Public Sector', 'Privately Owned', 
-                                    'Foreign Controlled Enterprise', 'Other, if any'
-                                )),                               -- A.9 Ownership
-    legal_structure             VARCHAR(50) CHECK (legal_structure IN (
-                                    'Sole Proprietorship', 'Partnership', 'Private Limited Company', 
-                                    'Public Limited Company', 'Cooperative / Society', 
-                                    'Limited Liability Company', 'Others'
-                                )),                               -- A.10 Legal Structure
-    legal_structure_other       TEXT,                             -- A.10 If Others, specify
-    parent_company_name         VARCHAR(200),                     -- A.11 Parent Company Name
-    parent_company_address      TEXT,                             -- A.11 Parent Company Address
-    parent_company_phone        VARCHAR(50),                      -- A.11 Parent Phone/Cell
-    parent_company_email        VARCHAR(150),                     -- A.11 Parent Email
-    total_establishment_area_sqm NUMERIC(14,2),                   -- A.13 Total Area (Sq. Meters)
-    total_capital_investment_pkr NUMERIC(16,2),                   -- A.14 Total Capital Investment (PKR)
-    created_at                  TIMESTAMPTZ DEFAULT now(),
-    updated_at                  TIMESTAMPTZ DEFAULT now()
+-- Which role holds which right (many-to-many link).
+CREATE TABLE role_permissions (
+  role_id smallint NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  permission_id smallint NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+  PRIMARY KEY (role_id, permission_id)
 );
 
--- Child table for A.12 Associated Establishments (1-to-Many)
-CREATE TABLE IF NOT EXISTS section_a_associated_establishments (
-    associated_id               BIGSERIAL PRIMARY KEY,
-    survey_id                   UUID NOT NULL REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    sr_no                       INTEGER NOT NULL,                 -- 1, 2, 3...
-    name_of_establishment       VARCHAR(255) NOT NULL,
-    address                     TEXT,
-    major_manufacturing_activity TEXT,
-    psic_code                   VARCHAR(50)
-);
-CREATE INDEX IF NOT EXISTS idx_sec_a_assoc_survey ON section_a_associated_establishments (survey_id);
-
--- ============================================================================
--- 2. SECTION B: OPERATIONAL DETAILS (Table 2)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS section_b_operational_details (
-    survey_id                   UUID PRIMARY KEY REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    operational_status          VARCHAR(50) NOT NULL CHECK (operational_status IN (
-                                    'Fully Operational', 'Partially Operational', 'Seasonal', 
-                                    'Temporarily Closed', 'Permanently Closed'
-                                )),                               -- B.1 Current Status
-    seasonal_period_specify     VARCHAR(150),                     -- B.1 If seasonal, period
-    reason_for_closure          TEXT,                             -- B.2 Reason for closure if any
-    daily_operational_hours     VARCHAR(50) CHECK (daily_operational_hours IN (
-                                    'Less than 8 hrs.', '8 hrs. (Single Shift)', 
-                                    '16 hrs. (Double Shift)', '24 hrs. (Triple Shift)', 
-                                    'Flexible / Variable'
-                                )),                               -- B.3 Daily Operational Hours
-    working_days_per_week       NUMERIC(3,1),                     -- B.3 Working days/week
-    working_months_per_year     NUMERIC(3,1),                     -- B.3 Working months/year
-    created_at                  TIMESTAMPTZ DEFAULT now(),
-    updated_at                  TIMESTAMPTZ DEFAULT now()
+-- Every person who can log in: admins, supervisors and surveyors.
+CREATE TABLE users (
+  id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
+  username varchar(50) NOT NULL UNIQUE,
+  full_name varchar(120) NOT NULL,
+  designation varchar(80),
+  email varchar(120) UNIQUE,
+  phone varchar(20),
+  password_hash text NOT NULL,
+  role_id smallint NOT NULL REFERENCES roles(id),
+  supervisor_id uuid REFERENCES users(id),
+  is_active boolean DEFAULT true NOT NULL,
+  created_by uuid REFERENCES users(id),
+  created_at timestamptz DEFAULT now() NOT NULL,
+  deactivated_at timestamptz
 );
 
--- ============================================================================
--- 3. SECTION C: CORE & SECONDARY ACTIVITIES (Table 3 & Products)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS section_c_core_secondary_activities (
-    survey_id                   UUID PRIMARY KEY REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    has_secondary_products      BOOLEAN DEFAULT FALSE,
-    summary_remarks             TEXT,
-    created_at                  TIMESTAMPTZ DEFAULT now(),
-    updated_at                  TIMESTAMPTZ DEFAULT now()
+
+-- ===== M2: Geography =====
+-- Top level of the area hierarchy.
+CREATE TABLE provinces (
+  id smallserial NOT NULL PRIMARY KEY,
+  code varchar(10) NOT NULL UNIQUE,
+  name varchar(80) NOT NULL,
+  geom geometry(MultiPolygon,4326)
 );
 
--- Repeating Products Table for C.1 Main Products & C.2 Secondary Products
-CREATE TABLE IF NOT EXISTS section_c_products (
-    product_id                  BIGSERIAL PRIMARY KEY,
-    survey_id                   UUID NOT NULL REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    product_category            VARCHAR(20) NOT NULL CHECK (product_category IN ('Main', 'Secondary')), -- C.1 vs C.2
-    sr_no                       INTEGER NOT NULL,
-    product_name                VARCHAR(255) NOT NULL,
-    daily_avg_output            NUMERIC(14,3),
-    annual_total_production     NUMERIC(16,3),
-    installed_capacity          NUMERIC(16,3),                    -- installed capacity
-    installed_capacity_period   VARCHAR(20) DEFAULT 'day' CHECK (installed_capacity_period IN ('day', 'month', 'year')),
-    unit_of_measurement         VARCHAR(50) NOT NULL              -- kg, tons, meters, units, etc.
-);
-CREATE INDEX IF NOT EXISTS idx_sec_c_products_survey ON section_c_products (survey_id);
-
--- ============================================================================
--- 4. SECTION D: WORKFORCE (Table 4)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS section_d_workforce (
-    survey_id                   UUID PRIMARY KEY REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    -- D.1 Employment Details by Contract Type (Male, Female, Total)
-    regular_male                INTEGER DEFAULT 0,
-    regular_female              INTEGER DEFAULT 0,
-    regular_total               INTEGER GENERATED ALWAYS AS (regular_male + regular_female) STORED,
-    contract_male               INTEGER DEFAULT 0,
-    contract_female             INTEGER DEFAULT 0,
-    contract_total              INTEGER GENERATED ALWAYS AS (contract_male + contract_female) STORED,
-    daily_wages_male            INTEGER DEFAULT 0,
-    daily_wages_female          INTEGER DEFAULT 0,
-    daily_wages_total           INTEGER GENERATED ALWAYS AS (daily_wages_male + daily_wages_female) STORED,
-    grand_total_employment      INTEGER DEFAULT 0,                -- Sum of all workers
-    is_seasonal_average         BOOLEAN DEFAULT FALSE,            -- Seasonal average indicator
-    -- D.2 Employment by Skill Level (Male, Female, Total)
-    managers_male               INTEGER DEFAULT 0,
-    managers_female             INTEGER DEFAULT 0,
-    skilled_technical_male      INTEGER DEFAULT 0,
-    skilled_technical_female    INTEGER DEFAULT 0,
-    semi_skilled_male           INTEGER DEFAULT 0,
-    semi_skilled_female         INTEGER DEFAULT 0,
-    unskilled_male              INTEGER DEFAULT 0,
-    unskilled_female            INTEGER DEFAULT 0,
-    admin_supporting_male       INTEGER DEFAULT 0,
-    admin_supporting_female     INTEGER DEFAULT 0,
-    -- D.3 Hiring Channels (Checkboxes)
-    channel_universities        BOOLEAN DEFAULT FALSE,
-    channel_tvet                BOOLEAN DEFAULT FALSE,
-    channel_online_portals      BOOLEAN DEFAULT FALSE,
-    channel_employee_referrals  BOOLEAN DEFAULT FALSE,
-    channel_internal_upskilling BOOLEAN DEFAULT FALSE,
-    channel_others_specify      TEXT,
-    created_at                  TIMESTAMPTZ DEFAULT now(),
-    updated_at                  TIMESTAMPTZ DEFAULT now()
+-- Second level (e.g. Lahore Division).
+CREATE TABLE divisions (
+  id serial NOT NULL PRIMARY KEY,
+  province_id smallint NOT NULL REFERENCES provinces(id),
+  code varchar(10) NOT NULL UNIQUE,
+  name varchar(80) NOT NULL,
+  geom geometry(MultiPolygon,4326)
 );
 
--- ============================================================================
--- 5. SECTION E: BACKWARD LINKAGES (RAW MATERIALS & SOURCING) (Table 5)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS section_e_backward_linkages (
-    survey_id                   UUID PRIMARY KEY REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    -- E.1 Raw Material Sourcing Type (%)
-    source_primary_producers_pct    NUMERIC(5,2) DEFAULT 0,
-    source_traders_brokers_pct      NUMERIC(5,2) DEFAULT 0,
-    source_wholesalers_dealers_pct  NUMERIC(5,2) DEFAULT 0,
-    source_importers_foreign_pct    NUMERIC(5,2) DEFAULT 0,
-    source_own_production_pct       NUMERIC(5,2) DEFAULT 0,
-    source_spot_market_pct          NUMERIC(5,2) DEFAULT 0,
-    source_others_pct               NUMERIC(5,2) DEFAULT 0,
-    source_others_specify           TEXT,
-    -- E.2 Source Location (%)
-    loc_local_district_pct          NUMERIC(5,2) DEFAULT 0,
-    loc_regional_province_pct       NUMERIC(5,2) DEFAULT 0,
-    loc_national_pct                NUMERIC(5,2) DEFAULT 0,
-    loc_imported_pct                NUMERIC(5,2) DEFAULT 0,
-    -- E.3 to E.8 Supplier Indicators
-    active_suppliers_count          VARCHAR(30) CHECK (active_suppliers_count IN ('1–2', '3–5', '6–10', 'More than 10')),
-    supplier_dependency             VARCHAR(30) CHECK (supplier_dependency IN (
-                                        'Low — replaceable within 1 week', 
-                                        'Moderate — replaceable in 1–4 weeks', 
-                                        'High — replacement takes 1–6 months', 
-                                        'Critical — sole source or locked in'
-                                    )),
-    mode_of_procurement             VARCHAR(50) CHECK (mode_of_procurement IN (
-                                        'Long-term contract (1 year or more)', 
-                                        'Short-term contract (less than 1 year)', 
-                                        'Spot/market purchases', 
-                                        'Combination of contract and spot'
-                                    )),
-    has_supply_disruption_12m       BOOLEAN DEFAULT FALSE,
-    disruption_reasons              JSONB,                            -- ['Supplier failure', 'Price spike', 'Import restriction', etc.]
-    delivery_reliability            VARCHAR(50) CHECK (delivery_reliability IN (
-                                        'Above 90% (very reliable)', 
-                                        '70–90% (mostly on time, occasional delays)', 
-                                        '50–70% (frequent delays)', 
-                                        'Below 50% (serious delivery problem)', 
-                                        'Not formally tracked'
-                                    )),
-    product_acceptance_rate         VARCHAR(50) CHECK (product_acceptance_rate IN (
-                                        'Above 90% (very low rejection rate)', 
-                                        '70–90% (occasional quality issues)', 
-                                        '50–70% (frequent rejections/reworks)', 
-                                        'Below 50% (serious quality problem)', 
-                                        'Not formally tracked'
-                                    )),
-    created_at                      TIMESTAMPTZ DEFAULT now(),
-    updated_at                      TIMESTAMPTZ DEFAULT now()
+-- Third level. Drop-down in Section A-v.
+CREATE TABLE districts (
+  id serial NOT NULL PRIMARY KEY,
+  division_id integer NOT NULL REFERENCES divisions(id),
+  code varchar(10) NOT NULL UNIQUE,
+  name varchar(80) NOT NULL,
+  geom geometry(MultiPolygon,4326)
 );
 
--- Child Table for E.9 Raw Material Details (Repeating Inputs)
-CREATE TABLE IF NOT EXISTS section_e_raw_materials (
-    raw_material_id             BIGSERIAL PRIMARY KEY,
-    survey_id                   UUID NOT NULL REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    sr_no                       INTEGER NOT NULL,
-    input_name                  VARCHAR(255) NOT NULL,
-    unit_of_measurement         VARCHAR(50) NOT NULL,
-    transformation_stage        VARCHAR(10) CHECK (transformation_stage IN ('T1', 'T2', 'T3', 'T4', 'T5', 'T6')), -- UN BEC Rev 5
-    share_in_cost_pct           NUMERIC(5,2),
-    hs_code                     VARCHAR(20)
-);
-CREATE INDEX IF NOT EXISTS idx_sec_e_raw_materials_survey ON section_e_raw_materials (survey_id);
-
--- ============================================================================
--- 6. SECTION F: FORWARD LINKAGES (BUYERS & MARKETS) (Table 6)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS section_f_forward_linkages (
-    survey_id                   UUID PRIMARY KEY REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    -- F.1 Buyer Type (%)
-    buyer_wholesalers_pct       NUMERIC(5,2) DEFAULT 0,
-    buyer_retailers_pct         NUMERIC(5,2) DEFAULT 0,
-    buyer_other_mfrs_pct        NUMERIC(5,2) DEFAULT 0,
-    buyer_govt_public_pct       NUMERIC(5,2) DEFAULT 0,
-    buyer_direct_consumers_pct  NUMERIC(5,2) DEFAULT 0,
-    buyer_export_foreign_pct    NUMERIC(5,2) DEFAULT 0,
-    buyer_others_pct            NUMERIC(5,2) DEFAULT 0,
-    buyer_others_specify        TEXT,
-    -- F.2 Location of Buyers (%)
-    buyer_loc_local_pct         NUMERIC(5,2) DEFAULT 0,
-    buyer_loc_regional_pct      NUMERIC(5,2) DEFAULT 0,
-    buyer_loc_national_pct      NUMERIC(5,2) DEFAULT 0,
-    buyer_loc_exported_pct      NUMERIC(5,2) DEFAULT 0,
-    -- F.3 - F.9 Buyer Indicators
-    global_supply_chain_role    VARCHAR(60) CHECK (global_supply_chain_role IN (
-                                    'Yes, as a direct exporter', 
-                                    'Yes, as a supplier to an exporter', 
-                                    'No, but planning to', 'No'
-                                )),
-    active_buyers_count         VARCHAR(30) CHECK (active_buyers_count IN ('1–2', '3–5', '6–10', 'More than 10')),
-    demand_assessment_methods   JSONB,                            -- ['Direct buyer feedback', 'Trade fairs', etc.]
-    buyer_availability          VARCHAR(60) CHECK (buyer_availability IN (
-                                    'Low — easily replaceable (under 2 weeks)', 
-                                    'Moderate — replaceable with effort (2–8 weeks)', 
-                                    'High — difficult to replace (2–6 months)', 
-                                    'Critical — single buyer or contractually locked'
-                                )),
-    sale_contract_mode          VARCHAR(50) CHECK (sale_contract_mode IN (
-                                    'Long-term contract (1 year or more)', 
-                                    'Short-term contract (less than 1 year)', 
-                                    'Spot/market purchases', 
-                                    'Combination of contract and spot'
-                                )),
-    sale_payment_mode           VARCHAR(60),                      -- Cash, Credit short, Credit med, LC, Consignment, Mixed
-    has_demand_disruption_12m   BOOLEAN DEFAULT FALSE,
-    demand_disruption_reasons   JSONB,                            -- ['Buyer insolvency', 'Price collapse', etc.]
-    subcontract_arrangements    VARCHAR(80) CHECK (subcontract_arrangements IN (
-                                    'Receives subcontracted work from larger firms', 
-                                    'Subcontracts work out to smaller firms or home workers', 
-                                    'Both — gives and receive subcontracted work', 
-                                    'No subcontracting arrangements'
-                                )),                               -- F.11
-    competitor_perception       JSONB,                            -- F.12 Matrix: quality, price, delivery, variety, service, technology
-    digital_presence            JSONB,                            -- F.13 Matrix: website, social media, B2B, e-commerce, ads
-    created_at                  TIMESTAMPTZ DEFAULT now(),
-    updated_at                  TIMESTAMPTZ DEFAULT now()
+-- Fourth level. Filtered by the chosen district.
+CREATE TABLE tehsils (
+  id serial NOT NULL PRIMARY KEY,
+  district_id integer NOT NULL REFERENCES districts(id),
+  code varchar(10) NOT NULL UNIQUE,
+  name varchar(80) NOT NULL,
+  geom geometry(MultiPolygon,4326),
+  UNIQUE (district_id, name)
 );
 
--- Child Table for F.10 Product Details (Sales & Revenue Shares)
-CREATE TABLE IF NOT EXISTS section_f_product_sales (
-    sale_product_id             BIGSERIAL PRIMARY KEY,
-    survey_id                   UUID NOT NULL REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    sr_no                       INTEGER NOT NULL,
-    product_name                VARCHAR(255) NOT NULL,
-    unit_of_measurement         VARCHAR(50) NOT NULL,
-    form_at_transformation      VARCHAR(10) CHECK (form_at_transformation IN ('T2', 'T3', 'T4', 'T5', 'T6')),
-    share_in_revenue_pct        NUMERIC(5,2),
-    hs_code                     VARCHAR(20)
-);
-CREATE INDEX IF NOT EXISTS idx_sec_f_sales_survey ON section_f_product_sales (survey_id);
 
--- ============================================================================
--- 7. SECTION G: TECHNOLOGY AND PRODUCTION PROCESSES (Table 7)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS section_g_technology_production (
-    survey_id                   UUID PRIMARY KEY REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    processing_capacity         TEXT,                             -- G.2 Processing Capacity
-    capacity_utilization_rate   VARCHAR(30) CHECK (capacity_utilization_rate IN ('40–59%', '60–74%', '75–84%', '85–95%', 'Above 95%')), -- G.3
-    underutilization_reasons    JSONB,                            -- G.4 Reasons if < 75%
-    underutilization_other      TEXT,
-    -- G.5 Automation Level (% of total machinery)
-    auto_manual_pct             NUMERIC(5,2) DEFAULT 0,
-    auto_mechanical_pct         NUMERIC(5,2) DEFAULT 0,
-    auto_semi_automatic_pct     NUMERIC(5,2) DEFAULT 0,
-    auto_cnc_pct                NUMERIC(5,2) DEFAULT 0,
-    auto_fully_automated_pct    NUMERIC(5,2) DEFAULT 0,
-    -- G.6 Integration & Sourcing
-    machine_integration_level   VARCHAR(50) CHECK (machine_integration_level IN (
-                                    'No integration', 'Partial integration', 'Full integration'
-                                )),
-    primary_machinery_source    VARCHAR(20) CHECK (primary_machinery_source IN ('Local', 'Imported', 'Both')),
-    spare_parts_source          VARCHAR(20) CHECK (spare_parts_source IN ('Local', 'Imported', 'Both')),
-    -- G.8 Machinery Age Profile (%)
-    machinery_age_under_5y_pct  NUMERIC(5,2) DEFAULT 0,
-    machinery_age_5_10y_pct     NUMERIC(5,2) DEFAULT 0,
-    machinery_age_11_20y_pct    NUMERIC(5,2) DEFAULT 0,
-    machinery_age_over_20y_pct  NUMERIC(5,2) DEFAULT 0,
-    -- G.9 - G.16 Systems & Innovation
-    breakdown_frequency         VARCHAR(50) CHECK (breakdown_frequency IN (
-                                    'Almost never (less than once a year)', 
-                                    'Rarely (a few times a year, 1 to 5 times)', 
-                                    'Occasionally (once a month on average)', 
-                                    'Frequently (multiple times per month)', 
-                                    'Very frequently (weekly or more)'
-                                )),
-    maintenance_approach        VARCHAR(50) CHECK (maintenance_approach IN (
-                                    'In-house maintenance team', 'External contractor', 
-                                    'Combination', 'No formal maintenance system'
-                                )),
-    production_planning_system  VARCHAR(60),                      -- G.13 Manual, Excel, Software, ERP, Custom
-    inventory_management        VARCHAR(60),                      -- G.14 No formal, registers, spreadsheet, ERP, software
-    innovation_activities       JSONB,                            -- G.15 Matrix of 15 upgrade activities (Completed/Ongoing/Planned)
-    rd_expenditure              VARCHAR(30) CHECK (rd_expenditure IN (
-                                    'No R&D expenditure', 'Less than 1%', '1–3%', '3–5%', 'More than 5%'
-                                )),
-    created_at                  TIMESTAMPTZ DEFAULT now(),
-    updated_at                  TIMESTAMPTZ DEFAULT now()
+-- ===== M3: Classification & Units =====
+-- PSIC level 1: Division (Section A-vii).
+CREATE TABLE psic_divisions (
+  id serial NOT NULL PRIMARY KEY,
+  code varchar(10) NOT NULL UNIQUE,
+  name text NOT NULL
 );
 
--- Child Table for G.1 Critical Machinery
-CREATE TABLE IF NOT EXISTS section_g_critical_machines (
-    machine_id                  BIGSERIAL PRIMARY KEY,
-    survey_id                   UUID NOT NULL REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    sr_no                       INTEGER NOT NULL,
-    machine_name                VARCHAR(255) NOT NULL,
-    quantity                    INTEGER DEFAULT 1,
-    salient_specification       TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_sec_g_machines_survey ON section_g_critical_machines (survey_id);
-
--- Child Table for G.11 Boilers & Pressure Vessels
-CREATE TABLE IF NOT EXISTS section_g_boilers_pressure_vessels (
-    boiler_id                   BIGSERIAL PRIMARY KEY,
-    survey_id                   UUID NOT NULL REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    sr_no                       INTEGER NOT NULL,
-    boiler_type                 VARCHAR(150) NOT NULL,
-    capacity_tph                NUMERIC(10,3),                    -- Steam production per hour (TPH)
-    heating_surface             VARCHAR(100)
-);
-CREATE INDEX IF NOT EXISTS idx_sec_g_boilers_survey ON section_g_boilers_pressure_vessels (survey_id);
-
--- Child Table for G.12 Weights and Measures Equipment
-CREATE TABLE IF NOT EXISTS section_g_weights_measures (
-    equipment_id                BIGSERIAL PRIMARY KEY,
-    survey_id                   UUID NOT NULL REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    sr_no                       INTEGER NOT NULL,
-    equipment_type              VARCHAR(150) NOT NULL,
-    quantity                    INTEGER DEFAULT 1,
-    capacity                    VARCHAR(100)
-);
-CREATE INDEX IF NOT EXISTS idx_sec_g_weights_survey ON section_g_weights_measures (survey_id);
-
--- ============================================================================
--- 8. SECTION H: ENERGY AND WASTE MANAGEMENT (Table 8)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS section_h_energy_waste (
-    survey_id                   UUID PRIMARY KEY REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    -- H.1 Energy Consumption (Monthly quantity & % share)
-    energy_consumption_data     JSONB,                            -- { grid_electricity: { qty, pct }, diesel: { qty, pct }, gas: { qty, pct }, coal: { qty, pct }, etc. }
-    -- H.2 Energy Generation (Captive Power)
-    captive_capacity_kw         NUMERIC(12,2),
-    export_capacity_kw          NUMERIC(12,2),
-    power_sources_details       JSONB,                            -- Gensets, Solar, Powerhouse, Other
-    -- H.3 Air Pollutants Generated (Multi-select)
-    air_pollutants_generated    JSONB,                            -- PM10/PM2.5, SO2, NOx, CO, CO2, CH4, VOCs, etc.
-    -- H.4 Emission Control Measures (Multi-select)
-    emission_control_measures   JSONB,                            -- Chimney compliance, Bag filter, Wet scrubber, ESP, Cyclone, etc.
-    -- H.5 Water Sourcing (Multi-select)
-    water_sourcing              JSONB,                            -- Municipal, Own tube well, Canal, Tanker, Recycled, Other
-    -- H.6 Wastewater Management (Yes/No flags)
-    wastewater_management       JSONB,                            -- Treated on-site, municipal drain, open land, CETP, recycled, contractor
-    -- H.7 Solid Waste and By-product Management
-    solid_waste_management      JSONB,                            -- Production scrap, packaging, hazardous, e-waste, organic, sludge + disposal methods
-    -- H.8 Green Practices and Circular Economy
-    green_practices             JSONB,                            -- 10 practices (Yes / No / Planned)
-    created_at                  TIMESTAMPTZ DEFAULT now(),
-    updated_at                  TIMESTAMPTZ DEFAULT now()
+-- PSIC level 2: Group. Filtered by division.
+CREATE TABLE psic_groups (
+  id serial NOT NULL PRIMARY KEY,
+  division_id integer NOT NULL REFERENCES psic_divisions(id),
+  code varchar(10) NOT NULL UNIQUE,
+  name text NOT NULL
 );
 
--- ============================================================================
--- 9. SECTION I: CERTIFICATIONS AND COMPLIANCES (Table 9)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS section_i_certifications_compliances (
-    survey_id                   UUID PRIMARY KEY REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    -- I.1 Factory Safety & Environmental Compliances (Held Yes/No)
-    fire_safety_noc             BOOLEAN DEFAULT FALSE,            -- Punjab Emergency Service (Rescue 1122)
-    boiler_inspection_cert      BOOLEAN DEFAULT FALSE,            -- Punjab Boiler Inspectorate
-    environmental_noc_epa       BOOLEAN DEFAULT FALSE,            -- Punjab EPA Permit
-    iee_eia_approval            BOOLEAN DEFAULT FALSE,            -- Initial Environmental Examination / EIA Approval
-    -- I.2 Quality, Safety, Export & Green Certifications (Held / In Progress / N/A)
-    certifications_status       JSONB,                            -- ISO 9001, 14001, 45001, OSHA, 50001, SA8000, PSQCA, GSP+, CE, BSCI/SMETA/SEDEX, Other
-    created_at                  TIMESTAMPTZ DEFAULT now(),
-    updated_at                  TIMESTAMPTZ DEFAULT now()
+-- PSIC level 3: Class. Filtered by group. Also searched by word in A-xii.
+CREATE TABLE psic_classes (
+  id serial NOT NULL PRIMARY KEY,
+  group_id integer NOT NULL REFERENCES psic_groups(id),
+  code varchar(10) NOT NULL UNIQUE,
+  name text NOT NULL
 );
 
--- ============================================================================
--- 10. SECTION J: STRATEGIC BUSINESS PLAN (Table 10)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS section_j_strategic_business_plan (
-    survey_id                   UUID PRIMARY KEY REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    operational_planning        JSONB,                            -- J.1 Formal / Informal / No Plan across 6 areas
-    advisory_support            JSONB,                            -- J.2 Business consultant, trade assoc, govt, etc.
-    reinvestment_strategy       VARCHAR(30) CHECK (reinvestment_strategy IN (
-                                    'None — profits fully withdrawn', 'Less than 25%', 
-                                    '25–50%', '51–75%', 'More than 75%'
-                                )),                               -- J.3
-    primary_reinvestment_areas  JSONB,                            -- J.4 Machinery, capacity, working capital, R&D, etc.
-    upscaling_plans             JSONB,                            -- J.5 Volume, new lines, domestic, export, technology, etc.
-    upscaling_timeframe         VARCHAR(30) CHECK (upscaling_timeframe IN (
-                                    'Within 1 year', '1–2 years', '2–3 years', 'Beyond 3 years'
-                                )),                               -- J.6
-    upscaling_readiness_ratings JSONB,                            -- J.7 Scale 1 to 5 across 8 readiness dimensions
-    created_at                  TIMESTAMPTZ DEFAULT now(),
-    updated_at                  TIMESTAMPTZ DEFAULT now()
+-- Harmonized System product codes (Sections C-vii and E-ix).
+CREATE TABLE hs_codes (
+  id serial NOT NULL PRIMARY KEY,
+  code varchar(12) NOT NULL UNIQUE,
+  description text NOT NULL
 );
 
--- ============================================================================
--- 11. SECTION K: FUTURE COLLABORATIONS & BARRIERS (Table 11)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS section_k_collaborations_barriers (
-    survey_id                   UUID PRIMARY KEY REFERENCES survey_submissions(survey_id) ON DELETE CASCADE,
-    future_collaborations       JSONB,                            -- K.1 Collaborators & Purposes
-    government_support_required JSONB,                            -- K.2 Subsidies, loans, tax rebate, technical assist, etc.
-    barrier_ratings             JSONB,                            -- K.3 Scale 1 to 5 across Production, Market, Finance, Regulatory
-    most_critical_barrier       TEXT,                             -- K.4 Single most critical barrier
-    created_at                  TIMESTAMPTZ DEFAULT now(),
-    updated_at                  TIMESTAMPTZ DEFAULT now()
+-- All units used in the survey (area, quantity, energy, power).
+CREATE TABLE measurement_units (
+  id serial NOT NULL PRIMARY KEY,
+  code varchar(20) NOT NULL UNIQUE,
+  name varchar(60) NOT NULL,
+  unit_kind varchar(20) NOT NULL CHECK (unit_kind IN ('AREA','QUANTITY','ENERGY','POWER','OTHER'))
 );
 
--- ============================================================================
--- DATABASE TRIGGERS (Auto updated_at maintenance)
--- ============================================================================
-CREATE OR REPLACE FUNCTION update_timestamp_column()
-RETURNS TRIGGER AS $$
+
+-- ===== M4: Questionnaire & Dropdown Lists =====
+-- One row per drop-down list (e.g. OWNERSHIP_TYPE).
+CREATE TABLE lookup_types (
+  id serial NOT NULL PRIMARY KEY,
+  code varchar(50) NOT NULL UNIQUE,
+  name varchar(100) NOT NULL,
+  description text
+);
+
+-- The choices inside each drop-down list.
+CREATE TABLE lookup_values (
+  id serial NOT NULL PRIMARY KEY,
+  type_id integer NOT NULL REFERENCES lookup_types(id) ON DELETE CASCADE,
+  code varchar(60) NOT NULL,
+  label text NOT NULL,
+  requires_text boolean DEFAULT false NOT NULL,
+  numeric_value numeric(10,2),
+  sort_order smallint DEFAULT 0 NOT NULL,
+  is_active boolean DEFAULT true NOT NULL,
+  UNIQUE (type_id, code)
+);
+
+-- Allowed-choice filters: which child choices appear after a parent choice (waste type -> disposal methods, collaborator -> purposes).
+CREATE TABLE lookup_value_links (
+  parent_value_id integer NOT NULL REFERENCES lookup_values(id) ON DELETE CASCADE,
+  child_value_id integer NOT NULL REFERENCES lookup_values(id) ON DELETE CASCADE,
+  PRIMARY KEY (parent_value_id, child_value_id)
+);
+
+-- A versioned survey form. A new round = new row, no app redeploy.
+CREATE TABLE survey_forms (
+  id serial NOT NULL PRIMARY KEY,
+  code varchar(40) NOT NULL,
+  title text NOT NULL,
+  version int DEFAULT 1 NOT NULL,
+  is_active boolean DEFAULT true NOT NULL,
+  created_at timestamptz DEFAULT now() NOT NULL,
+  UNIQUE (code, version)
+);
+
+-- Sections A to K of a form.
+CREATE TABLE survey_sections (
+  id serial NOT NULL PRIMARY KEY,
+  form_id integer NOT NULL REFERENCES survey_forms(id) ON DELETE CASCADE,
+  section_code char(1) NOT NULL,
+  title text NOT NULL,
+  sort_order smallint DEFAULT 0 NOT NULL,
+  UNIQUE (form_id, section_code)
+);
+
+-- Question register. Every question stored in a generic table (choices, shares, matrix) must be listed here.
+CREATE TABLE survey_questions (
+  id serial NOT NULL PRIMARY KEY,
+  section_id integer NOT NULL REFERENCES survey_sections(id) ON DELETE CASCADE,
+  question_code varchar(60) NOT NULL UNIQUE,
+  question_no varchar(10),
+  question_text text NOT NULL,
+  answer_type varchar(20) NOT NULL CHECK (answer_type IN ('TEXT','NUMBER','YES_NO','SINGLE_CHOICE','MULTI_CHOICE','SHARE_PERCENT','MATRIX','REPEATING_GROUP')),
+  lookup_type_id integer REFERENCES lookup_types(id),
+  is_required boolean DEFAULT false NOT NULL,
+  stored_in varchar(80)
+);
+
+-- Rows of tick-box tables (e.g. each innovation activity, each barrier).
+CREATE TABLE matrix_items (
+  id serial NOT NULL PRIMARY KEY,
+  question_id integer NOT NULL REFERENCES survey_questions(id) ON DELETE CASCADE,
+  group_label varchar(100),
+  item_code varchar(60) NOT NULL,
+  item_label text NOT NULL,
+  answer_type varchar(15) NOT NULL CHECK (answer_type IN ('CHOICE','RATING_1_5')),
+  scale_type_id integer REFERENCES lookup_types(id),
+  allows_text boolean DEFAULT false NOT NULL,
+  sort_order smallint DEFAULT 0 NOT NULL,
+  UNIQUE (question_id, item_code)
+);
+
+
+-- ===== M5: Establishment Master (Section A) =====
+-- Industrial estates / special zones (optional link from a unit).
+CREATE TABLE industrial_estates (
+  id serial NOT NULL PRIMARY KEY,
+  name text NOT NULL,
+  district_id integer REFERENCES districts(id),
+  geom geometry(MultiPolygon,4326)
+);
+
+-- Clusters of similar factories (used for cluster-wise dashboard).
+CREATE TABLE industrial_clusters (
+  id serial NOT NULL PRIMARY KEY,
+  name text NOT NULL,
+  district_id integer REFERENCES districts(id),
+  geom geometry(MultiPolygon,4326)
+);
+
+-- Master list of establishments. All of Section A lives here.
+CREATE TABLE industrial_units (
+  id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
+  unit_code varchar(30) UNIQUE,
+  name text NOT NULL,
+  establishment_year smallint CHECK (establishment_year BETWEEN 1800 AND 2100),
+  location geometry(Point,4326),
+  gps_accuracy_m numeric(8,2),
+  address text,
+  province_id smallint REFERENCES provinces(id),
+  province_name text NOT NULL,
+  division_id integer REFERENCES divisions(id),
+  division_name text NOT NULL,
+  district_id integer REFERENCES districts(id),
+  district_name text NOT NULL,
+  tehsil_id integer REFERENCES tehsils(id),
+  tehsil_name text NOT NULL,
+  contact_name varchar(120),
+  contact_phone varchar(20),
+  contact_email varchar(120),
+  website varchar(200),
+  psic_division_id integer REFERENCES psic_divisions(id),
+  psic_division_text text,
+  psic_group_id integer REFERENCES psic_groups(id),
+  psic_group_text text,
+  psic_class_id integer REFERENCES psic_classes(id),
+  psic_class_text text,
+  zone_type_id integer REFERENCES lookup_values(id),
+  zone_type_other_text text,
+  ownership_type_id integer REFERENCES lookup_values(id),
+  ownership_other_text text,
+  legal_structure_id integer REFERENCES lookup_values(id),
+  legal_structure_other_text text,
+  has_parent_company boolean,
+  total_area_value numeric(14,2),
+  total_area_unit_id integer REFERENCES measurement_units(id),
+  industrial_estate_id integer REFERENCES industrial_estates(id),
+  industrial_estate_text text,
+  industrial_cluster_id integer REFERENCES industrial_clusters(id),
+  industrial_cluster_text text,
+  approval_status varchar(20) DEFAULT 'PENDING' NOT NULL CHECK (approval_status IN ('PENDING','CONFIRMED','RETURNED','REJECTED')),
+  created_by uuid REFERENCES users(id),
+  created_at timestamptz DEFAULT now() NOT NULL,
+  updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Parent company details (A-xi) - only when has_parent_company = Yes.
+CREATE TABLE unit_parent_companies (
+  unit_id uuid NOT NULL PRIMARY KEY REFERENCES industrial_units(id) ON DELETE CASCADE,
+  company_name text NOT NULL,
+  company_address text,
+  phone varchar(20),
+  cell varchar(20),
+  email varchar(120)
+);
+
+-- Other establishments of the same parent company (A-xii). Repeating rows.
+CREATE TABLE unit_associated_establishments (
+  id bigserial NOT NULL PRIMARY KEY,
+  unit_id uuid NOT NULL REFERENCES industrial_units(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  address text,
+  major_activity_psic_class_id integer REFERENCES psic_classes(id),
+  major_activity_text text
+);
+
+
+-- ===== M6: Survey Capture & Approval =====
+-- One survey visit to one establishment. Hub table: every section hangs off this.
+CREATE TABLE survey_responses (
+  id uuid NOT NULL PRIMARY KEY,
+  form_id integer NOT NULL REFERENCES survey_forms(id),
+  unit_id uuid NOT NULL REFERENCES industrial_units(id),
+  surveyor_id uuid NOT NULL REFERENCES users(id),
+  device_id varchar(100),
+  gps_lat numeric(9,6),
+  gps_lng numeric(9,6),
+  gps_accuracy_m numeric(8,2),
+  status varchar(25) DEFAULT 'DRAFT' NOT NULL CHECK (status IN ('DRAFT','PENDING_CONFIRMATION','CONFIRMED','RETURNED','REJECTED')),
+  sync_status varchar(20) DEFAULT 'PENDING' NOT NULL CHECK (sync_status IN ('PENDING','SYNCED','REJECTED','DUPLICATE')),
+  started_at timestamptz NOT NULL,
+  completed_at timestamptz,
+  submitted_at timestamptz,
+  confirmed_by uuid REFERENCES users(id),
+  confirmed_at timestamptz,
+  synced_at timestamptz,
+  app_version varchar(20)
+);
+
+-- Photos or files taken during a survey.
+CREATE TABLE survey_attachments (
+  id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  section_code char(1),
+  file_type varchar(20),
+  file_name text,
+  storage_path text NOT NULL,
+  captured_at timestamptz
+);
+
+-- Before/after record of every correction to a survey.
+CREATE TABLE response_edit_log (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  edited_by uuid NOT NULL REFERENCES users(id),
+  table_name varchar(60) NOT NULL,
+  record_id text,
+  field_name varchar(80),
+  old_value jsonb,
+  new_value jsonb,
+  edited_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Submit / confirm / return / reject history (supervisor workflow).
+CREATE TABLE unit_approval_log (
+  id bigserial NOT NULL PRIMARY KEY,
+  unit_id uuid NOT NULL REFERENCES industrial_units(id),
+  response_id uuid REFERENCES survey_responses(id),
+  action varchar(25) NOT NULL CHECK (action IN ('SUBMITTED','CONFIRMED','RETURNED','REJECTED')),
+  acted_by uuid NOT NULL REFERENCES users(id),
+  remarks text,
+  acted_at timestamptz DEFAULT now() NOT NULL
+);
+
+
+-- ===== M7: Sections B-D: Operations, Products, Workforce =====
+-- Section B: operating months, status and working hours. One row per survey.
+CREATE TABLE sec_b_operations (
+  response_id uuid NOT NULL PRIMARY KEY REFERENCES survey_responses(id) ON DELETE CASCADE,
+  operating_months smallint[],
+  operation_status_id integer REFERENCES lookup_values(id),
+  closure_reason text,
+  daily_shift_id integer REFERENCES lookup_values(id),
+  daily_hours numeric(4,1),
+  working_days_per_week smallint DEFAULT 6 CHECK (working_days_per_week BETWEEN 1 AND 7),
+  weekly_hours numeric(5,1) GENERATED ALWAYS AS (daily_hours * working_days_per_week) STORED,
+  monthly_hours numeric(6,1) GENERATED ALWAYS AS (ROUND(daily_hours * working_days_per_week * 52 / 12, 1)) STORED
+);
+
+-- Section C: main and secondary products (repeating rows).
+CREATE TABLE products (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  product_kind varchar(10) NOT NULL CHECK (product_kind IN ('MAIN','SECONDARY')),
+  product_name text NOT NULL,
+  daily_avg_output numeric(18,2),
+  daily_output_unit_id integer REFERENCES measurement_units(id),
+  annual_production numeric(18,2),
+  annual_production_unit_id integer REFERENCES measurement_units(id),
+  installed_capacity numeric(18,2),
+  installed_capacity_period varchar(10) CHECK (installed_capacity_period IN ('PER_DAY','PER_MONTH')),
+  unit_of_measurement_id integer REFERENCES measurement_units(id),
+  revenue_share_pct numeric(5,2) CHECK (revenue_share_pct BETWEEN 0 AND 100),
+  hs_code_id integer REFERENCES hs_codes(id),
+  hs_code_text text,
+  sort_order smallint DEFAULT 0,
+  CHECK (product_kind = 'MAIN' OR (revenue_share_pct IS NULL AND hs_code_id IS NULL AND hs_code_text IS NULL))
+);
+
+-- C-v: one or more stages (T1-T6) per main product.
+CREATE TABLE product_transformation_stages (
+  product_id bigint NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  stage_id integer NOT NULL REFERENCES lookup_values(id),
+  PRIMARY KEY (product_id, stage_id)
+);
+
+-- D-i: employees by type and gender.
+CREATE TABLE workforce_employment (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  gender varchar(10) NOT NULL CHECK (gender IN ('MALE','FEMALE')),
+  regular_count int DEFAULT 0 NOT NULL CHECK (regular_count >= 0),
+  contract_count int DEFAULT 0 NOT NULL CHECK (contract_count >= 0),
+  daily_wage_count int DEFAULT 0 NOT NULL CHECK (daily_wage_count >= 0),
+  total_count int GENERATED ALWAYS AS (regular_count + contract_count + daily_wage_count) STORED,
+  UNIQUE (response_id, gender)
+);
+
+-- D-ii: employees by skill level and gender.
+CREATE TABLE workforce_skills (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  gender varchar(10) NOT NULL CHECK (gender IN ('MALE','FEMALE')),
+  skill_level_id integer NOT NULL REFERENCES lookup_values(id),
+  headcount int DEFAULT 0 NOT NULL CHECK (headcount >= 0),
+  UNIQUE (response_id, gender, skill_level_id)
+);
+
+
+-- ===== M8: Sections E-F: Supply Chain & Market =====
+-- Section E single-answer questions (backward linkages).
+CREATE TABLE sec_e_supply_chain (
+  response_id uuid NOT NULL PRIMARY KEY REFERENCES survey_responses(id) ON DELETE CASCADE,
+  active_suppliers_id integer REFERENCES lookup_values(id),
+  supplier_dependency_id integer REFERENCES lookup_values(id),
+  procurement_mode_id integer REFERENCES lookup_values(id),
+  had_supply_disruption boolean,
+  ontime_delivery_id integer REFERENCES lookup_values(id),
+  product_acceptance_id integer REFERENCES lookup_values(id)
+);
+
+-- E-ix: major raw materials / inputs (repeating rows).
+CREATE TABLE major_inputs (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  input_name text NOT NULL,
+  unit_id integer REFERENCES measurement_units(id),
+  cost_share_pct numeric(5,2) CHECK (cost_share_pct BETWEEN 0 AND 100),
+  hs_code_id integer REFERENCES hs_codes(id),
+  hs_code_text text,
+  transformation_stage_id integer REFERENCES lookup_values(id)
+);
+
+-- Section F single-answer questions (forward linkages).
+CREATE TABLE sec_f_market (
+  response_id uuid NOT NULL PRIMARY KEY REFERENCES survey_responses(id) ON DELETE CASCADE,
+  global_supply_chain_id integer REFERENCES lookup_values(id),
+  active_buyers_id integer REFERENCES lookup_values(id),
+  buyer_availability_id integer REFERENCES lookup_values(id),
+  sales_mode_id integer REFERENCES lookup_values(id),
+  payment_terms_id integer REFERENCES lookup_values(id),
+  had_demand_gap boolean,
+  subcontract_id integer REFERENCES lookup_values(id)
+);
+
+
+-- ===== M9: Sections G-H: Technology & Environment =====
+-- Section G single-answer questions (technology and production).
+CREATE TABLE sec_g_technology (
+  response_id uuid NOT NULL PRIMARY KEY REFERENCES survey_responses(id) ON DELETE CASCADE,
+  plant_processing_capacity text,
+  utilization_rate_id integer REFERENCES lookup_values(id),
+  integration_level_id integer REFERENCES lookup_values(id),
+  machine_source_id integer REFERENCES lookup_values(id),
+  spare_parts_source_id integer REFERENCES lookup_values(id),
+  breakdown_frequency_id integer REFERENCES lookup_values(id),
+  maintenance_approach_id integer REFERENCES lookup_values(id),
+  production_planning_id integer REFERENCES lookup_values(id),
+  inventory_system_id integer REFERENCES lookup_values(id),
+  rnd_expenditure_id integer REFERENCES lookup_values(id)
+);
+
+-- G-i: critical machines (repeating rows).
+CREATE TABLE critical_machines (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  machine_name text NOT NULL,
+  quantity int CHECK (quantity >= 0),
+  specification text
+);
+
+-- G-viii: number of machines in each age bracket.
+CREATE TABLE machinery_age_profile (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  age_bracket_id integer NOT NULL REFERENCES lookup_values(id),
+  machine_count int DEFAULT 0 NOT NULL CHECK (machine_count >= 0),
+  UNIQUE (response_id, age_bracket_id)
+);
+
+-- G-xi: boilers and pressure vessels (repeating rows).
+CREATE TABLE boilers_pressure_vessels (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  vessel_type text NOT NULL,
+  capacity_tph numeric(10,2),
+  heating_surface text
+);
+
+-- G-xii: weights and measures equipment (repeating rows).
+CREATE TABLE weights_measures_equipment (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  equipment_type text NOT NULL,
+  quantity int CHECK (quantity >= 0),
+  capacity text
+);
+
+-- Section H totals for energy generation.
+CREATE TABLE sec_h_environment (
+  response_id uuid NOT NULL PRIMARY KEY REFERENCES survey_responses(id) ON DELETE CASCADE,
+  captive_capacity_kw numeric(12,2),
+  export_capacity_kw numeric(12,2)
+);
+
+-- H-i: monthly use and share of each fuel/energy source.
+CREATE TABLE energy_consumption (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  energy_source_id integer NOT NULL REFERENCES lookup_values(id),
+  other_text text,
+  quantity_per_month numeric(16,2),
+  unit_id integer REFERENCES measurement_units(id),
+  share_pct numeric(5,2) CHECK (share_pct BETWEEN 0 AND 100),
+  UNIQUE (response_id, energy_source_id)
+);
+
+-- H-ii: own power generation by source.
+CREATE TABLE energy_generation (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  power_source_id integer NOT NULL REFERENCES lookup_values(id),
+  other_text text,
+  capacity_kw numeric(12,2),
+  export_kw numeric(12,2),
+  UNIQUE (response_id, power_source_id)
+);
+
+-- H-vii: each waste type and whether it is generated.
+CREATE TABLE solid_waste_streams (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  waste_type_id integer NOT NULL REFERENCES lookup_values(id),
+  is_generated boolean DEFAULT false NOT NULL,
+  UNIQUE (response_id, waste_type_id)
+);
+
+-- Disposal methods ticked for a waste type (tick all that apply).
+CREATE TABLE solid_waste_disposals (
+  stream_id bigint NOT NULL REFERENCES solid_waste_streams(id) ON DELETE CASCADE,
+  disposal_method_id integer NOT NULL REFERENCES lookup_values(id),
+  other_text text,
+  PRIMARY KEY (stream_id, disposal_method_id)
+);
+
+
+-- ===== M10: Sections I-K: Compliance, Strategy, Future =====
+-- Section I single answer: safety training.
+CREATE TABLE sec_i_compliance (
+  response_id uuid NOT NULL PRIMARY KEY REFERENCES survey_responses(id) ON DELETE CASCADE,
+  safety_trained_workers int CHECK (safety_trained_workers >= 0)
+);
+
+-- Section J single-answer questions.
+CREATE TABLE sec_j_strategy (
+  response_id uuid NOT NULL PRIMARY KEY REFERENCES survey_responses(id) ON DELETE CASCADE,
+  reinvestment_level_id integer REFERENCES lookup_values(id),
+  reinvestment_area_id integer REFERENCES lookup_values(id),
+  reinvestment_area_other text,
+  upscaling_time_id integer REFERENCES lookup_values(id)
+);
+
+-- Section K single-answer questions.
+CREATE TABLE sec_k_future (
+  response_id uuid NOT NULL PRIMARY KEY REFERENCES survey_responses(id) ON DELETE CASCADE,
+  has_future_plan boolean,
+  most_critical_barrier text
+);
+
+-- K-ii: each potential collaborator type (repeating rows).
+CREATE TABLE collaborations (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  collaborator_type_id integer NOT NULL REFERENCES lookup_values(id),
+  UNIQUE (response_id, collaborator_type_id)
+);
+
+-- Purposes chosen for each collaborator.
+CREATE TABLE collaboration_purposes (
+  collaboration_id bigint NOT NULL REFERENCES collaborations(id) ON DELETE CASCADE,
+  purpose_id integer NOT NULL REFERENCES lookup_values(id),
+  PRIMARY KEY (collaboration_id, purpose_id)
+);
+
+
+-- ===== M11: Generic Answer Tables =====
+-- Multi-select drop-downs: one row per ticked choice.
+CREATE TABLE response_choices (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  question_id integer NOT NULL REFERENCES survey_questions(id),
+  option_id integer NOT NULL REFERENCES lookup_values(id),
+  other_text text,
+  UNIQUE (response_id, question_id, option_id)
+);
+
+-- 'Share of total' answers that should add up to 100%.
+CREATE TABLE response_shares (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  question_id integer NOT NULL REFERENCES survey_questions(id),
+  option_id integer NOT NULL REFERENCES lookup_values(id),
+  percent_value numeric(5,2) NOT NULL CHECK (percent_value BETWEEN 0 AND 100),
+  other_text text,
+  UNIQUE (response_id, question_id, option_id)
+);
+
+-- Tick-box tables: one row per row of the table.
+CREATE TABLE response_matrix_answers (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  item_id integer NOT NULL REFERENCES matrix_items(id),
+  choice_value_id integer REFERENCES lookup_values(id),
+  rating smallint CHECK (rating BETWEEN 1 AND 5),
+  other_text text,
+  UNIQUE (response_id, item_id),
+  CHECK (num_nonnulls(choice_value_id, rating) <= 1)
+);
+
+
+-- ===== M12: Sync, Data Quality & GIS =====
+-- One row per sync session of a device.
+CREATE TABLE sync_log (
+  id bigserial NOT NULL PRIMARY KEY,
+  surveyor_id uuid NOT NULL REFERENCES users(id),
+  device_id varchar(100),
+  started_at timestamptz NOT NULL,
+  finished_at timestamptz,
+  records_sent int DEFAULT 0,
+  records_synced int DEFAULT 0,
+  records_rejected int DEFAULT 0,
+  records_duplicate int DEFAULT 0,
+  status varchar(20),
+  error_message text
+);
+
+-- Suspected duplicate establishments waiting for a supervisor decision.
+CREATE TABLE duplicate_flags (
+  id bigserial NOT NULL PRIMARY KEY,
+  unit_id uuid NOT NULL REFERENCES industrial_units(id),
+  matched_unit_id uuid NOT NULL REFERENCES industrial_units(id),
+  reason varchar(30) NOT NULL CHECK (reason IN ('NAME_SIMILARITY','GPS_PROXIMITY','BOTH')),
+  name_similarity numeric(4,3),
+  distance_m numeric(10,2),
+  resolution varchar(25) DEFAULT 'OPEN' NOT NULL CHECK (resolution IN ('OPEN','CONFIRMED_DUPLICATE','NOT_DUPLICATE','MERGED')),
+  resolved_by uuid REFERENCES users(id),
+  resolved_at timestamptz,
+  created_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Map quality checks (e.g. point outside its district).
+CREATE TABLE gis_quality_log (
+  id bigserial NOT NULL PRIMARY KEY,
+  unit_id uuid NOT NULL REFERENCES industrial_units(id),
+  check_type varchar(40) NOT NULL,
+  result varchar(10) NOT NULL CHECK (result IN ('PASS','FAIL')),
+  detail text,
+  checked_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Background maps (satellite, street, licensed) used by app and dashboard.
+CREATE TABLE base_map_layers (
+  id serial NOT NULL PRIMARY KEY,
+  name varchar(80) NOT NULL,
+  layer_type varchar(15) NOT NULL CHECK (layer_type IN ('SATELLITE','STREET','LICENSED')),
+  url_template text NOT NULL,
+  attribution text,
+  is_default boolean DEFAULT false NOT NULL,
+  is_active boolean DEFAULT true NOT NULL
+);
+
+
+-- ===== M13: Security, Audit & Dashboard =====
+-- Generic before/after change log for sensitive tables.
+CREATE TABLE audit_log (
+  id bigserial NOT NULL PRIMARY KEY,
+  table_name varchar(60) NOT NULL,
+  record_id text,
+  action varchar(10) NOT NULL CHECK (action IN ('INSERT','UPDATE','DELETE')),
+  old_data jsonb,
+  new_data jsonb,
+  changed_by uuid REFERENCES users(id),
+  changed_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Proof that each backup job really ran.
+CREATE TABLE backup_log (
+  id bigserial NOT NULL PRIMARY KEY,
+  backup_type varchar(15) NOT NULL CHECK (backup_type IN ('FULL','INCREMENTAL')),
+  started_at timestamptz NOT NULL,
+  finished_at timestamptz,
+  status varchar(10) NOT NULL CHECK (status IN ('SUCCESS','FAILED')),
+  size_mb numeric(12,2),
+  storage_location text,
+  verified boolean DEFAULT false NOT NULL
+);
+
+-- App-wide settings.
+CREATE TABLE system_settings (
+  key varchar(80) NOT NULL PRIMARY KEY,
+  value jsonb NOT NULL,
+  description text,
+  updated_by uuid REFERENCES users(id),
+  updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- KPIs stored as data: name + the view that calculates it.
+CREATE TABLE dashboard_kpi_definitions (
+  id serial NOT NULL PRIMARY KEY,
+  code varchar(50) NOT NULL UNIQUE,
+  name text NOT NULL,
+  description text,
+  sql_view_name varchar(80) NOT NULL,
+  unit_label varchar(30),
+  is_active boolean DEFAULT true NOT NULL
+);
+
+-- Filters a user saved on the dashboard.
+CREATE TABLE dashboard_saved_filters (
+  id bigserial NOT NULL PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name varchar(100) NOT NULL,
+  filter_json jsonb NOT NULL,
+  created_at timestamptz DEFAULT now() NOT NULL
+);
+
+
+-- ===== Indexes =====
+CREATE INDEX idx_role_permissions_permission_id ON role_permissions (permission_id);
+CREATE INDEX idx_users_role_id ON users (role_id);
+CREATE INDEX idx_users_supervisor_id ON users (supervisor_id);
+CREATE INDEX idx_users_created_by ON users (created_by);
+CREATE INDEX gix_provinces_geom ON provinces USING GIST (geom);
+CREATE INDEX idx_divisions_province_id ON divisions (province_id);
+CREATE INDEX gix_divisions_geom ON divisions USING GIST (geom);
+CREATE INDEX idx_districts_division_id ON districts (division_id);
+CREATE INDEX gix_districts_geom ON districts USING GIST (geom);
+CREATE INDEX idx_tehsils_district_id ON tehsils (district_id);
+CREATE INDEX gix_tehsils_geom ON tehsils USING GIST (geom);
+CREATE INDEX idx_psic_groups_division_id ON psic_groups (division_id);
+CREATE INDEX idx_psic_classes_group_id ON psic_classes (group_id);
+CREATE INDEX idx_lookup_values_type_id ON lookup_values (type_id);
+CREATE INDEX idx_lookup_value_links_child_value_id ON lookup_value_links (child_value_id);
+CREATE INDEX idx_survey_sections_form_id ON survey_sections (form_id);
+CREATE INDEX idx_survey_questions_section_id ON survey_questions (section_id);
+CREATE INDEX idx_survey_questions_lookup_type_id ON survey_questions (lookup_type_id);
+CREATE INDEX idx_matrix_items_question_id ON matrix_items (question_id);
+CREATE INDEX idx_matrix_items_scale_type_id ON matrix_items (scale_type_id);
+CREATE INDEX idx_industrial_estates_district_id ON industrial_estates (district_id);
+CREATE INDEX gix_industrial_estates_geom ON industrial_estates USING GIST (geom);
+CREATE INDEX idx_industrial_clusters_district_id ON industrial_clusters (district_id);
+CREATE INDEX gix_industrial_clusters_geom ON industrial_clusters USING GIST (geom);
+CREATE INDEX gix_industrial_units_location ON industrial_units USING GIST (location);
+CREATE INDEX idx_industrial_units_province_id ON industrial_units (province_id);
+CREATE INDEX idx_industrial_units_division_id ON industrial_units (division_id);
+CREATE INDEX idx_industrial_units_district_id ON industrial_units (district_id);
+CREATE INDEX idx_industrial_units_tehsil_id ON industrial_units (tehsil_id);
+CREATE INDEX idx_industrial_units_psic_division_id ON industrial_units (psic_division_id);
+CREATE INDEX idx_industrial_units_psic_group_id ON industrial_units (psic_group_id);
+CREATE INDEX idx_industrial_units_psic_class_id ON industrial_units (psic_class_id);
+CREATE INDEX idx_industrial_units_zone_type_id ON industrial_units (zone_type_id);
+CREATE INDEX idx_industrial_units_ownership_type_id ON industrial_units (ownership_type_id);
+CREATE INDEX idx_industrial_units_legal_structure_id ON industrial_units (legal_structure_id);
+CREATE INDEX idx_industrial_units_total_area_unit_id ON industrial_units (total_area_unit_id);
+CREATE INDEX idx_industrial_units_industrial_estate_id ON industrial_units (industrial_estate_id);
+CREATE INDEX idx_industrial_units_industrial_cluster_id ON industrial_units (industrial_cluster_id);
+CREATE INDEX idx_industrial_units_created_by ON industrial_units (created_by);
+CREATE INDEX idx_unit_associated_establishments_unit_id ON unit_associated_establishments (unit_id);
+CREATE INDEX idx_unit_associated_establishments_major_activity_psic_class_id ON unit_associated_establishments (major_activity_psic_class_id);
+CREATE INDEX idx_survey_responses_form_id ON survey_responses (form_id);
+CREATE INDEX idx_survey_responses_unit_id ON survey_responses (unit_id);
+CREATE INDEX idx_survey_responses_surveyor_id ON survey_responses (surveyor_id);
+CREATE INDEX idx_survey_responses_confirmed_by ON survey_responses (confirmed_by);
+CREATE INDEX idx_survey_attachments_response_id ON survey_attachments (response_id);
+CREATE INDEX idx_response_edit_log_response_id ON response_edit_log (response_id);
+CREATE INDEX idx_response_edit_log_edited_by ON response_edit_log (edited_by);
+CREATE INDEX idx_unit_approval_log_unit_id ON unit_approval_log (unit_id);
+CREATE INDEX idx_unit_approval_log_response_id ON unit_approval_log (response_id);
+CREATE INDEX idx_unit_approval_log_acted_by ON unit_approval_log (acted_by);
+CREATE INDEX idx_sec_b_operations_operation_status_id ON sec_b_operations (operation_status_id);
+CREATE INDEX idx_sec_b_operations_daily_shift_id ON sec_b_operations (daily_shift_id);
+CREATE INDEX idx_products_response_id ON products (response_id);
+CREATE INDEX idx_products_daily_output_unit_id ON products (daily_output_unit_id);
+CREATE INDEX idx_products_annual_production_unit_id ON products (annual_production_unit_id);
+CREATE INDEX idx_products_unit_of_measurement_id ON products (unit_of_measurement_id);
+CREATE INDEX idx_products_hs_code_id ON products (hs_code_id);
+CREATE INDEX idx_product_transformation_stages_stage_id ON product_transformation_stages (stage_id);
+CREATE INDEX idx_workforce_employment_response_id ON workforce_employment (response_id);
+CREATE INDEX idx_workforce_skills_response_id ON workforce_skills (response_id);
+CREATE INDEX idx_workforce_skills_skill_level_id ON workforce_skills (skill_level_id);
+CREATE INDEX idx_sec_e_supply_chain_active_suppliers_id ON sec_e_supply_chain (active_suppliers_id);
+CREATE INDEX idx_sec_e_supply_chain_supplier_dependency_id ON sec_e_supply_chain (supplier_dependency_id);
+CREATE INDEX idx_sec_e_supply_chain_procurement_mode_id ON sec_e_supply_chain (procurement_mode_id);
+CREATE INDEX idx_sec_e_supply_chain_ontime_delivery_id ON sec_e_supply_chain (ontime_delivery_id);
+CREATE INDEX idx_sec_e_supply_chain_product_acceptance_id ON sec_e_supply_chain (product_acceptance_id);
+CREATE INDEX idx_major_inputs_response_id ON major_inputs (response_id);
+CREATE INDEX idx_major_inputs_unit_id ON major_inputs (unit_id);
+CREATE INDEX idx_major_inputs_hs_code_id ON major_inputs (hs_code_id);
+CREATE INDEX idx_major_inputs_transformation_stage_id ON major_inputs (transformation_stage_id);
+CREATE INDEX idx_sec_f_market_global_supply_chain_id ON sec_f_market (global_supply_chain_id);
+CREATE INDEX idx_sec_f_market_active_buyers_id ON sec_f_market (active_buyers_id);
+CREATE INDEX idx_sec_f_market_buyer_availability_id ON sec_f_market (buyer_availability_id);
+CREATE INDEX idx_sec_f_market_sales_mode_id ON sec_f_market (sales_mode_id);
+CREATE INDEX idx_sec_f_market_payment_terms_id ON sec_f_market (payment_terms_id);
+CREATE INDEX idx_sec_f_market_subcontract_id ON sec_f_market (subcontract_id);
+CREATE INDEX idx_sec_g_technology_utilization_rate_id ON sec_g_technology (utilization_rate_id);
+CREATE INDEX idx_sec_g_technology_integration_level_id ON sec_g_technology (integration_level_id);
+CREATE INDEX idx_sec_g_technology_machine_source_id ON sec_g_technology (machine_source_id);
+CREATE INDEX idx_sec_g_technology_spare_parts_source_id ON sec_g_technology (spare_parts_source_id);
+CREATE INDEX idx_sec_g_technology_breakdown_frequency_id ON sec_g_technology (breakdown_frequency_id);
+CREATE INDEX idx_sec_g_technology_maintenance_approach_id ON sec_g_technology (maintenance_approach_id);
+CREATE INDEX idx_sec_g_technology_production_planning_id ON sec_g_technology (production_planning_id);
+CREATE INDEX idx_sec_g_technology_inventory_system_id ON sec_g_technology (inventory_system_id);
+CREATE INDEX idx_sec_g_technology_rnd_expenditure_id ON sec_g_technology (rnd_expenditure_id);
+CREATE INDEX idx_critical_machines_response_id ON critical_machines (response_id);
+CREATE INDEX idx_machinery_age_profile_response_id ON machinery_age_profile (response_id);
+CREATE INDEX idx_machinery_age_profile_age_bracket_id ON machinery_age_profile (age_bracket_id);
+CREATE INDEX idx_boilers_pressure_vessels_response_id ON boilers_pressure_vessels (response_id);
+CREATE INDEX idx_weights_measures_equipment_response_id ON weights_measures_equipment (response_id);
+CREATE INDEX idx_energy_consumption_response_id ON energy_consumption (response_id);
+CREATE INDEX idx_energy_consumption_energy_source_id ON energy_consumption (energy_source_id);
+CREATE INDEX idx_energy_consumption_unit_id ON energy_consumption (unit_id);
+CREATE INDEX idx_energy_generation_response_id ON energy_generation (response_id);
+CREATE INDEX idx_energy_generation_power_source_id ON energy_generation (power_source_id);
+CREATE INDEX idx_solid_waste_streams_response_id ON solid_waste_streams (response_id);
+CREATE INDEX idx_solid_waste_streams_waste_type_id ON solid_waste_streams (waste_type_id);
+CREATE INDEX idx_solid_waste_disposals_disposal_method_id ON solid_waste_disposals (disposal_method_id);
+CREATE INDEX idx_sec_j_strategy_reinvestment_level_id ON sec_j_strategy (reinvestment_level_id);
+CREATE INDEX idx_sec_j_strategy_reinvestment_area_id ON sec_j_strategy (reinvestment_area_id);
+CREATE INDEX idx_sec_j_strategy_upscaling_time_id ON sec_j_strategy (upscaling_time_id);
+CREATE INDEX idx_collaborations_response_id ON collaborations (response_id);
+CREATE INDEX idx_collaborations_collaborator_type_id ON collaborations (collaborator_type_id);
+CREATE INDEX idx_collaboration_purposes_purpose_id ON collaboration_purposes (purpose_id);
+CREATE INDEX idx_response_choices_response_id ON response_choices (response_id);
+CREATE INDEX idx_response_choices_question_id ON response_choices (question_id);
+CREATE INDEX idx_response_choices_option_id ON response_choices (option_id);
+CREATE INDEX idx_response_shares_response_id ON response_shares (response_id);
+CREATE INDEX idx_response_shares_question_id ON response_shares (question_id);
+CREATE INDEX idx_response_shares_option_id ON response_shares (option_id);
+CREATE INDEX idx_response_matrix_answers_response_id ON response_matrix_answers (response_id);
+CREATE INDEX idx_response_matrix_answers_item_id ON response_matrix_answers (item_id);
+CREATE INDEX idx_response_matrix_answers_choice_value_id ON response_matrix_answers (choice_value_id);
+CREATE INDEX idx_sync_log_surveyor_id ON sync_log (surveyor_id);
+CREATE INDEX idx_duplicate_flags_unit_id ON duplicate_flags (unit_id);
+CREATE INDEX idx_duplicate_flags_matched_unit_id ON duplicate_flags (matched_unit_id);
+CREATE INDEX idx_duplicate_flags_resolved_by ON duplicate_flags (resolved_by);
+CREATE INDEX idx_gis_quality_log_unit_id ON gis_quality_log (unit_id);
+CREATE INDEX idx_audit_log_changed_by ON audit_log (changed_by);
+CREATE INDEX idx_system_settings_updated_by ON system_settings (updated_by);
+CREATE INDEX idx_dashboard_saved_filters_user_id ON dashboard_saved_filters (user_id);
+CREATE INDEX idx_psic_classes_search ON psic_classes USING GIN (to_tsvector('simple', name));
+CREATE INDEX idx_hs_codes_search ON hs_codes USING GIN (to_tsvector('simple', description));
+CREATE INDEX idx_units_name_trgm ON industrial_units USING GIN (name gin_trgm_ops);
+CREATE INDEX idx_responses_status ON survey_responses (status);
+CREATE INDEX idx_responses_sync_status ON survey_responses (sync_status);
+
+-- ===== Data-quality triggers =====
+
+-- Keep updated_at fresh on establishments
+CREATE FUNCTION fn_touch_updated_at() RETURNS trigger AS $$
+BEGIN NEW.updated_at := now(); RETURN NEW; END; $$ LANGUAGE plpgsql;
+CREATE TRIGGER trg_units_touch BEFORE UPDATE ON industrial_units
+  FOR EACH ROW EXECUTE FUNCTION fn_touch_updated_at();
+
+-- A chosen option must belong to the drop-down list of its question
+CREATE FUNCTION fn_check_option_list() RETURNS trigger AS $$
+DECLARE expected int; actual int;
 BEGIN
-    NEW.updated_at = now();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+  SELECT lookup_type_id INTO expected FROM survey_questions WHERE id = NEW.question_id;
+  SELECT type_id INTO actual FROM lookup_values WHERE id = NEW.option_id;
+  IF expected IS NULL OR actual IS DISTINCT FROM expected THEN
+    RAISE EXCEPTION 'Option % does not belong to the drop-down list of question %', NEW.option_id, NEW.question_id;
+  END IF;
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+CREATE TRIGGER trg_choices_list BEFORE INSERT OR UPDATE ON response_choices
+  FOR EACH ROW EXECUTE FUNCTION fn_check_option_list();
+CREATE TRIGGER trg_shares_list BEFORE INSERT OR UPDATE ON response_shares
+  FOR EACH ROW EXECUTE FUNCTION fn_check_option_list();
 
-DO $$
-DECLARE
-    t text;
+-- Confirmation rule: a surveyor's form is CONFIRMED only by the assigned supervisor (or an Admin).
+CREATE FUNCTION fn_check_confirmation() RETURNS trigger AS $$
+DECLARE filler_role text; filler_sup uuid; conf_role text;
 BEGIN
-    FOR t IN 
-        SELECT table_name 
-        FROM information_schema.columns 
-        WHERE column_name = 'updated_at' 
-          AND table_schema = 'public' 
-          AND table_name LIKE 'section_%' OR table_name = 'survey_submissions'
-    LOOP
-        EXECUTE format('DROP TRIGGER IF EXISTS trg_%I_updated ON %I', t, t);
-        EXECUTE format('CREATE TRIGGER trg_%I_updated BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION update_timestamp_column()', t, t);
-    END LOOP;
-END;
-$$;
+  IF NEW.status = 'CONFIRMED' THEN
+    IF NEW.confirmed_by IS NULL THEN
+      RAISE EXCEPTION 'A confirmed survey needs confirmed_by';
+    END IF;
+    SELECT r.code, u.supervisor_id INTO filler_role, filler_sup
+      FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = NEW.surveyor_id;
+    SELECT r.code INTO conf_role
+      FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = NEW.confirmed_by;
+    IF conf_role IS NULL OR conf_role NOT IN ('SUPERVISOR','ADMIN') THEN
+      RAISE EXCEPTION 'Only a Supervisor or Admin can confirm a survey';
+    END IF;
+    IF filler_role = 'SURVEYOR' AND conf_role = 'SUPERVISOR' AND filler_sup IS DISTINCT FROM NEW.confirmed_by THEN
+      RAISE EXCEPTION 'Only the surveyor''s assigned supervisor or an Admin can confirm this survey';
+    END IF;
+    IF NEW.confirmed_at IS NULL THEN NEW.confirmed_at := now(); END IF;
+  END IF;
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+CREATE TRIGGER trg_confirm_check BEFORE INSERT OR UPDATE OF status, confirmed_by ON survey_responses
+  FOR EACH ROW EXECUTE FUNCTION fn_check_confirmation();
+
+-- A tick-box answer must match the kind of row it answers (choice list or 1-5 rating)
+CREATE FUNCTION fn_check_matrix_answer() RETURNS trigger AS $$
+DECLARE m matrix_items%ROWTYPE; actual int;
+BEGIN
+  SELECT * INTO m FROM matrix_items WHERE id = NEW.item_id;
+  IF NEW.choice_value_id IS NOT NULL THEN
+    SELECT type_id INTO actual FROM lookup_values WHERE id = NEW.choice_value_id;
+    IF m.answer_type <> 'CHOICE' OR actual IS DISTINCT FROM m.scale_type_id THEN
+      RAISE EXCEPTION 'Choice % is not valid for matrix row %', NEW.choice_value_id, NEW.item_id;
+    END IF;
+  END IF;
+  IF NEW.rating IS NOT NULL AND m.answer_type <> 'RATING_1_5' THEN
+    RAISE EXCEPTION 'Matrix row % does not take a 1-5 rating', NEW.item_id;
+  END IF;
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+CREATE TRIGGER trg_matrix_check BEFORE INSERT OR UPDATE ON response_matrix_answers
+  FOR EACH ROW EXECUTE FUNCTION fn_check_matrix_answer();
+
+
+-- ===== Views for the dashboard and data checks =====
+-- Confirmed establishments per district, plus pending count (dashboard).
+CREATE MATERIALIZED VIEW mv_units_by_district AS
+SELECT d.id AS district_id, d.name AS district, COUNT(u.id) FILTER (WHERE u.approval_status='CONFIRMED') AS unit_count, COUNT(u.id) FILTER (WHERE u.approval_status='PENDING') AS pending_count FROM districts d LEFT JOIN industrial_units u ON u.district_id = d.id GROUP BY d.id, d.name;
+-- Confirmed establishments per PSIC division / sector (dashboard).
+CREATE MATERIALIZED VIEW mv_units_by_psic_division AS
+SELECT p.id AS psic_division_id, p.code, p.name AS psic_division, COUNT(u.id) FILTER (WHERE u.approval_status='CONFIRMED') AS unit_count FROM psic_divisions p LEFT JOIN industrial_units u ON u.psic_division_id = p.id AND u.approval_status='CONFIRMED' GROUP BY p.id, p.code, p.name;
+-- Confirmed establishments per cluster (dashboard).
+CREATE MATERIALIZED VIEW mv_units_by_cluster AS
+SELECT c.id AS cluster_id, c.name AS cluster, COUNT(u.id) FILTER (WHERE u.approval_status='CONFIRMED') AS unit_count FROM industrial_clusters c LEFT JOIN industrial_units u ON u.industrial_cluster_id = c.id GROUP BY c.id, c.name;
+-- Refresh on a schedule, e.g. every 15 minutes:  REFRESH MATERIALIZED VIEW mv_units_by_district;
+
+-- Flags answers whose percentages do not add up as expected.
+CREATE VIEW v_percentage_checks AS
+SELECT s.response_id, q.question_code AS check_name, SUM(s.percent_value) AS total_pct, '=100'::text AS rule, (SUM(s.percent_value) = 100) AS is_ok
+FROM response_shares s JOIN survey_questions q ON q.id = s.question_id GROUP BY s.response_id, q.question_code
+UNION ALL
+SELECT response_id, 'H_ENERGY_CONSUMPTION', SUM(share_pct), '=100', (SUM(share_pct) = 100) FROM energy_consumption GROUP BY response_id
+UNION ALL
+SELECT response_id, 'C_MAIN_PRODUCT_REVENUE', SUM(revenue_share_pct), '<=100', (SUM(revenue_share_pct) <= 100) FROM products WHERE product_kind='MAIN' GROUP BY response_id;

@@ -54,7 +54,7 @@ export default function AdminPage() {
         full_name: form.full_name.trim(),
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
-        password_hash: form.password,
+        password: form.password,
         role_id: form.role_id,
       });
       setSuccess(`✅ User "${form.username}" created successfully!`);

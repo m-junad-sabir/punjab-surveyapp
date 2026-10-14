@@ -1,9 +1,12 @@
 export declare class DuplicateFlag {
-    flag_id: number;
-    response_id: string;
+    id: number;
+    unit_id: string;
     matched_unit_id: string;
-    match_reason: string;
-    is_resolved: boolean;
+    reason: string;
+    name_similarity: number;
+    distance_m: number;
+    resolution: string;
     resolved_by: string;
     resolved_at: Date;
+    created_at: Date;
 }

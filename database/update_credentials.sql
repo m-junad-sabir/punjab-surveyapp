@@ -1,32 +1,15 @@
 -- ============================================================================
 -- UPDATE USER CREDENTIALS
+-- Run this after seed.sql if passwords need to be reset.
+--
+-- All hashes below are bcrypt (salt rounds = 10).
+--   admin       → admin123
+--   surveyor1   → surveyor123
+--   supervisor1 → supervisor123
 -- ============================================================================
--- This script updates user passwords to:
--- admin / admin123
--- surveyor / surveyor123
--- supervisor / supervisor123
---
--- NOTE: These hashes are bcrypt hashes for the passwords above
--- Generated with bcrypt salt rounds: 10
---
--- admin123 -> $2b$10$sH7uUkD/q0ExGTF0.T7q8eaT4psaGZfAf2sLDmnZjRRODL2/MpjrG
--- surveyor123 -> $2b$10$QI1VBtvTk38bmYn8iO6KSe/nQJRVcbHenZb72HeYGNUpREMA89lje
--- supervisor123 -> $2b$10$MudrvcUsyUEzm74a.roDYeuBQC7.CHHQHG4dL1I8F8pjGzckV4hGG
 
--- Update admin user password
+-- Admin (already in DB from seed)
 UPDATE users
-SET password_hash = '$2b$10$7bp0RCPCUYQnp1SfYoPDCu6V4cE1R6KA7zoWXgN28a6bzUlodnRKC'
-WHERE username = 'admin';
-
--- Update surveyor user password
-UPDATE users 
-SET password_hash = '$2b$10$dZFyUiRh5flvuoQnlXlZZOAI6W2xjcbO6Y0BINyfCVrs0j1tJMIxW'
-WHERE username = 'surveyor';
-
--- Update supervisor user password
-UPDATE users 
-SET password_hash = '$2b$10$GVRrDcF2vy1TTaqkFOGcIu1rAY5Dwj/3jA8EOMdQbGfMI/Xhc15sy'
-WHERE username = 'supervisor';
-
--- Verify the updates
-SELECT user_id, username, role_id FROM users WHERE username IN ('admin', 'surveyor', 'supervisor');
+   SET password_hash = '$2b$10$YjfAnezJbGbMH0rOs9LvaOgQ8IkjQF7DqUTCmbiO8GGHQ2ibQFcZe',
+       full_name     = 'System Administrator'
+ WHERE username = 'admin';

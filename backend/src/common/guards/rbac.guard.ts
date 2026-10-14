@@ -1,4 +1,10 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  UnauthorizedException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
@@ -6,44 +12,52 @@ import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 @Injectable()
 export class RbacGuard implements CanActivate {
   constructor(
-    private reflector: Reflector,
-    private jwtService: JwtService,
+    private readonly jwtService: JwtService,
+    private readonly reflector: Reflector,
   ) {}
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
+  canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
-    const authHeader = request.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Authentication token missing or invalid');
+    // ── Extract Bearer token ────────────────────────────────────────────────
+    const authHeader: string | undefined = request.headers['authorization'];
+    if (!authHeader?.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Missing or malformed Authorization header');
     }
 
-    const token = authHeader.split(' ')[1];
+    const token = authHeader.slice(7);
+
+    // ── Verify & decode ─────────────────────────────────────────────────────
     let payload: any;
     try {
-      payload = await this.jwtService.verifyAsync(token);
-      request.user = payload; // Attach user payload to request
-    } catch (err) {
-      throw new UnauthorizedException('Session expired or invalid signature');
+      payload = this.jwtService.verify(token, {
+        secret: process.env.JWT_SECRET || 'punjab-industries-survey-secret-key-2026',
+      });
+    } catch {
+      throw new UnauthorizedException('Token is invalid or expired');
     }
 
-    // Read required permissions from decorator metadata
-    const requiredPermissions = this.reflector.getAllAndOverride<string[]>(
+    // Attach decoded user to request for use in @CurrentUser()
+    request.user = payload;
+
+    // ── Permission check ────────────────────────────────────────────────────
+    const required: string[] = this.reflector.getAllAndOverride<string[]>(
       PERMISSIONS_KEY,
       [context.getHandler(), context.getClass()],
-    );
+    ) ?? [];
 
-    if (!requiredPermissions || requiredPermissions.length === 0) {
-      return true; // Authentication is sufficient, no specific permission required
+    if (required.length === 0) {
+      // Route requires authentication only — no specific permission needed
+      return true;
     }
 
-    const userPermissions: string[] = payload.permissions || [];
-    const hasAllPermissions = requiredPermissions.every((perm) =>
-      userPermissions.includes(perm),
-    );
+    const userPermissions: string[] = payload.permissions ?? [];
+    const hasAll = required.every((p) => userPermissions.includes(p));
 
-    if (!hasAllPermissions) {
-      throw new ForbiddenException('You do not have the required permission for this action');
+    if (!hasAll) {
+      throw new ForbiddenException(
+        `Insufficient permissions. Required: ${required.join(', ')}`,
+      );
     }
 
     return true;

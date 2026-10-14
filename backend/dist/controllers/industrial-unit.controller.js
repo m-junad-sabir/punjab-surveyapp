@@ -28,24 +28,22 @@ let IndustrialUnitController = class IndustrialUnitController {
     async findOne(id) {
         return this.unitService.findOne(id);
     }
-    async approveUnit(id, body, user) {
-        return this.unitService.approveUnit(id, user.user_id);
+    async approve(id, body, user) {
+        return this.unitService.approveUnit(id, user.user_id, body);
     }
-    async rejectUnit(id, body, user) {
-        return this.unitService.rejectUnit(id);
+    async reject(id, body, user) {
+        return this.unitService.rejectUnit(id, user.user_id, body);
     }
 };
 exports.IndustrialUnitController = IndustrialUnitController;
 __decorate([
     (0, common_1.Get)(),
-    (0, common_1.UseGuards)(rbac_guard_1.RbacGuard),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], IndustrialUnitController.prototype, "findAll", null);
 __decorate([
     (0, common_1.Get)(':id'),
-    (0, common_1.UseGuards)(rbac_guard_1.RbacGuard),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -53,28 +51,27 @@ __decorate([
 ], IndustrialUnitController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Post)(':id/approve'),
-    (0, common_1.UseGuards)(rbac_guard_1.RbacGuard),
-    (0, permissions_decorator_1.RequirePermissions)('UNIT_APPROVE'),
+    (0, permissions_decorator_1.RequirePermissions)('SURVEY_CONFIRM'),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, Object, Object]),
     __metadata("design:returntype", Promise)
-], IndustrialUnitController.prototype, "approveUnit", null);
+], IndustrialUnitController.prototype, "approve", null);
 __decorate([
     (0, common_1.Post)(':id/reject'),
-    (0, common_1.UseGuards)(rbac_guard_1.RbacGuard),
-    (0, permissions_decorator_1.RequirePermissions)('UNIT_APPROVE'),
+    (0, permissions_decorator_1.RequirePermissions)('SURVEY_CONFIRM'),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, Object, Object]),
     __metadata("design:returntype", Promise)
-], IndustrialUnitController.prototype, "rejectUnit", null);
+], IndustrialUnitController.prototype, "reject", null);
 exports.IndustrialUnitController = IndustrialUnitController = __decorate([
     (0, common_1.Controller)('industrial-units'),
+    (0, common_1.UseGuards)(rbac_guard_1.RbacGuard),
     __metadata("design:paramtypes", [industrial_unit_service_1.IndustrialUnitService])
 ], IndustrialUnitController);
 //# sourceMappingURL=industrial-unit.controller.js.map

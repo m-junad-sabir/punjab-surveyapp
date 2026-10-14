@@ -1,193 +1,110 @@
-# Tech Stack — Punjab Industrial Survey
+# Technology Stack
 
-**Government of the Punjab · Directorate General of Industries**  
-Mapping of Manufacturing Units in Punjab — Field Data Collection System
-
----
-
-## Overview
-
-A full-stack offline-first Progressive Web App (PWA) for field surveyors to collect industrial unit census data across Punjab. Surveyors work without internet, sync when connected, and supervisors review from the dashboard.
-
----
+Punjab Industrial Survey is a React Progressive Web App backed by a NestJS REST API and PostgreSQL/PostGIS. The field client is offline-first: form definitions and survey responses are cached locally and synchronized when a connection is available.
 
 ## Backend
 
-| Layer | Technology | Version | Purpose |
+| Component | Technology | Version line / configuration | Purpose |
 |---|---|---|---|
-| Runtime | Node.js | 20.x | JavaScript runtime |
-| Framework | NestJS | 10.x | Modular REST API framework |
-| Language | TypeScript | 5.1.x | Type-safe server code |
-| ORM | TypeORM | 0.3.x | Database access layer |
-| Database Driver | pg (node-postgres) | 8.11.x | PostgreSQL connection |
-| Auth | @nestjs/jwt + passport-jwt | 10.x / 4.x | JWT-based authentication |
-| Password Hashing | bcrypt | 5.1.x | Secure password storage |
-| Validation | class-validator + class-transformer | 0.14.x | DTO validation |
-| HTTP Server | Express (via @nestjs/platform-express) | 4.x | HTTP layer |
+| Runtime | Node.js | Local environment observed: 24.19.0 | Runs API and CLI tooling. |
+| Language | TypeScript | 5.x | Backend implementation. |
+| API framework | NestJS | 10.x | Controllers, services, modules, and HTTP lifecycle. |
+| HTTP adapter | Express | Nest platform-express | JSON API and request body parsing. |
+| Persistence | TypeORM | 0.3.x | Repositories and transaction manager. |
+| Database driver | `pg` | 8.x | PostgreSQL connection. |
+| Authentication | `@nestjs/jwt`, `passport-jwt` | JWT bearer tokens | Login/session token verification. |
+| Password hashing | `bcrypt` | 5.x | Password hash comparison and registration. |
+| Validation | `class-validator`, `class-transformer` | 0.14.x / 0.5.x | DTO validation and transformation dependencies. |
 
-### Architecture Pattern
-
-```
-src/
-├── controllers/        ← HTTP layer (routes, request/response)
-├── bll/services/       ← Business logic layer
-├── dal/entities/       ← TypeORM entities (database models)
-├── common/
-│   ├── guards/         ← RbacGuard (JWT + permission check)
-│   └── decorators/     ← @CurrentUser(), @RequirePermissions()
-└── database/           ← TypeORM configuration
-```
-
-### API Endpoints
-
-| Method | Route | Permission | Description |
-|---|---|---|---|
-| POST | `/auth/login` | None | Login, returns JWT |
-| POST | `/auth/register` | None | Register new user |
-| GET | `/survey-forms/active` | SURVEY_SUBMIT | Fetch full questionnaire |
-| POST | `/sync` | SURVEY_SUBMIT | Bulk sync offline responses |
-| GET | `/industrial-units` | Any auth | List all units |
-| GET | `/industrial-units/:id` | Any auth | Get unit detail |
-| POST | `/industrial-units/:id/approve` | UNIT_APPROVE | Approve unit |
-| POST | `/industrial-units/:id/reject` | UNIT_APPROVE | Reject unit |
-
-### Configuration
-
-```
-PORT=3001
-DB_HOST=localhost
-DB_PORT=5432
-DB_USERNAME=postgres
-DB_PASSWORD=postgres123
-DB_DATABASE=punjab_industrial_survey
-JWT_SECRET=punjab-industries-survey-secret-key-2026
-JWT_EXPIRES_IN=1d
-```
-
----
-
-## Database
-
-| Technology | Version | Purpose |
-|---|---|---|
-| PostgreSQL | 14+ | Primary relational database |
-| PostGIS | 3+ | Spatial/geographic queries |
-| uuid-ossp extension | — | UUID primary key generation |
-| pgcrypto extension | — | Cryptographic functions |
-
-### Key Database Features Used
-
-- **PostGIS geometry** — stores GPS coordinates as `Point(4326)` and boundaries as `MultiPolygon(4326)`
-- **ST_DWithin** — finds duplicate units within 50 metres
-- **JSONB columns** — stores flexible survey answers, options arrays, validation rules
-- **Generated columns** — auto-computed employment totals in section_d_workforce
-- **UUID primary keys** — client-generated response IDs for idempotent offline sync
-
----
+The backend is organized into `controllers` (HTTP routes), `bll/services` (business rules), `dal/entities` (TypeORM models), `common` (guards/decorators), and `database` (connection configuration). Database synchronization is disabled; use the checked-in SQL schema, seed, and migration files.
 
 ## Frontend
 
-| Technology | Version | Purpose |
+| Component | Technology | Version line | Purpose |
+|---|---|---|---|
+| UI | React | 18.x | Application interface. |
+| Language | TypeScript | 5.x | Typed frontend code. |
+| Routing | React Router DOM | 6.x | Login, survey, sync, supervisor, and admin routes. |
+| Build/dev server | Vite | 5.x | Development server and production build. |
+| PWA | `vite-plugin-pwa` / Workbox | 0.19.x | Web app manifest, service worker, asset caching. |
+| Offline database | `idb` / IndexedDB | 8.x | Cached form, local responses, and sync logs. |
+| Identifiers | `uuid` | 9.x | Client-side survey response IDs. |
+| PDF export | `jspdf` | 4.x | On-device survey PDF download. |
+
+Frontend code is divided into `pages`, `components`, `context`, `lib`, `styles`, and `types`. `SurveyContext` tracks connectivity and questionnaire cache/version; `AuthContext` manages the local JWT session and permissions.
+
+## Database
+
+| Component | Technology | Purpose |
 |---|---|---|
-| React | 18.2.x | UI framework |
-| TypeScript | 5.3.x | Type safety |
-| React Router DOM | 6.22.x | Client-side routing |
-| Vite | 5.1.x | Build tool & dev server |
-| vite-plugin-pwa | 0.19.x | Service worker & PWA manifest |
-| idb | 8.0.x | IndexedDB wrapper (offline storage) |
-| uuid | 9.0.x | Client-side UUID generation |
+| Relational database | PostgreSQL 16 schema target | Persistent users, forms, establishments, and normalized survey responses. |
+| Spatial support | PostGIS | Establishment GPS point storage and proximity checks. |
+| Text search extension | `pg_trgm` | Enabled by the schema for trigram indexing and future similarity queries. |
+| Driver | `pg` | Node.js PostgreSQL access. |
 
-### Frontend Architecture
+The schema contains 64 application tables, plus PostGIS's `spatial_ref_sys` in the inspected live database (65 base tables in that snapshot). `survey_responses` links a capture to its establishment, form, and surveyor. Sections B–K use normalized one-to-one/repeating tables, with generic choice/share/matrix answer tables where appropriate. Sync currently performs establishment-name similarity scoring in the NestJS service and GPS proximity checks through PostGIS.
 
-```
-src/
-├── pages/              ← Full page components
-│   ├── LoginPage.tsx
-│   ├── DashboardPage.tsx
-│   ├── SurveyPage.tsx       ← Main survey form (11 sections, 296 questions)
-│   ├── SurveyListPage.tsx
-│   ├── SyncPage.tsx
-│   ├── SupervisorPage.tsx
-│   ├── UnitDetailPage.tsx
-│   └── AdminPage.tsx
-├── components/
-│   ├── Layout.tsx           ← App bar + bottom nav + outlet
-│   └── ProtectedRoute.tsx   ← JWT auth guard
-├── context/
-│   ├── AuthContext.tsx      ← Login/logout, permissions, localStorage
-│   └── SurveyContext.tsx    ← Form cache, online/offline status
-├── lib/
-│   ├── api.ts               ← All API calls (fetch wrapper)
-│   ├── db.ts                ← IndexedDB CRUD (idb)
-│   └── deviceId.ts          ← Persistent device UUID
-├── styles/
-│   └── global.css           ← Premium navy/gold design system
-└── types/
-    └── index.ts             ← Shared TypeScript interfaces
-```
+## Current local development configuration
 
-### Offline-First Strategy
+| Service | Local port | Configuration |
+|---|---:|---|
+| NestJS API | `3002` | `PORT` in `backend/.env`; launch profile and startup script are aligned to 3002. |
+| Vite dev server | `5173` | Proxies `/api` to `http://localhost:3002`. |
+| PostgreSQL | `5432` by default | Override with backend database environment settings. |
 
-1. Survey form fetched from API and cached in IndexedDB (`survey_form` store)
-2. Responses saved locally as `draft` → `pending_sync` states
-3. Sync page pushes all `pending_sync` responses to `/sync` endpoint in one batch
-4. Server returns per-response status; local records updated accordingly
-5. Service Worker (Workbox) caches all static assets for full offline use
+Runtime database credentials and JWT secrets belong in the local environment and are intentionally not documented here. Do not commit secret values.
 
-### PWA Configuration
+## Start locally
 
-- `registerType: autoUpdate` — auto-installs service worker updates
-- `display: standalone` — app runs without browser chrome on mobile
-- `orientation: portrait` — locked for field use
-- Runtime cache: NetworkFirst for API calls with 5s timeout
-
----
-
-## Development Environment
-
-| Tool | Version |
-|---|---|
-| OS | Windows |
-| Node.js | 20.x |
-| npm | 10.x |
-| VS Code | Latest |
-
-### Commands
+Use separate terminals from the repository root:
 
 ```powershell
-# Backend
+# Terminal 1
 cd backend
 npm install
-npm run start:dev        # starts on port 3001
+npm run start:dev
 
-# Frontend
+# Terminal 2
 cd frontend
 npm install
-npm run dev              # starts on port 5173
-
-# Database
-$env:PGPASSWORD = "postgres123"
-psql -U postgres -d punjab_industrial_survey -f database/create_tables.sql
-psql -U postgres -d punjab_industrial_survey -f database/seed.sql
+npm run dev
 ```
 
-### Ports
+Use exactly one backend process on port 3002. If the port is already occupied, use the process already serving the API or stop that backend before restarting. `npm start` runs `nest start`; `npm run start:dev` runs Nest in watch mode.
 
-| Service | Port |
-|---|---|
-| Backend API | 3001 |
-| Frontend Dev Server | 5173 |
-| PostgreSQL | 5432 |
+For a fresh database, create the PostgreSQL database and apply `database/schema.sql`, then `database/seed.sql`. For an existing version-1 database, apply `database/migrate_full_questionnaire.sql`. TypeORM `synchronize` is false, so startup does not create or migrate application tables.
 
----
+## Offline/PWA behavior
 
-## Security
+- The service worker precaches frontend build assets and uses a NetworkFirst rule for its configured API cache pattern.
+- The form is fetched from `GET /survey-forms/active`, stored in IndexedDB, and checked against expected form version 2.
+- Draft and pending-sync answers remain on the device until explicitly synced.
+- Sync batches are sent to `POST /sync`; each response is persisted transactionally by the backend and returns an individual result.
+- PDF export is generated locally by `jspdf`; it does not require a server PDF endpoint.
 
-| Concern | Implementation |
-|---|---|
-| Authentication | JWT, 1-day expiry, embedded permissions |
-| Authorization | RBAC guard on every protected route |
-| Password storage | bcrypt with salt rounds = 10 |
-| CORS | Configured per environment |
-| SQL injection | Parameterized queries via TypeORM |
-| Transport | HTTPS in production |
+## Implemented API surface
+
+| Method | Route | Purpose |
+|---|---|---|
+| `POST` | `/auth/login` | Authenticate and return a JWT/user profile. |
+| `POST` | `/auth/register` | Create an account (`USER_CREATE`). |
+| `GET` | `/auth/users` | List accounts (`USER_CREATE`). |
+| `PATCH` | `/auth/users/:id/status` | Activate/deactivate an account (`USER_REMOVE`). |
+| `GET` | `/auth/me` | Return authenticated user claims. |
+| `GET` | `/survey-forms/active` | Return active form definition (`SURVEY_SUBMIT`). |
+| `POST` | `/sync` | Process a non-empty response batch (`SURVEY_SUBMIT`). |
+| `GET` | `/industrial-units`, `/industrial-units/:id` | List or retrieve units (authenticated). |
+| `POST` | `/industrial-units/:id/approve`, `/industrial-units/:id/reject` | Record review decision (`SURVEY_CONFIRM`). |
+
+## Verification commands
+
+```powershell
+# Frontend production bundle
+cd frontend
+npm run build
+npx tsc --noEmit
+
+# Backend compile
+cd ..\backend
+npm run build
+```

@@ -18,44 +18,44 @@ exports.SurveyQuestion = SurveyQuestion;
 __decorate([
     (0, typeorm_1.PrimaryGeneratedColumn)(),
     __metadata("design:type", Number)
-], SurveyQuestion.prototype, "question_id", void 0);
+], SurveyQuestion.prototype, "id", void 0);
 __decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", Number)
 ], SurveyQuestion.prototype, "section_id", void 0);
 __decorate([
-    (0, typeorm_1.ManyToOne)(() => survey_section_entity_1.SurveySection, (section) => section.questions, { onDelete: 'CASCADE' }),
-    (0, typeorm_1.JoinColumn)({ name: 'section_id' }),
-    __metadata("design:type", survey_section_entity_1.SurveySection)
-], SurveyQuestion.prototype, "section", void 0);
-__decorate([
     (0, typeorm_1.Column)({ length: 30 }),
     __metadata("design:type", String)
 ], SurveyQuestion.prototype, "question_code", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ length: 30, nullable: true }),
+    __metadata("design:type", String)
+], SurveyQuestion.prototype, "question_no", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'text' }),
     __metadata("design:type", String)
 ], SurveyQuestion.prototype, "question_text", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ length: 20 }),
+    (0, typeorm_1.Column)({ length: 30 }),
     __metadata("design:type", String)
-], SurveyQuestion.prototype, "question_type", void 0);
+], SurveyQuestion.prototype, "answer_type", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Number)
+], SurveyQuestion.prototype, "lookup_type_id", void 0);
 __decorate([
     (0, typeorm_1.Column)({ default: false }),
     __metadata("design:type", Boolean)
-], SurveyQuestion.prototype, "is_mandatory", void 0);
+], SurveyQuestion.prototype, "is_required", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'jsonb', nullable: true }),
-    __metadata("design:type", Object)
-], SurveyQuestion.prototype, "validation_rule", void 0);
+    (0, typeorm_1.Column)({ length: 80, nullable: true }),
+    __metadata("design:type", String)
+], SurveyQuestion.prototype, "stored_in", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'jsonb', nullable: true }),
-    __metadata("design:type", Object)
-], SurveyQuestion.prototype, "options", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ default: 0 }),
-    __metadata("design:type", Number)
-], SurveyQuestion.prototype, "sort_order", void 0);
+    (0, typeorm_1.ManyToOne)(() => survey_section_entity_1.SurveySection, (s) => s.questions),
+    (0, typeorm_1.JoinColumn)({ name: 'section_id' }),
+    __metadata("design:type", survey_section_entity_1.SurveySection)
+], SurveyQuestion.prototype, "section", void 0);
 exports.SurveyQuestion = SurveyQuestion = __decorate([
     (0, typeorm_1.Entity)({ name: 'survey_questions' })
 ], SurveyQuestion);

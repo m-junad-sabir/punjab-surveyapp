@@ -7,76 +7,94 @@ import {
   ReactNode,
 } from 'react';
 import { api } from '../lib/api';
-import { getSurveyForm, saveSurveyForm, getAllSubmissions, getPendingSubmissions } from '../lib/db';
-import type { SurveyForm, SurveySubmissionDraft } from '../types';
+import { getSurveyForm, saveSurveyForm, getAllResponses, getPendingResponses } from '../lib/db';
+import type { SurveyForm, OfflineResponse } from '../types';
 import { useAuth } from './AuthContext';
 
-// The version the backend is serving — bump this whenever seed.sql is re-run
-// with a new form version so stale caches are detected immediately.
-const CURRENT_FORM_VERSION = '2.0';
+/**
+ * Expected form version from the backend.
+ * The API returns version as an integer (survey_forms.version).
+ * Bump this constant whenever the questionnaire is re-seeded so every
+ * browser discards its cached form and re-fetches.
+ */
+const CURRENT_FORM_VERSION = 2;
 
 interface SurveyContextValue {
-  form: SurveyForm | null;
-  formLoading: boolean;
-  fetchForm: () => Promise<void>;
-  responses: SurveySubmissionDraft[];
-  pendingCount: number;
+  form:             SurveyForm | null;
+  formLoading:      boolean;
+  formError:        string | null;
+  fetchForm:        () => Promise<void>;
+  responses:        OfflineResponse[];
+  pendingCount:     number;
   refreshResponses: () => Promise<void>;
-  isOnline: boolean;
+  isOnline:         boolean;
 }
 
 const SurveyContext = createContext<SurveyContextValue | null>(null);
 
 export function SurveyProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
-  const [form, setForm] = useState<SurveyForm | null>(null);
-  const [formLoading, setFormLoading] = useState(false);
-  const [responses, setResponses] = useState<SurveySubmissionDraft[]>([]);
+  const [form,         setForm]         = useState<SurveyForm | null>(null);
+  const [formLoading,  setFormLoading]  = useState(false);
+  const [formError,    setFormError]    = useState<string | null>(null);
+  const [responses,    setResponses]    = useState<OfflineResponse[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isOnline,     setIsOnline]     = useState(navigator.onLine);
 
+  // ── Online/offline tracking ──────────────────────────────────────────────
   useEffect(() => {
-    const onOnline  = () => setIsOnline(true);
-    const onOffline = () => setIsOnline(false);
-    window.addEventListener('online',  onOnline);
-    window.addEventListener('offline', onOffline);
+    const up   = () => setIsOnline(true);
+    const down = () => setIsOnline(false);
+    window.addEventListener('online',  up);
+    window.addEventListener('offline', down);
     return () => {
-      window.removeEventListener('online',  onOnline);
-      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online',  up);
+      window.removeEventListener('offline', down);
     };
   }, []);
 
+  // ── Fetch form from server ───────────────────────────────────────────────
   const fetchForm = useCallback(async () => {
     setFormLoading(true);
+    setFormError(null);
     try {
       const data = await api.form.getActive();
+      if (data.version < CURRENT_FORM_VERSION) {
+        throw new Error(
+          `The server survey form is version ${data.version}; run database/migrate_full_questionnaire.sql to load the complete questionnaire.`,
+        );
+      }
       await saveSurveyForm(data);
       setForm(data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to download the survey form.';
+      setFormError(message);
     } finally {
       setFormLoading(false);
     }
   }, []);
 
-  // On mount: load cached form, then immediately re-fetch from server if
-  // online so any questionnaire update is picked up without user action.
+  // ── On mount: load cache, then silently refresh if online or stale ───────
   useEffect(() => {
     getSurveyForm().then((cached) => {
-      if (cached) setForm(cached);
+      if (cached && cached.version >= CURRENT_FORM_VERSION) setForm(cached);
+      else if (cached) setForm(null);
 
-      // Always re-fetch when online so stale caches are replaced silently.
-      // If cached version doesn't match the expected version, force-fetch.
-      const isStale = !cached || cached.version !== CURRENT_FORM_VERSION;
+      const isStale = !cached || cached.version < CURRENT_FORM_VERSION;
+
       if (isAuthenticated && (navigator.onLine || isStale)) {
         fetchForm().catch(() => {
-          // Offline and no cache — form stays null, Dashboard shows warning.
+          // Offline and no/stale cache — form stays null; Dashboard shows warning
         });
       }
     });
-  }, [fetchForm, isAuthenticated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
 
+  // ── Response list ────────────────────────────────────────────────────────
   const refreshResponses = useCallback(async () => {
-    const all = await getAllSubmissions();
-    const pending = await getPendingSubmissions();
+    const all     = await getAllResponses();
+    const pending = await getPendingResponses();
     setResponses(all.sort((a, b) => (b.created_at > a.created_at ? 1 : -1)));
     setPendingCount(pending.length);
   }, []);
@@ -85,7 +103,7 @@ export function SurveyProvider({ children }: { children: ReactNode }) {
 
   return (
     <SurveyContext.Provider
-      value={{ form, formLoading, fetchForm, responses, pendingCount, refreshResponses, isOnline }}
+      value={{ form, formLoading, formError, fetchForm, responses, pendingCount, refreshResponses, isOnline }}
     >
       {children}
     </SurveyContext.Provider>

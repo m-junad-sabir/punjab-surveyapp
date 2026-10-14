@@ -1,19 +1,13 @@
-import { IndustrialUnitService } from '../bll/services/industrial-unit.service';
+import { IndustrialUnitService, ApproveRejectDto } from '../bll/services/industrial-unit.service';
 export declare class IndustrialUnitController {
-    private unitService;
+    private readonly unitService;
     constructor(unitService: IndustrialUnitService);
-    findAll(): Promise<any>;
-    findOne(id: string): Promise<any>;
-    approveUnit(id: string, body: {
-        response_id?: string;
-        remarks?: string;
-    }, user: any): Promise<{
+    findAll(): Promise<import("../dal/entities/industrial-unit.entity").IndustrialUnit[]>;
+    findOne(id: string): Promise<import("../dal/entities/industrial-unit.entity").IndustrialUnit>;
+    approve(id: string, body: ApproveRejectDto, user: any): Promise<{
         message: string;
     }>;
-    rejectUnit(id: string, body: {
-        response_id?: string;
-        remarks?: string;
-    }, user: any): Promise<{
+    reject(id: string, body: ApproveRejectDto, user: any): Promise<{
         message: string;
     }>;
 }

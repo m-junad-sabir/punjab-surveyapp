@@ -1,6 +1,5 @@
-import { SurveyAnswer } from './survey-answer.entity';
 export declare class SurveyResponse {
-    response_id: string;
+    id: string;
     form_id: number;
     unit_id: string;
     surveyor_id: string;
@@ -8,13 +7,13 @@ export declare class SurveyResponse {
     gps_lat: number;
     gps_lng: number;
     gps_accuracy_m: number;
-    started_at: Date;
-    submitted_at: Date;
+    status: string;
     sync_status: string;
-    is_offline_capture: boolean;
-    completeness_score: number;
-    is_duplicate: boolean;
-    created_at: Date;
-    updated_at: Date;
-    answers: SurveyAnswer[];
+    started_at: Date;
+    completed_at: Date;
+    submitted_at: Date;
+    confirmed_by: string;
+    confirmed_at: Date;
+    synced_at: Date;
+    app_version: string;
 }

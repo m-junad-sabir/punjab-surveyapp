@@ -1,184 +1,1007 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
-import { useAuth } from '../context/AuthContext';
+import { useSurvey } from '../context/SurveyContext';
+import { useAuth }   from '../context/AuthContext';
+import { saveResponse, getResponse } from '../lib/db';
 import { getDeviceId } from '../lib/deviceId';
-import { getSubmission, saveSubmission } from '../lib/db';
-import type { SurveySectionKey, SurveySubmissionDraft } from '../types';
+import { downloadSurveyPdf } from '../lib/surveyPdf';
+import type {
+  OfflineResponse,
+  SurveySection,
+  SurveyQuestion,
+  QuestionOption,
+  AnswerType,
+  SurveyInputField,
+  SurveyMatrixItem,
+} from '../types';
 
-type FieldType = 'text' | 'number' | 'date' | 'textarea' | 'select' | 'boolean' | 'gps' | 'photo';
-type Field = { key: string; code: string; label: string; type?: FieldType; required?: boolean; options?: string[]; min?: number; max?: number };
-type Grid = { key: string; label: string; columns: Field[] };
-type Definition = { key: SurveySectionKey; title: string; fields: Field[]; grid?: Grid };
+// ─── GPS capture ──────────────────────────────────────────────────────────────
+function GpsField({ value, onChange }: { value: any; onChange: (v: any) => void }) {
+  const [loading, setLoading] = useState(false);
 
-const punjabLocations: Record<string, Record<string, string[]>> = {
-  Lahore: { 'Lahore District': ['Lahore City', 'Model Town', 'Raiwind', 'Shalimar'] },
-  Kasur: { 'Kasur District': ['Kasur', 'Chunian', 'Kot Radha Kishan', 'Pattoki'] },
-  Sheikhupura: { 'Sheikhupura District': ['Sheikhupura', 'Ferozewala', 'Muridke', 'Safdarabad', 'Sharaqpur'] },
-  Nankana: { 'Nankana Sahib District': ['Nankana Sahib', 'Shahkot', 'Sangla Hill'] },
-  Faisalabad: { 'Faisalabad District': ['Faisalabad City', 'Jaranwala', 'Samundri', 'Tandlianwala'] },
-  Jhang: { 'Jhang District': ['Jhang', 'Shorkot', 'Ahmadpur Sial'] },
-  TobaTekSingh: { 'Toba Tek Singh District': ['Toba Tek Singh', 'Gojra', 'Kamalia', 'Pir Mahal'] },
-  Chiniot: { 'Chiniot District': ['Chiniot', 'Bhawana', 'Lalian'] },
-  Gujranwala: { 'Gujranwala District': ['Gujranwala City', 'Kamoke', 'Nowshera Virkan', 'Wazirabad'] },
-  Sialkot: { 'Sialkot District': ['Sialkot', 'Daska', 'Pasrur', 'Sambrial'] },
-  Narowal: { 'Narowal District': ['Narowal', 'Shakargarh', 'Zafarwal'] },
-  Gujrat: { 'Gujrat District': ['Gujrat', 'Kharian', 'Sarai Alamgir'] },
-  Hafizabad: { 'Hafizabad District': ['Hafizabad', 'Pindi Bhattian'] },
-  MandiBahauddin: { 'Mandi Bahauddin District': ['Mandi Bahauddin', 'Malakwal', 'Phalia'] },
-  Rawalpindi: { 'Rawalpindi District': ['Rawalpindi', 'Gujar Khan', 'Kahuta', 'Kallar Syedan', 'Kotli Sattian', 'Murree', 'Taxila'] },
-  Attock: { 'Attock District': ['Attock', 'Fateh Jang', 'Hasan Abdal', 'Hazro', 'Jand', 'Pindi Gheb'] },
-  Chakwal: { 'Chakwal District': ['Chakwal', 'Choa Saidan Shah', 'Kallar Kahar', 'Talagang'] },
-  Jhelum: { 'Jhelum District': ['Jhelum', 'Dina', 'Pind Dadan Khan', 'Sohawa'] },
-  Sargodha: { 'Sargodha District': ['Sargodha', 'Bhalwal', 'Bhera', 'Kot Momin', 'Sahiwal', 'Shahpur'] },
-  Khushab: { 'Khushab District': ['Khushab', 'Jauharabad', 'Noorpur Thal', 'Quaidabad'] },
-  Mianwali: { 'Mianwali District': ['Mianwali', 'Isa Khel', 'Piplan'] },
-  Bhakkar: { 'Bhakkar District': ['Bhakkar', 'Darya Khan', 'Kalur Kot', 'Mankera'] },
-  Multan: { 'Multan District': ['Multan City', 'Jalalpur Pirwala', 'Shujabad'] },
-  Khanewal: { 'Khanewal District': ['Khanewal', 'Jahanian', 'Kabirwala', 'Mian Channu'] },
-  Lodhran: { 'Lodhran District': ['Lodhran', 'Dunyapur', 'Kahror Pacca'] },
-  Vehari: { 'Vehari District': ['Vehari', 'Burewala', 'Mailsi'] },
-  Bahawalpur: { 'Bahawalpur District': ['Bahawalpur', 'Ahmadpur East', 'Hasilpur', 'Khairpur Tamewali', 'Yazman'] },
-  Bahawalnagar: { 'Bahawalnagar District': ['Bahawalnagar', 'Chishtian', 'Fort Abbas', 'Haroonabad', 'Minchinabad'] },
-  RahimYarKhan: { 'Rahim Yar Khan District': ['Rahim Yar Khan', 'Khanpur', 'Liaquatpur', 'Sadiqabad'] },
-  DeraGhaziKhan: { 'Dera Ghazi Khan District': ['Dera Ghazi Khan', 'De-Excluded Area', 'Kot Chutta'] },
-  Layyah: { 'Layyah District': ['Layyah', 'Choubara', 'Karor Lal Esan'] },
-  Muzaffargarh: { 'Muzaffargarh District': ['Muzaffargarh', 'Alipur', 'Jatoi', 'Kot Addu'] },
-  Rajanpur: { 'Rajanpur District': ['Rajanpur', 'Jampur', 'Rojhan'] },
-};
+  const capture = () => {
+    if (!navigator.geolocation) { alert('GPS not supported on this device.'); return; }
+    setLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        onChange({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+        setLoading(false);
+      },
+      (err) => { alert('GPS error: ' + err.message); setLoading(false); },
+      { enableHighAccuracy: true, timeout: 20000 },
+    );
+  };
 
-const cityOptions = Object.keys(punjabLocations).map((key) => key.replace(/([A-Z])/g, ' $1').trim());
-const locationKey = (city: string) => Object.keys(punjabLocations).find((key) => key.replace(/([A-Z])/g, ' $1').trim() === city) || city;
+  return (
+    <div style={{
+      background: value?.lat ? 'var(--success-bg)' : 'var(--surface2)',
+      border: `1.5px dashed ${value?.lat ? 'var(--secondary)' : 'var(--border)'}`,
+      borderRadius: 'var(--radius)', padding: 14, textAlign: 'center',
+    }}>
+      {value?.lat ? (
+        <>
+          <div style={{ fontSize: 22, marginBottom: 4 }}>📍</div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--success)' }}>Location Captured</div>
+          <div style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--primary)', marginTop: 4 }}>
+            {value.lat.toFixed(6)}, {value.lng.toFixed(6)}
+            {value.accuracy != null ? ` · ±${Math.round(value.accuracy)}m` : ''}
+          </div>
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 10 }} onClick={capture}>
+            🔄 Re-capture
+          </button>
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>📍</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+            GPS location not captured yet
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={capture} disabled={loading}>
+            {loading ? <><span className="spinner spinner-sm" /> Getting…</> : 'Capture GPS Location'}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
 
-const select = (key: string, code: string, label: string, options: string[], required = false): Field => ({ key, code, label, type: 'select', options, required });
-const numeric = (key: string, code: string, label: string, required = false, min?: number, max?: number): Field => ({ key, code, label, type: 'number', required, min, max });
+// ─── Photo capture ────────────────────────────────────────────────────────────
+function PhotoField({ qid, value, onChange }: { qid: number; value: any; onChange: (v: any) => void }) {
+  const [preview, setPreview] = useState<string | null>(value?.preview ?? null);
 
-const definitions: Definition[] = [
-  { key: 'A', title: 'Establishment Identity', fields: [
-    { key: 'coordinates', code: 'HDR.GPS', label: 'Geotag Location (GPS Coordinates)', type: 'gps', required: true },
-    { key: 'photo_interview_session', code: 'HDR.P1', label: 'Photo: Interview Session (timestamped)', type: 'photo' },
-    { key: 'establishment_name', code: 'A.1', label: 'Name of Establishment', required: true },
-    numeric('year_of_establishment', 'A.2', 'Year of Establishment', false, 1800, 2100),
-    { key: 'address', code: 'A.3', label: 'Address of Establishment', type: 'textarea', required: true },
-    { key: 'phone_cell', code: 'A.5', label: 'Phone / Cell Number', type: 'text' }, { key: 'email', code: 'A.5', label: 'Email', type: 'text' },
-    { key: 'unit_type', code: 'A.6', label: 'Type of Unit' }, { key: 'psic_class', code: 'A.7', label: 'PSIC Class' },
-    select('area_zone_type', 'A.8', 'Area / Zone Type', ['Industrial Area', 'Residential Area', 'Commercial Area', 'Rural / Agricultural', 'Special Economic Zone / Industrial Estate', 'Other']),
-    select('ownership_type', 'A.9', 'Ownership', ['State owned/Public Sector', 'Privately Owned', 'Foreign Controlled Enterprise', 'Other, if any']),
-    select('legal_structure', 'A.10', 'Legal Structure', ['Sole Proprietorship', 'Partnership', 'Private Limited Company', 'Public Limited Company', 'Cooperative / Society', 'Limited Liability Company', 'Others']),
-  ] },
-  { key: 'B', title: 'Operational Details', fields: [
-    select('operational_status', 'B.1', 'Current Operational Status', ['Fully Operational', 'Partially Operational', 'Seasonal', 'Temporarily Closed', 'Permanently Closed'], true),
-    { key: 'seasonal_period_specify', code: 'B.1', label: 'Seasonal Period' }, { key: 'reason_for_closure', code: 'B.2', label: 'Reason for Closure', type: 'textarea' },
-    select('daily_operational_hours', 'B.3', 'Daily Operational Hours', ['Less than 8 hrs.', '8 hrs. (Single Shift)', '16 hrs. (Double Shift)', '24 hrs. (Triple Shift)', 'Flexible / Variable']),
-    numeric('working_days_per_week', 'B.3', 'Working Days per Week'), numeric('working_months_per_year', 'B.3', 'Working Months per Year'),
-  ] },
-  { key: 'C', title: 'Core and Secondary Activities', fields: [{ key: 'has_secondary_products', code: 'C.2', label: 'Has Secondary Products', type: 'boolean' }, { key: 'summary_remarks', code: 'C.3', label: 'Activity Summary', type: 'textarea' }], grid: { key: 'products', label: 'Products', columns: [select('product_category', 'C.1', 'Category', ['Main', 'Secondary'], true), { key: 'product_name', code: 'C.1', label: 'Product Name', required: true }, { key: 'unit_of_measurement', code: 'C.1', label: 'Unit', required: true }, numeric('daily_avg_output', 'C.1', 'Daily Output')] } },
-  { key: 'D', title: 'Workforce', fields: [numeric('regular_male', 'D.1', 'Regular Male'), numeric('regular_female', 'D.1', 'Regular Female'), numeric('contract_male', 'D.1', 'Contract Male'), numeric('contract_female', 'D.1', 'Contract Female'), numeric('daily_wages_male', 'D.1', 'Daily Wages Male'), numeric('daily_wages_female', 'D.1', 'Daily Wages Female'), numeric('grand_total_employment', 'D.1', 'Grand Total Employment'), { key: 'is_seasonal_average', code: 'D.1', label: 'Seasonal Average', type: 'boolean' }, { key: 'channel_others_specify', code: 'D.3', label: 'Hiring Notes', type: 'textarea' }] },
-  { key: 'E', title: 'Backward Linkages', fields: [select('active_suppliers_count', 'E.1', 'Active Suppliers', ['1–2', '3–5', '6–10', 'More than 10']), { key: 'supplier_dependency', code: 'E.1', label: 'Supplier Dependency', type: 'textarea' }, { key: 'has_supply_disruption_12m', code: 'E.2', label: 'Supply Disruption in Last 12 Months', type: 'boolean' }], grid: { key: 'raw_materials', label: 'Raw Materials', columns: [{ key: 'input_name', code: 'E.3', label: 'Input Name', required: true }, { key: 'unit_of_measurement', code: 'E.3', label: 'Unit', required: true }, { key: 'transformation_stage', code: 'E.3', label: 'Stage' }, numeric('share_in_cost_pct', 'E.3', 'Share of Cost %')] } },
-  { key: 'F', title: 'Forward Linkages', fields: [{ key: 'global_supply_chain_role', code: 'F.1', label: 'Global Supply Chain Role' }, { key: 'active_buyers_count', code: 'F.2', label: 'Active Buyers' }, { key: 'has_demand_disruption_12m', code: 'F.3', label: 'Demand Disruption in Last 12 Months', type: 'boolean' }], grid: { key: 'product_sales', label: 'Product Sales', columns: [{ key: 'product_name', code: 'F.4', label: 'Product Name', required: true }, { key: 'unit_of_measurement', code: 'F.4', label: 'Unit', required: true }, { key: 'form_at_transformation', code: 'F.4', label: 'Transformation Stage' }, numeric('share_in_revenue_pct', 'F.4', 'Share of Revenue %')] } },
-  { key: 'G', title: 'Technology and Production Processes', fields: [{ key: 'processing_capacity', code: 'G.1', label: 'Processing Capacity', type: 'textarea' }, select('capacity_utilization_rate', 'G.2', 'Capacity Utilization', ['40–59%', '60–74%', '75–84%', '85–95%', 'Above 95%']), select('primary_machinery_source', 'G.3', 'Primary Machinery Source', ['Local', 'Imported', 'Both']), select('machine_integration_level', 'G.4', 'Machine Integration Level', ['No integration', 'Partial integration', 'Full integration']), { key: 'maintenance_approach', code: 'G.5', label: 'Maintenance Approach' }, select('rd_expenditure', 'G.6', 'R&D Expenditure', ['No R&D expenditure', 'Less than 1%', '1–3%', '3–5%', 'More than 5%'])], grid: { key: 'critical_machines', label: 'Critical Machines', columns: [{ key: 'machine_name', code: 'G.7', label: 'Machine Name', required: true }, numeric('quantity', 'G.7', 'Quantity'), { key: 'salient_specification', code: 'G.7', label: 'Specification' }] } },
-  { key: 'H', title: 'Energy and Waste Management', fields: [{ key: 'energy_consumption_data', code: 'H.1', label: 'Energy Consumption Details', type: 'textarea' }, { key: 'power_sources_details', code: 'H.2', label: 'Power Sources', type: 'textarea' }, numeric('captive_capacity_kw', 'H.3', 'Captive Capacity (kW)'), numeric('export_capacity_kw', 'H.3', 'Export Capacity (kW)'), { key: 'water_sourcing', code: 'H.4', label: 'Water Sourcing', type: 'textarea' }, { key: 'wastewater_management', code: 'H.5', label: 'Wastewater Management', type: 'textarea' }, { key: 'solid_waste_management', code: 'H.6', label: 'Solid Waste Management', type: 'textarea' }, { key: 'green_practices', code: 'H.7', label: 'Green Practices', type: 'textarea' }] },
-  { key: 'I', title: 'Certifications and Compliances', fields: [{ key: 'fire_safety_noc', code: 'I.1', label: 'Fire Safety NOC', type: 'boolean' }, { key: 'boiler_inspection_cert', code: 'I.2', label: 'Boiler Inspection Certificate', type: 'boolean' }, { key: 'environmental_noc_epa', code: 'I.3', label: 'Environmental NOC / EPA', type: 'boolean' }, { key: 'iee_eia_approval', code: 'I.4', label: 'IEE / EIA Approval', type: 'boolean' }, { key: 'certifications_status', code: 'I.5', label: 'Other Certifications', type: 'textarea' }] },
-  { key: 'J', title: 'Strategic Business Plan', fields: [{ key: 'operational_planning', code: 'J.1', label: 'Operational Planning', type: 'textarea' }, { key: 'advisory_support', code: 'J.2', label: 'Advisory Support', type: 'textarea' }, select('reinvestment_strategy', 'J.3', 'Reinvestment Strategy', ['None — profits fully withdrawn', 'Less than 25%', '25–50%', '51–75%', 'More than 75%']), { key: 'upscaling_plans', code: 'J.4', label: 'Upscaling Plans', type: 'textarea' }, select('upscaling_timeframe', 'J.5', 'Upscaling Timeframe', ['Within 1 year', '1–2 years', '2–3 years', 'Beyond 3 years'])] },
-  { key: 'K', title: 'Future Collaborations and Barriers', fields: [{ key: 'future_collaborations', code: 'K.1', label: 'Future Collaborations', type: 'textarea' }, { key: 'government_support_required', code: 'K.2', label: 'Government Support Required', type: 'textarea' }, { key: 'barrier_ratings', code: 'K.3', label: 'Barrier Ratings', type: 'textarea' }, { key: 'most_critical_barrier', code: 'K.4', label: 'Most Critical Barrier', type: 'textarea' }] },
-];
-
-const emptySections = () => Object.fromEntries(definitions.map(({ key }) => [key, {}])) as Record<SurveySectionKey, Record<string, any>>;
-const isEmpty = (value: any) => value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0);
-
-function PhotoField({ value, onChange }: { value: any; onChange: (value: any) => void }) {
-  const [preview, setPreview] = useState<string | null>(value?.preview || null);
-  const inputId = `photo-${Math.random().toString(36).slice(2)}`;
-  const handleFile = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      const image = new Image();
-      image.onload = () => {
-        const maxDimension = 1600;
-        const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(image.width * scale));
-        canvas.height = Math.max(1, Math.round(image.height * scale));
-        canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
-        const data = canvas.toDataURL('image/jpeg', 0.78);
-        setPreview(data);
-        onChange({ file_name: file.name, preview: data, type: 'image/jpeg' });
-      };
-      image.src = String(reader.result);
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      setPreview(dataUrl);
+      onChange({ file_name: file.name, preview: dataUrl, type: file.type });
     };
     reader.readAsDataURL(file);
   };
-  return <div><label className={`photo-upload ${preview ? 'is-done' : ''}`} htmlFor={inputId}>{preview ? <img className="photo-preview" src={preview} alt="Captured preview" /> : <><span className="capture-icon">📷</span><span className="capture-label">Tap to capture or upload photo</span></>}</label><input id={inputId} type="file" accept="image/*" capture="environment" hidden onChange={handleFile} />{preview && <button className="btn btn-text btn-sm" type="button" onClick={() => { setPreview(null); onChange(null); }}>Remove photo</button>}</div>;
-}
 
-function Input({ field, value, onChange }: { field: Field; value: any; onChange: (value: any) => void }) {
-  if (field.type === 'boolean') return <div className="toggle-wrapper"><label className="toggle"><input type="checkbox" checked={value === true} onChange={(event) => onChange(event.target.checked)} /><span className="toggle-slider" /></label><span>{value ? 'Yes' : 'No'}</span></div>;
-  if (field.type === 'gps') return <div className={`capture-box ${value?.lat ? 'is-done' : ''}`}>{value?.lat ? <><span className="capture-icon">📍</span><div className="capture-label">Location captured</div><div className="gps-coords">{value.lat.toFixed(6)}, {value.lng.toFixed(6)} · ±{Math.round(value.accuracy || 0)}m</div><button className="btn btn-ghost btn-sm" type="button" onClick={() => navigator.geolocation?.getCurrentPosition((position) => onChange({ lat: position.coords.latitude, lng: position.coords.longitude, accuracy: position.coords.accuracy }))}>Re-capture</button></> : <><span className="capture-icon">📍</span><div className="capture-label">GPS location not captured</div><button className="btn btn-primary btn-sm" type="button" onClick={() => navigator.geolocation?.getCurrentPosition((position) => onChange({ lat: position.coords.latitude, lng: position.coords.longitude, accuracy: position.coords.accuracy }))}>Capture GPS Location</button></>}</div>;
-  if (field.type === 'photo') return <PhotoField value={value} onChange={onChange} />;
-  if (field.type === 'textarea') return <textarea className="form-textarea" rows={3} value={value || ''} onChange={(event) => onChange(event.target.value)} />;
-  if (field.type === 'select') return <select className="form-select" value={value || ''} onChange={(event) => onChange(event.target.value)}><option value="">— Select an option —</option>{field.options?.map((option) => <option key={option} value={option}>{option}</option>)}</select>;
-  return <input className="form-input" type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'} min={field.min} max={field.max} value={value ?? ''} onChange={(event) => onChange(field.type === 'number' ? (event.target.value === '' ? null : Number(event.target.value)) : event.target.value)} />;
-}
-
-function LocationFields({ data, update, errors }: { data: Record<string, any>; update: (key: string, value: any) => void; errors: string[] }) {
-  const districts = data.city ? Object.keys(punjabLocations[locationKey(data.city)] || {}) : [];
-  const tehsils = data.district ? Object.values(punjabLocations[locationKey(data.city)]?.[data.district] || {}) : [];
-  const locationSelect = (key: string, code: string, label: string, value: string, options: string[], disabled: boolean, onChange: (value: string) => void) => (
-    <div className={`question-card${errors.includes(label) ? ' error' : ''}`}>
-      <div className="question-meta"><span className="question-code">{code}</span><span className="question-mandatory">★ Required</span></div>
-      <div className="question-text">{label}</div>
-      <select className="form-select" value={value || ''} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-        <option value="">{disabled ? `Select ${label === 'District' ? 'a city' : 'a district'} first` : `— Select ${label.toLowerCase()} —`}</option>
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
-      </select>
-      {errors.includes(label) && <div className="form-error">⚠ This field is required.</div>}
+  return (
+    <div>
+      <label htmlFor={`photo-${qid}`} style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', background: 'var(--surface2)',
+        border: '1.5px dashed var(--border)', borderRadius: 'var(--radius)',
+        padding: 16, cursor: 'pointer', minHeight: 100,
+      }}>
+        {preview
+          ? <img src={preview} alt="preview" style={{ maxWidth: '100%', maxHeight: 140, borderRadius: 6, objectFit: 'cover' }} />
+          : <><div style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Tap to capture or upload</div></>
+        }
+      </label>
+      <input id={`photo-${qid}`} type="file" accept="image/*" capture="environment"
+        style={{ display: 'none' }} onChange={handleFile} />
+      {preview && (
+        <button className="btn btn-ghost btn-sm" style={{ marginTop: 6, color: 'var(--danger)' }}
+          onClick={() => { setPreview(null); onChange(null); }}>
+          ✕ Remove
+        </button>
+      )}
     </div>
   );
-  return <>
-    {locationSelect('city', 'A.4', 'City', data.city, cityOptions, false, (value) => { update('city', value); update('district', ''); update('tehsil', ''); })}
-    {locationSelect('district', 'A.4', 'District', data.district, districts, !data.city, (value) => { update('district', value); update('tehsil', ''); })}
-    {locationSelect('tehsil', 'A.4', 'Tehsil', data.tehsil, tehsils, !data.district, (value) => update('tehsil', value))}
-  </>;
 }
 
-export default function SurveyPage() {
-  const { id } = useParams<{ id: string }>(); const navigate = useNavigate(); const { user } = useAuth();
-  const [current, setCurrent] = useState(0); const [sections, setSections] = useState(emptySections); const [saving, setSaving] = useState(false); const [saved, setSaved] = useState(false); const [errors, setErrors] = useState<string[]>([]); const [surveyId] = useState(id || uuidv4()); const topRef = useRef<HTMLDivElement>(null);
-  const definition = definitions[current]; const data = sections[definition.key]; const progress = Math.round((current / (definitions.length - 1)) * 100);
-  useEffect(() => { if (id) getSubmission(id).then((submission) => submission && setSections({ ...emptySections(), ...submission.sections })); }, [id]);
-  const update = (key: string, value: any) => { setSections((previous) => ({ ...previous, [definition.key]: { ...previous[definition.key], [key]: value } })); setErrors([]); };
-  const updateRow = (gridKey: string, index: number, key: string, value: any) => { const rows = [...(data[gridKey] || [])]; rows[index] = { ...rows[index], [key]: value }; update(gridKey, rows); };
-  const validate = () => {
-    const missing = definition.fields.filter((field) => field.required && isEmpty(data[field.key])).map((field) => field.label);
-    if (definition.key === 'A') {
-      if (isEmpty(data.city)) missing.push('City');
-      if (isEmpty(data.district)) missing.push('District');
-      if (isEmpty(data.tehsil)) missing.push('Tehsil');
-    }
-    if (definition.grid) {
-      const rows = data[definition.grid.key] || [];
-      rows.forEach((row: Record<string, any>, index: number) => {
-        definition.grid?.columns.filter((field) => field.required && isEmpty(row[field.key])).forEach((field) => missing.push(`${definition.grid?.label} row ${index + 1}: ${field.label}`));
-      });
-    }
-    setErrors(missing);
-    return missing.length === 0;
-  };
-  const persist = async (status: SurveySubmissionDraft['sync_status']) => { const gps = sections.A.coordinates || {}; await saveSubmission({ survey_id: surveyId, enumerator_name: user?.full_name || user?.username || 'Unknown', interview_date: new Date().toISOString().slice(0, 10), coordinates_lat: gps.lat, coordinates_lng: gps.lng, gps_accuracy_m: gps.accuracy, device_id: getDeviceId(), sync_status: status, created_at: new Date().toISOString(), sections }); };
-  const saveDraft = async () => { setSaving(true); await persist('draft'); setSaving(false); setSaved(true); window.setTimeout(() => setSaved(false), 1800); };
-  const goNext = () => { if (!validate()) { topRef.current?.scrollIntoView({ behavior: 'smooth' }); return; } setCurrent((value) => Math.min(value + 1, definitions.length - 1)); topRef.current?.scrollIntoView({ behavior: 'smooth' }); };
-  const submit = async () => { if (!validate()) return; setSaving(true); await persist('pending_sync'); setSaving(false); navigate('/surveys'); };
-  const answered = useMemo(() => definitions.reduce((count, item) => count + item.fields.filter((field) => !isEmpty(sections[item.key][field.key])).length, 0), [sections]);
+// ─── CHOICE (single select) ───────────────────────────────────────────────────
+function selectedOptionId(value: any): number | null {
+  const id = value && typeof value === 'object' ? value.option_id : value;
+  return Number.isInteger(id) ? id : null;
+}
 
-  return <div ref={topRef} style={{ paddingBottom: 24 }}>
-    <div style={{ background: 'var(--surface)', padding: '10px 14px 0', margin: '-12px -12px 8px', borderBottom: '1px solid var(--border)' }}><div className="flex items-center gap-8" style={{ marginBottom: 8 }}><button className="btn btn-ghost btn-sm" onClick={() => navigate('/surveys')}>← Back</button><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Punjab Industrial Unit Survey</div><div className="text-small text-muted">v3.0</div></div><button className="btn btn-ghost btn-sm" onClick={saveDraft} disabled={saving}>{saved ? '✓ Saved' : '▣ Draft'}</button></div><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}><span className="overline">Overall progress</span><span className="text-small text-muted">{answered} fields · {progress}%</span></div><div className="progress-bar" style={{ marginBottom: 10 }}><div className="progress-fill" style={{ width: `${progress}%` }} /></div><div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 10 }}>{definitions.map((item, index) => <button key={item.key} title={item.title} onClick={() => setCurrent(index)} style={{ flex: '0 0 56px', height: 52, borderRadius: 10, border: `2px solid ${index === current ? 'var(--primary)' : 'var(--border)'}`, background: index === current ? 'var(--primary)' : 'var(--surface)', color: index === current ? '#fff' : 'var(--text-muted)', fontWeight: 800, cursor: 'pointer' }}><div style={{ fontSize: 18 }}>{item.key}</div><div style={{ fontSize: 9 }}>{index === current ? 'current' : index < current ? '✓ done' : 'pending'}</div></button>)}</div><div style={{ padding: '0 0 10px', display: 'flex', alignItems: 'center', gap: 8 }}><span className="chip chip-primary">{current + 1}/{definitions.length}</span><strong style={{ fontSize: 12, color: 'var(--primary)' }}>Section {definition.key}: {definition.title}</strong></div></div>
-    {errors.length > 0 && <div className="alert alert-error"><span>⚠️</span><div><strong>Please complete the required fields before continuing.</strong><div style={{ marginTop: 4 }}>{errors.join(' · ')}</div></div></div>}
-    <div className="text-small text-muted" style={{ margin: '0 14px 10px' }}>{definition.fields.length + (definition.grid ? 1 : 0)} questions in this section</div>
-    {definition.key === 'A' && <LocationFields data={data} update={update} errors={errors} />}
-    {definition.fields.map((field) => <div key={field.key} className={`question-card${errors.includes(field.label) ? ' error' : ''}`}><div className="question-meta"><span className="question-code">{field.code}</span>{field.required && <span className="question-mandatory">★ Required</span>}</div><div className="question-text">{field.label}</div>{field.type === 'number' && <div className="form-hint">Enter numeric value{field.min !== undefined ? ` (${field.min}–${field.max})` : ''}</div>}<Input field={field} value={data[field.key]} onChange={(value) => update(field.key, value)} />{errors.includes(field.label) && <div className="form-error">⚠ This field is required.</div>}</div>)}
-    {definition.grid && <div className="question-card"><div className="question-meta"><span className="question-code">{definition.key}.TABLE</span></div><div className="question-text">{definition.grid.label}</div>{(data[definition.grid.key] || []).map((row: Record<string, any>, index: number) => <div key={index} style={{ borderTop: '1px solid var(--divider)', paddingTop: 12, marginTop: 12 }}><div className="overline" style={{ marginBottom: 8 }}>Row {index + 1}</div>{definition.grid!.columns.map((field) => <div className="form-field" key={field.key}><label className="form-label">{field.label}</label><Input field={field} value={row[field.key]} onChange={(value) => updateRow(definition.grid!.key, index, field.key, value)} /></div>)}<button className="btn btn-text btn-sm" type="button" onClick={() => update(definition.grid!.key, (data[definition.grid!.key] || []).filter((_: unknown, rowIndex: number) => rowIndex !== index))}>Remove row</button></div>)}<button className="btn btn-outline btn-sm" type="button" onClick={() => update(definition.grid!.key, [...(data[definition.grid!.key] || []), {}])}>＋ Add row</button></div>}
-    <div style={{ position: 'sticky', bottom: 0, background: 'var(--surface)', borderTop: '1px solid var(--border)', padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center', margin: '12px -12px -24px' }}><button className="btn btn-ghost" disabled={current === 0} onClick={() => setCurrent((value) => value - 1)}>← Prev</button><div style={{ flex: 1, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>{current + 1} / {definitions.length}</div>{current === definitions.length - 1 ? <button className="btn btn-success" onClick={submit} disabled={saving}>{saving ? 'Saving…' : '✓ Submit Survey'}</button> : <button className="btn btn-primary" onClick={goNext}>Next →</button>}</div>
-  </div>;
+function selectedOtherText(value: any): string {
+  return value && typeof value === 'object' && typeof value.other_text === 'string'
+    ? value.other_text
+    : '';
+}
+
+function ChoiceField({ options, value, onChange, error }: {
+  options: QuestionOption[]; value: any; onChange: (v: any) => void; error?: string;
+}) {
+  const selectedId = selectedOptionId(value);
+  const selectedOption = options.find((option) => option.id === selectedId);
+
+  return (
+    <>
+      <select
+        className={`form-select ${error ? 'error' : ''}`}
+        value={selectedId ?? ''}
+        onChange={(e) => {
+          if (e.target.value === '') { onChange(null); return; }
+          const id = parseInt(e.target.value, 10);
+          const option = options.find((item) => item.id === id);
+          onChange(option?.requires_text
+            ? { option_id: id, other_text: selectedOtherText(value) }
+            : id);
+        }}
+      >
+        <option value="">— Select an option —</option>
+        {options.map((opt) => (
+          <option key={opt.id} value={opt.id}>{opt.label}</option>
+        ))}
+      </select>
+      {selectedOption?.requires_text && (
+        <input
+          className="form-input"
+          style={{ marginTop: 8 }}
+          value={selectedOtherText(value)}
+          onChange={(event) => onChange({
+            option_id: selectedOption.id,
+            other_text: event.target.value,
+          })}
+          placeholder="Please specify"
+        />
+      )}
+    </>
+  );
+}
+
+// ─── MULTI_CHOICE (checkboxes) ────────────────────────────────────────────────
+function MultiChoiceField({ options, value, onChange }: {
+  options: QuestionOption[]; value: any; onChange: (v: any) => void;
+}) {
+  const selected: number[] = Array.isArray(value) ? value : [];
+  const selectedIds = Array.isArray(value) ? selected : value?.option_ids ?? [];
+  const otherText: Record<number, string> =
+    value && !Array.isArray(value) && typeof value === 'object' ? value.other_text ?? {} : {};
+
+  const toggle = (id: number, checked: boolean) => {
+    const next = checked ? [...selectedIds, id] : selectedIds.filter((s: number) => s !== id);
+    const nextOtherText = { ...otherText };
+    if (!checked) delete nextOtherText[id];
+    onChange(Object.keys(nextOtherText).length ? { option_ids: next, other_text: nextOtherText } : next);
+  };
+
+  const chosen = (id: number) => Array.isArray(value)
+    ? selected.includes(id)
+    : (value?.option_ids ?? []).includes(id);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {options.map((opt) => {
+        const isChecked = chosen(opt.id);
+        return (
+          <div key={opt.id}>
+            <label style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+              padding: '9px 12px',
+              background: isChecked ? 'var(--primary-bg)' : 'var(--surface2)',
+              border: `1.5px solid ${isChecked ? 'var(--primary)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius-sm)', fontSize: 13, transition: 'all 0.15s',
+            }}>
+              <input type="checkbox" checked={isChecked}
+                onChange={(e) => toggle(opt.id, e.target.checked)}
+                style={{ marginTop: 2, accentColor: 'var(--primary)', flexShrink: 0 }} />
+              <span>{opt.label}</span>
+            </label>
+            {isChecked && opt.requires_text && (
+              <input className="form-input" style={{ marginTop: 6 }}
+                value={otherText[opt.id] ?? ''}
+                onChange={(event) => onChange({
+                  option_ids: selectedIds,
+                  other_text: { ...otherText, [opt.id]: event.target.value },
+                })}
+                placeholder="Please specify" />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── SHARE_PERCENT (percentage breakdown) ─────────────────────────────────────
+function SharePercentField({ options, value, onChange }: {
+  options: QuestionOption[]; value: any; onChange: (v: any) => void;
+}) {
+  const map: Record<number, any> = value && typeof value === 'object' ? value : {};
+
+  const set = (id: number, raw: string) => {
+    const num = raw === '' ? 0 : Math.min(100, Math.max(0, parseFloat(raw) || 0));
+    const previous = map[id];
+    onChange({
+      ...map,
+      [id]: options.find((option) => option.id === id)?.requires_text
+        ? { percent: num, other_text: previous?.other_text ?? '' }
+        : num,
+    });
+  };
+
+  const total = Object.values(map).reduce((sum, entry) =>
+    sum + (typeof entry === 'number' ? entry : Number(entry?.percent) || 0), 0);
+  const overLimit = total > 100;
+
+  return (
+    <div>
+      {options.map((opt) => (
+        <div key={opt.id} style={{ marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ flex: 1, fontSize: 13 }}>{opt.label}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input
+                type="number" min={0} max={100} step={1}
+                value={typeof map[opt.id] === 'number' ? map[opt.id] : map[opt.id]?.percent ?? ''}
+                onChange={(e) => set(opt.id, e.target.value)}
+                style={{
+                  width: 72, textAlign: 'right',
+                  padding: '6px 8px',
+                  border: `1.5px solid ${overLimit ? 'var(--danger)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-sm)', fontSize: 13,
+                  background: 'var(--surface2)',
+                }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>%</span>
+            </div>
+          </div>
+          {opt.requires_text && (
+            <input className="form-input" style={{ marginTop: 6 }}
+              value={map[opt.id]?.other_text ?? ''}
+              onChange={(event) => onChange({
+                ...map,
+                [opt.id]: {
+                  percent: typeof map[opt.id] === 'number' ? map[opt.id] : map[opt.id]?.percent ?? 0,
+                  other_text: event.target.value,
+                },
+              })}
+              placeholder="Please specify" />
+          )}
+        </div>
+      ))}
+      <div style={{
+        fontSize: 11, fontWeight: 700, textAlign: 'right', marginTop: 4,
+        color: overLimit ? 'var(--danger)' : total === 100 ? 'var(--success)' : 'var(--text-muted)',
+      }}>
+        Total: {total.toFixed(0)}% {overLimit ? '⚠ exceeds 100%' : total === 100 ? '✓' : ''}
+      </div>
+    </div>
+  );
+}
+
+// ─── MATRIX ───────────────────────────────────────────────────────────────────
+function MatrixField({ question, value, onChange }: {
+  question: SurveyQuestion; value: any; onChange: (v: any) => void;
+}) {
+  const items = question.matrix_items ?? [];
+
+  if (!items.length) {
+    return (
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', padding: 8 }}>
+        No matrix rows are configured for this question.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {items.map((item) => {
+        const entry = value?.[item.id] ?? value?.[item.code] ?? {};
+        return (
+          <div key={item.id} style={{ padding: '10px 12px', background: 'var(--surface2)', borderRadius: 'var(--radius-sm)' }}>
+            {item.group_label && (
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--primary)', marginBottom: 4 }}>
+                {item.group_label}
+              </div>
+            )}
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 7 }}>{item.label}</div>
+            {item.answer_type === 'RATING_1_5' ? (
+              <select className="form-select" value={entry.rating ?? ''}
+                onChange={(event) => onChange({
+                  ...value,
+                  [item.id]: { ...entry, rating: event.target.value ? Number(event.target.value) : null },
+                })}>
+                <option value="">— Select rating —</option>
+                {[1, 2, 3, 4, 5].map((rating) => <option key={rating} value={rating}>{rating}</option>)}
+              </select>
+            ) : (
+              <ChoiceField
+                options={item.options}
+                value={entry.choice_value_id == null ? null : {
+                  option_id: entry.choice_value_id,
+                  other_text: entry.other_text ?? '',
+                }}
+                onChange={(selection) => onChange({
+                  ...value,
+                  [item.id]: selection == null
+                    ? {}
+                    : typeof selection === 'object'
+                      ? { choice_value_id: selection.option_id, other_text: selection.other_text }
+                      : { choice_value_id: selection, other_text: '' },
+                })}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function InputFieldControl({ field, value, onChange }: {
+  field: SurveyInputField;
+  value: any;
+  onChange: (value: any) => void;
+}) {
+  switch (field.type) {
+    case 'TEXT':
+      return <input className="form-input" value={value ?? ''}
+        onChange={(event) => onChange(event.target.value)} placeholder="Enter text…" />;
+    case 'NUMBER':
+      return <input className="form-input" type="number" value={value ?? ''}
+        onChange={(event) => onChange(event.target.value === '' ? null : Number(event.target.value))}
+        placeholder="Enter number" />;
+    case 'YES_NO':
+      return (
+        <select className="form-select" value={value === true ? 'true' : value === false ? 'false' : ''}
+          onChange={(event) => onChange(event.target.value === '' ? null : event.target.value === 'true')}>
+          <option value="">— Select —</option>
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      );
+    case 'SINGLE_CHOICE':
+      return <ChoiceField options={field.options} value={value} onChange={onChange} />;
+    case 'MULTI_CHOICE':
+    case 'MONTHS':
+      return <MultiChoiceField options={field.options} value={value} onChange={onChange} />;
+    case 'SHARE_PERCENT':
+      return <SharePercentField options={field.options} value={value} onChange={onChange} />;
+    case 'GPS':
+      return <GpsField value={value} onChange={onChange} />;
+    default:
+      return null;
+  }
+}
+
+function FieldGroup({ fields, value, onChange }: {
+  fields: SurveyInputField[];
+  value: Record<string, any>;
+  onChange: (value: Record<string, any>) => void;
+}) {
+  const map = value && typeof value === 'object' ? value : {};
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+      {fields.map((field) => {
+        let options = field.options;
+        const parentKey: Record<string, string> = {
+          division_id: 'province_id',
+          district_id: 'division_id',
+          tehsil_id: 'district_id',
+          psic_group_id: 'psic_division_id',
+          psic_class_id: 'psic_group_id',
+          disposal_method_ids: 'waste_type_id',
+          purpose_ids: 'collaborator_type_id',
+        };
+        const parentValue = parentKey[field.key]
+          ? selectedOptionId(map[parentKey[field.key]]) ?? map[parentKey[field.key]]
+          : undefined;
+        const hasParentLinks = options.some(
+          (option) => option.parent_id !== undefined && option.parent_id !== null,
+        );
+        if (parentValue != null && hasParentLinks) {
+          options = options.filter((option) => option.parent_id === parentValue);
+        } else if (parentKey[field.key] && parentValue == null && hasParentLinks) {
+          options = [];
+        }
+
+        const visibleField = { ...field, options };
+        if (field.key === 'transformation_stage_ids' && map.product_kind === 2) return null;
+        if (['revenue_share_pct', 'hs_code_id'].includes(field.key) && map.product_kind === 2) return null;
+        if (field.key === 'company_name' && map.has_parent_company === false) return null;
+        if (field.key === 'reinvestment_area_other' && !map.reinvestment_area_id) return null;
+
+        const controlValue = map[field.key];
+        const isMonths = field.type === 'MONTHS';
+
+        return (
+          <div key={field.key} style={{ gridColumn: isMonths ? '1 / -1' : undefined }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, marginBottom: 5 }}>
+              {field.label}{field.required ? ' *' : ''}
+            </label>
+            <InputFieldControl
+              field={visibleField}
+              value={controlValue}
+              onChange={(next) => onChange({ ...map, [field.key]: next })}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function StructuredQuestionField({ question, value, onChange }: {
+  question: SurveyQuestion;
+  value: any;
+  onChange: (value: any) => void;
+}) {
+  const fields = question.fields ?? [];
+  if (!question.repeatable) {
+    return <FieldGroup fields={fields} value={value ?? {}} onChange={onChange} />;
+  }
+
+  const rows: Array<Record<string, any>> = Array.isArray(value) ? value : [];
+  const updateRow = (index: number, row: Record<string, any>) =>
+    onChange(rows.map((item, i) => i === index ? row : item));
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {rows.map((row, index) => (
+        <div key={index} className="card" style={{ padding: 12, background: 'var(--surface2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <strong style={{ fontSize: 12 }}>Entry {index + 1}</strong>
+            <button type="button" className="btn btn-ghost btn-sm"
+              style={{ color: 'var(--danger)' }}
+              onClick={() => onChange(rows.filter((_, i) => i !== index))}>
+              Remove
+            </button>
+          </div>
+          <FieldGroup fields={fields} value={row} onChange={(updated) => updateRow(index, updated)} />
+        </div>
+      ))}
+      <button type="button" className="btn btn-outline btn-sm"
+        onClick={() => onChange([...rows, {}])}>
+        + Add entry
+      </button>
+    </div>
+  );
+}
+
+// ─── Universal question renderer ──────────────────────────────────────────────
+function QuestionField({ q, value, onChange, error }: {
+  q: SurveyQuestion; value: any; onChange: (v: any) => void; error?: string;
+}) {
+  const errCls = error ? 'error' : '';
+
+  if (q.fields?.length) {
+    return <StructuredQuestionField question={q} value={value} onChange={onChange} />;
+  }
+
+  switch (q.answer_type as AnswerType) {
+    case 'TEXT':
+      return (
+        <input className={`form-input ${errCls}`} type="text"
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Enter text…" />
+      );
+
+    case 'NUMBER':
+      return (
+        <input className={`form-input ${errCls}`} type="number"
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
+          placeholder="Enter number" />
+      );
+
+    case 'DATE':
+      return (
+        <input className={`form-input ${errCls}`} type="date"
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value)} />
+      );
+
+    case 'CHOICE':
+    case 'SINGLE_CHOICE':
+      return <ChoiceField options={q.options} value={value} onChange={onChange} error={error} />;
+
+    case 'YES_NO':
+      return (
+        <select className={`form-select ${errCls}`} value={value === true ? 'true' : value === false ? 'false' : ''}
+          onChange={(event) => onChange(event.target.value === '' ? null : event.target.value === 'true')}>
+          <option value="">— Select —</option>
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      );
+
+    case 'MULTI_CHOICE':
+      return <MultiChoiceField options={q.options} value={value} onChange={onChange} />;
+
+    case 'SHARE_PERCENT':
+      return <SharePercentField options={q.options} value={value} onChange={onChange} />;
+
+    case 'MATRIX':
+      return <MatrixField question={q} value={value} onChange={onChange} />;
+
+    case 'REPEATING_GROUP':
+      return <StructuredQuestionField question={q} value={value} onChange={onChange} />;
+
+    case 'GPS':
+      return <GpsField value={value} onChange={onChange} />;
+
+    case 'PHOTO':
+      return <PhotoField qid={q.question_id} value={value} onChange={onChange} />;
+
+    default:
+      return (
+        <input className={`form-input ${errCls}`} type="text"
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Enter value…" />
+      );
+  }
+}
+
+// ─── Section scroll strip ─────────────────────────────────────────────────────
+function SectionStrip({
+  sections, current, answers, onClick,
+}: {
+  sections:  SurveySection[];
+  current:   number;
+  answers:   Record<number, any>;
+  onClick:   (i: number) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = scrollRef.current?.children[current] as HTMLElement | undefined;
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }, [current]);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      {/* Fade edges */}
+      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 18,
+        background: 'linear-gradient(to right, var(--surface), transparent)', zIndex: 2, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 18,
+        background: 'linear-gradient(to left, var(--surface), transparent)', zIndex: 2, pointerEvents: 'none' }} />
+
+      <div ref={scrollRef} style={{
+        display: 'flex', gap: 6,
+        overflowX: 'auto', padding: '4px 20px 10px',
+        scrollbarWidth: 'thin', scrollbarColor: 'var(--border) transparent',
+      } as React.CSSProperties}>
+        {sections.map((sec, i) => {
+          const mandatory = sec.questions.filter((q) => q.is_required);
+          const answered  = mandatory.filter((q) => {
+            const v = answers[q.question_id];
+            return v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && !v.length);
+          });
+          const complete  = mandatory.length === 0 || answered.length === mandatory.length;
+          const partial   = answered.length > 0 && !complete;
+          const isActive  = i === current;
+
+          let bg     = 'var(--surface)';
+          let border = 'var(--border)';
+          let color  = 'var(--text-muted)';
+          if (isActive)      { bg = 'var(--primary)'; border = 'var(--primary)'; color = '#fff'; }
+          else if (complete) { bg = 'var(--success-bg)'; border = 'var(--secondary)'; color = 'var(--success)'; }
+          else if (partial)  { bg = 'var(--warning-bg)'; border = 'var(--warning)'; color = 'var(--warning)'; }
+
+          return (
+            <button key={sec.section_id} onClick={() => onClick(i)} title={sec.title}
+              style={{ flexShrink: 0, display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                width: 56, height: 52, borderRadius: 10,
+                border: `2px solid ${border}`, background: bg, color,
+                cursor: 'pointer', padding: 0, transition: 'all 0.15s' }}>
+              <span style={{ fontSize: 18, fontWeight: 800, lineHeight: 1 }}>
+                {sec.section_code}
+              </span>
+              <span style={{ fontSize: 9, marginTop: 3, fontWeight: 700, opacity: 0.85 }}>
+                {isActive ? 'current' : complete ? '✓ done' : partial ? '…' : 'pending'}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function isEmptyAnswer(value: any): boolean {
+  return value === undefined || value === null || value === '' ||
+    (Array.isArray(value) && value.length === 0) ||
+    (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
+}
+
+// ─── Main SurveyPage ──────────────────────────────────────────────────────────
+export default function SurveyPage() {
+  const { id }   = useParams<{ id: string }>();
+  const { form } = useSurvey();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const [currentSection, setCurrentSection] = useState(0);
+  const [answers,  setAnswers]  = useState<Record<number, any>>({});
+  const [errors,   setErrors]   = useState<Record<number, string>>({});
+  const [saving,   setSaving]   = useState(false);
+  const [savedMsg, setSavedMsg] = useState(false);
+  const [responseId] = useState(() => id || uuidv4());
+  const [startedAt]  = useState(() => new Date().toISOString());
+  const topRef = useRef<HTMLDivElement>(null);
+
+  // Load draft if editing
+  useEffect(() => {
+    if (!id) return;
+    getResponse(id).then((r) => {
+      if (!r) return;
+      const map: Record<number, any> = {};
+      r.answers.forEach((a) => { map[a.question_id] = a.answer_value; });
+      setAnswers(map);
+    });
+  }, [id]);
+
+  const setAnswer = useCallback((qid: number, val: any) => {
+    setAnswers((prev) => ({ ...prev, [qid]: val }));
+    setErrors((prev) => { const e = { ...prev }; delete e[qid]; return e; });
+  }, []);
+
+  if (!form) {
+    return (
+      <div className="empty-state">
+        <div className="icon">📋</div>
+        <h3>No form available</h3>
+        <p>Go to Dashboard and download the survey form first.</p>
+        <button className="btn btn-primary" style={{ marginTop: 16 }}
+          onClick={() => navigate('/dashboard')}>
+          Go to Dashboard
+        </button>
+      </div>
+    );
+  }
+
+  const section       = form.sections[currentSection];
+  const isLastSection = currentSection === form.sections.length - 1;
+
+  // Progress
+  const allQs          = form.sections.flatMap((s) => s.questions);
+  const questionByCode = new Map(allQs.map((q) => [q.question_code, q]));
+  const answerForCode = (code: string) => {
+    const question = questionByCode.get(code);
+    return question ? answers[question.question_id] : undefined;
+  };
+  const showQuestion = (q: SurveyQuestion): boolean => {
+    if (q.question_code === 'A_PARENT_COMPANY_DETAILS') {
+      return answerForCode('A_PARENT_COMPANY')?.has_parent_company === true;
+    }
+    if (q.question_code === 'B_CLOSURE_REASON') {
+      const statusQuestion = questionByCode.get('B_OPERATION_STATUS');
+      const statusId = statusQuestion
+        ? selectedOptionId(answers[statusQuestion.question_id])
+        : null;
+      return statusQuestion?.options.find((option) => option.id === statusId)?.code === 'PERM_CLOSED';
+    }
+    if (q.question_code === 'E_SUPPLY_DISRUPTION_REASON') {
+      return answerForCode('E_SUPPLY_DISRUPTION')?.had_supply_disruption === true;
+    }
+    if (q.question_code === 'F_DEMAND_GAP_REASON') {
+      return answerForCode('F_DEMAND_GAP')?.had_demand_gap === true;
+    }
+    if (q.question_code.startsWith('K_') && q.question_code !== 'K_FUTURE_PLAN') {
+      return answerForCode('K_FUTURE_PLAN')?.has_future_plan !== false;
+    }
+    return true;
+  };
+
+  const questionIsIncomplete = (q: SurveyQuestion): boolean => {
+    const value = answers[q.question_id];
+    if (q.is_required && isEmptyAnswer(value)) return true;
+    const fields = q.fields ?? [];
+    if (!fields.length) return false;
+    if (q.repeatable) {
+      return (Array.isArray(value) ? value : []).some((row) =>
+        fields.some((field) => field.required && isEmptyAnswer(row[field.key])),
+      );
+    }
+    return fields.some((field) => field.required && isEmptyAnswer(value?.[field.key]));
+  };
+
+  const requiredQuestionCount = (q: SurveyQuestion) => {
+    const requiredFields = (q.fields ?? []).filter((field) => field.required).length;
+    if (q.repeatable) {
+      return (Array.isArray(answers[q.question_id]) ? answers[q.question_id].length : 0) * requiredFields;
+    }
+    return requiredFields || (q.is_required ? 1 : 0);
+  };
+  const answeredQuestionCount = (q: SurveyQuestion) => {
+    const value = answers[q.question_id];
+    const requiredFields = (q.fields ?? []).filter((field) => field.required);
+    if (q.repeatable) {
+      return (Array.isArray(value) ? value : []).reduce((count, row) =>
+        count + requiredFields.filter((field) => !isEmptyAnswer(row[field.key])).length, 0);
+    }
+    if (requiredFields.length) {
+      return requiredFields.filter((field) => !isEmptyAnswer(value?.[field.key])).length;
+    }
+    return q.is_required && !isEmptyAnswer(value) ? 1 : 0;
+  };
+  const visibleQuestions = allQs.filter(showQuestion);
+  const totalMandatory = visibleQuestions.reduce((total, q) => total + requiredQuestionCount(q), 0);
+  const answeredMandatory = visibleQuestions.reduce((total, q) => total + answeredQuestionCount(q), 0);
+  const progress = totalMandatory > 0 ? Math.round((answeredMandatory / totalMandatory) * 100) : 0;
+
+  // Validate current section before advancing
+  const validateSection = (): boolean => {
+    const errs: Record<number, string> = {};
+    for (const q of section.questions) {
+      if (!showQuestion(q)) continue;
+      if (questionIsIncomplete(q)) errs[q.question_id] = 'Complete the required fields.';
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  // Resolve GPS answer for the response header
+  const buildResponse = (status: 'draft' | 'pending_sync'): OfflineResponse => {
+    const gpsQ   = allQs.find((q) => q.answer_type === 'GPS' || q.question_code === 'A_LOCATION_GPS');
+    const gpsVal = gpsQ ? answers[gpsQ.question_id] : null;
+
+    return {
+      response_id:    responseId,
+      form_id:        form.form_id,
+      surveyor_id:    user!.user_id,
+      device_id:      getDeviceId(),
+      gps_lat:        gpsVal?.lat,
+      gps_lng:        gpsVal?.lng,
+      gps_accuracy_m: gpsVal?.accuracy,
+      started_at:     startedAt,
+      submitted_at:   status === 'pending_sync' ? new Date().toISOString() : undefined,
+      answers: Object.entries(answers).map(([qid, val]) => ({
+        question_id:  parseInt(qid),
+        answer_value: val,
+      })),
+      sync_status: status,
+      created_at:  new Date().toISOString(),
+    };
+  };
+
+  const saveAsDraft = async () => {
+    setSaving(true);
+    try {
+      await saveResponse(buildResponse('draft'));
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 2000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const scrollTop = () => topRef.current?.scrollIntoView({ behavior: 'smooth' });
+
+  const goNext = () => {
+    if (!validateSection()) { scrollTop(); return; }
+    setCurrentSection((s) => s + 1);
+    setErrors({});
+    scrollTop();
+  };
+
+  const goPrev = () => {
+    setCurrentSection((s) => Math.max(0, s - 1));
+    setErrors({});
+    scrollTop();
+  };
+
+  const jumpTo = (i: number) => {
+    setCurrentSection(i);
+    setErrors({});
+    scrollTop();
+  };
+
+  const submitSurvey = async () => {
+    if (!validateSection()) { scrollTop(); return; }
+    const incompleteSection = form.sections.findIndex((candidate) =>
+      candidate.questions.some((q) => showQuestion(q) && questionIsIncomplete(q)),
+    );
+    if (incompleteSection >= 0) {
+      const candidate = form.sections[incompleteSection];
+      setCurrentSection(incompleteSection);
+      setErrors(Object.fromEntries(
+        candidate.questions
+          .filter((q) => showQuestion(q) && questionIsIncomplete(q))
+          .map((q) => [q.question_id, 'Complete the required fields.']),
+      ));
+      scrollTop();
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveResponse(buildResponse('pending_sync'));
+      navigate('/surveys');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Incomplete required fields in OTHER sections (warning before final submit)
+  const otherSectionErrors = isLastSection
+    ? form.sections.reduce((acc, sec, i) => {
+        if (i === currentSection) return acc;
+        return acc + sec.questions
+          .filter(showQuestion)
+          .filter(questionIsIncomplete)
+          .length;
+      }, 0)
+    : 0;
+
+  return (
+    <div ref={topRef} style={{ paddingBottom: 24 }}>
+
+      {/* ── Sticky top bar ── */}
+      <div style={{
+        background: 'var(--surface)', borderBottom: '1px solid var(--border)',
+        padding: '10px 14px 0', marginBottom: 0,
+        position: 'sticky', top: 0, zIndex: 50,
+      }}>
+        {/* Title row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/surveys')}>← Back</button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {form.title}
+            </div>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={saveAsDraft} disabled={saving}
+            style={{ color: savedMsg ? 'var(--success)' : undefined, flexShrink: 0 }}>
+            {savedMsg ? '✓ Saved' : saving ? '…' : '💾 Draft'}
+          </button>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Overall completion
+            </span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>
+              {answeredMandatory}/{totalMandatory} required · {progress}%
+            </span>
+          </div>
+          <div className="progress-bar">
+            <div className={`progress-fill${progress < 40 ? ' danger' : progress < 80 ? ' warning' : ''}`}
+              style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+
+        {/* Section strip */}
+        <SectionStrip sections={form.sections} current={currentSection} answers={answers} onClick={jumpTo} />
+
+        {/* Active section label */}
+        <div style={{ padding: '0 4px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{
+            background: 'var(--primary)', color: '#fff',
+            borderRadius: 6, padding: '2px 8px', fontSize: 10, fontWeight: 800, letterSpacing: '0.06em',
+          }}>
+            {currentSection + 1}/{form.sections.length}
+          </span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>
+            {section.title}
+          </span>
+        </div>
+      </div>
+
+      {/* ── Questions ── */}
+      <div style={{ padding: '10px 14px' }}>
+
+        {/* Section validation banner */}
+        {Object.keys(errors).length > 0 && (
+          <div className="alert alert-error" style={{ marginBottom: 12 }}>
+            ⚠ {Object.keys(errors).length} required field{Object.keys(errors).length > 1 ? 's' : ''} missing.
+          </div>
+        )}
+
+        {/* Question count */}
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10, fontWeight: 600 }}>
+          {section.questions.filter(showQuestion).length} question{section.questions.filter(showQuestion).length !== 1 ? 's' : ''} in this section
+        </div>
+
+        {section.questions.filter(showQuestion).length === 0 ? (
+          <div className="empty-state">
+            <div className="icon">✓</div>
+            <h3>No questions here</h3>
+            <p>This section has no questions in the current form version.</p>
+          </div>
+        ) : (
+          section.questions.filter(showQuestion).map((q) => (
+            <div key={q.question_id} className={`question-card${errors[q.question_id] ? ' error' : ''}`}>
+              {/* Meta row */}
+              <div className="question-meta">
+                <span className="question-code">{q.question_code}</span>
+                {q.is_required && <span className="question-mandatory">★ Required</span>}
+                <span style={{
+                  marginLeft: 'auto', fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
+                  letterSpacing: '0.06em', color: 'var(--text-muted)',
+                }}>{q.answer_type}</span>
+              </div>
+
+              {/* Question text */}
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 10, lineHeight: 1.5 }}>
+                {q.question_text}
+              </div>
+
+              {/* Input */}
+              <QuestionField
+                q={q}
+                value={answers[q.question_id]}
+                onChange={(v) => setAnswer(q.question_id, v)}
+                error={errors[q.question_id]}
+              />
+
+              {errors[q.question_id] && (
+                <div className="form-error" style={{ marginTop: 6 }}>
+                  {errors[q.question_id]}
+                </div>
+              )}
+
+              {/* Error message */}
+              {errors[q.question_id] && (
+                <div className="form-error" style={{ marginTop: 6 }}>
+                  ⚠ {errors[q.question_id]}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Incomplete warning on last section */}
+      {isLastSection && otherSectionErrors > 0 && (
+        <div className="alert alert-warning" style={{ margin: '0 14px 12px' }}>
+          ⚠ {otherSectionErrors} required field{otherSectionErrors > 1 ? 's' : ''} in earlier sections still need answers.
+          You can submit now but the completeness score will be lower.
+        </div>
+      )}
+
+      {isLastSection && (
+        <div style={{ padding: '0 14px 12px' }}>
+          <button
+            className="btn btn-outline"
+            onClick={() => downloadSurveyPdf(buildResponse('draft'))}
+            style={{ width: '100%' }}
+          >
+            ⬇ Download Survey PDF
+          </button>
+        </div>
+      )}
+
+      {/* ── Sticky bottom navigation ── */}
+      <div style={{
+        position: 'sticky', bottom: 0, background: 'var(--surface)',
+        borderTop: '1px solid var(--border)', padding: '10px 14px',
+        display: 'flex', gap: 10, alignItems: 'center',
+      }}>
+        <button className="btn btn-ghost" onClick={goPrev} disabled={currentSection === 0} style={{ minWidth: 80 }}>
+          ← Prev
+        </button>
+        <div style={{ flex: 1, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
+          {currentSection + 1} / {form.sections.length}
+        </div>
+        {isLastSection ? (
+          <button className="btn btn-success" onClick={submitSurvey} disabled={saving} style={{ minWidth: 130 }}>
+            {saving ? <><span className="spinner spinner-sm" /> Saving…</> : '✅ Submit Survey'}
+          </button>
+        ) : (
+          <button className="btn btn-primary" onClick={goNext} style={{ minWidth: 80 }}>
+            Next →
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }

@@ -15,25 +15,33 @@ let DuplicateFlag = class DuplicateFlag {
 };
 exports.DuplicateFlag = DuplicateFlag;
 __decorate([
-    (0, typeorm_1.PrimaryGeneratedColumn)({ type: 'bigint' }),
+    (0, typeorm_1.PrimaryGeneratedColumn)('increment', { type: 'bigint' }),
     __metadata("design:type", Number)
-], DuplicateFlag.prototype, "flag_id", void 0);
+], DuplicateFlag.prototype, "id", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'uuid' }),
     __metadata("design:type", String)
-], DuplicateFlag.prototype, "response_id", void 0);
+], DuplicateFlag.prototype, "unit_id", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'uuid', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'uuid' }),
     __metadata("design:type", String)
 ], DuplicateFlag.prototype, "matched_unit_id", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    (0, typeorm_1.Column)({ length: 255 }),
     __metadata("design:type", String)
-], DuplicateFlag.prototype, "match_reason", void 0);
+], DuplicateFlag.prototype, "reason", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: false }),
-    __metadata("design:type", Boolean)
-], DuplicateFlag.prototype, "is_resolved", void 0);
+    (0, typeorm_1.Column)({ type: 'numeric', precision: 5, scale: 4, nullable: true }),
+    __metadata("design:type", Number)
+], DuplicateFlag.prototype, "name_similarity", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'numeric', precision: 10, scale: 2, nullable: true }),
+    __metadata("design:type", Number)
+], DuplicateFlag.prototype, "distance_m", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ length: 30, default: 'OPEN' }),
+    __metadata("design:type", String)
+], DuplicateFlag.prototype, "resolution", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'uuid', nullable: true }),
     __metadata("design:type", String)
@@ -42,6 +50,10 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
     __metadata("design:type", Date)
 ], DuplicateFlag.prototype, "resolved_at", void 0);
+__decorate([
+    (0, typeorm_1.CreateDateColumn)({ type: 'timestamptz' }),
+    __metadata("design:type", Date)
+], DuplicateFlag.prototype, "created_at", void 0);
 exports.DuplicateFlag = DuplicateFlag = __decorate([
     (0, typeorm_1.Entity)({ name: 'duplicate_flags' })
 ], DuplicateFlag);

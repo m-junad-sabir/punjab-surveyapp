@@ -17,71 +17,19 @@ exports.IndustrialUnit = IndustrialUnit;
 __decorate([
     (0, typeorm_1.PrimaryGeneratedColumn)('uuid'),
     __metadata("design:type", String)
-], IndustrialUnit.prototype, "unit_id", void 0);
+], IndustrialUnit.prototype, "id", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ unique: true, length: 30 }),
+    (0, typeorm_1.Column)({ length: 50, nullable: true }),
     __metadata("design:type", String)
 ], IndustrialUnit.prototype, "unit_code", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ length: 200 }),
+    (0, typeorm_1.Column)({ type: 'text' }),
     __metadata("design:type", String)
-], IndustrialUnit.prototype, "unit_name", void 0);
+], IndustrialUnit.prototype, "name", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'smallint', nullable: true }),
     __metadata("design:type", Number)
-], IndustrialUnit.prototype, "sector_id", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", Number)
-], IndustrialUnit.prototype, "estate_id", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", Number)
-], IndustrialUnit.prototype, "cluster_id", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", Number)
-], IndustrialUnit.prototype, "province_id", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", Number)
-], IndustrialUnit.prototype, "division_id", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", Number)
-], IndustrialUnit.prototype, "district_id", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", Number)
-], IndustrialUnit.prototype, "tehsil_id", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
-    __metadata("design:type", String)
-], IndustrialUnit.prototype, "address", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ length: 150, nullable: true }),
-    __metadata("design:type", String)
-], IndustrialUnit.prototype, "contact_person", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ length: 20, nullable: true }),
-    __metadata("design:type", String)
-], IndustrialUnit.prototype, "contact_phone", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ length: 150, nullable: true }),
-    __metadata("design:type", String)
-], IndustrialUnit.prototype, "contact_email", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ length: 30, nullable: true }),
-    __metadata("design:type", String)
-], IndustrialUnit.prototype, "ownership_type", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", Number)
-], IndustrialUnit.prototype, "employment_size", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ length: 20, default: 'Unverified' }),
-    __metadata("design:type", String)
-], IndustrialUnit.prototype, "operational_status", void 0);
+], IndustrialUnit.prototype, "establishment_year", void 0);
 __decorate([
     (0, typeorm_1.Column)({
         type: 'geometry',
@@ -90,33 +38,105 @@ __decorate([
         nullable: true,
     }),
     __metadata("design:type", Object)
-], IndustrialUnit.prototype, "geom", void 0);
+], IndustrialUnit.prototype, "location", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'numeric', precision: 6, scale: 2, nullable: true }),
     __metadata("design:type", Number)
 ], IndustrialUnit.prototype, "gps_accuracy_m", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: false }),
-    __metadata("design:type", Boolean)
-], IndustrialUnit.prototype, "is_verified", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
     __metadata("design:type", String)
-], IndustrialUnit.prototype, "verified_by", void 0);
+], IndustrialUnit.prototype, "address", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
-    __metadata("design:type", Date)
-], IndustrialUnit.prototype, "verified_at", void 0);
+    (0, typeorm_1.Column)({ type: 'smallint', nullable: true }),
+    __metadata("design:type", Number)
+], IndustrialUnit.prototype, "province_id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text' }),
+    __metadata("design:type", String)
+], IndustrialUnit.prototype, "province_name", void 0);
 __decorate([
     (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Number)
+], IndustrialUnit.prototype, "division_id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text' }),
+    __metadata("design:type", String)
+], IndustrialUnit.prototype, "division_name", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Number)
+], IndustrialUnit.prototype, "district_id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text' }),
+    __metadata("design:type", String)
+], IndustrialUnit.prototype, "district_name", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Number)
+], IndustrialUnit.prototype, "tehsil_id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text' }),
+    __metadata("design:type", String)
+], IndustrialUnit.prototype, "tehsil_name", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Number)
+], IndustrialUnit.prototype, "ownership_type_id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Number)
+], IndustrialUnit.prototype, "legal_structure_id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Number)
+], IndustrialUnit.prototype, "zone_type_id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], IndustrialUnit.prototype, "zone_type_other_text", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], IndustrialUnit.prototype, "psic_division_text", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], IndustrialUnit.prototype, "psic_group_text", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], IndustrialUnit.prototype, "psic_class_text", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Number)
+], IndustrialUnit.prototype, "industrial_estate_id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], IndustrialUnit.prototype, "industrial_estate_text", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Number)
+], IndustrialUnit.prototype, "industrial_cluster_id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], IndustrialUnit.prototype, "industrial_cluster_text", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ length: 20, default: 'PENDING' }),
+    __metadata("design:type", String)
+], IndustrialUnit.prototype, "approval_status", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'uuid', nullable: true }),
     __metadata("design:type", String)
 ], IndustrialUnit.prototype, "created_by", void 0);
 __decorate([
-    (0, typeorm_1.CreateDateColumn)({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' }),
+    (0, typeorm_1.CreateDateColumn)({ type: 'timestamptz' }),
     __metadata("design:type", Date)
 ], IndustrialUnit.prototype, "created_at", void 0);
 __decorate([
-    (0, typeorm_1.UpdateDateColumn)({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' }),
+    (0, typeorm_1.UpdateDateColumn)({ type: 'timestamptz' }),
     __metadata("design:type", Date)
 ], IndustrialUnit.prototype, "updated_at", void 0);
 exports.IndustrialUnit = IndustrialUnit = __decorate([

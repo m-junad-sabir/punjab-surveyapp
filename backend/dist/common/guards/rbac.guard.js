@@ -15,33 +15,35 @@ const core_1 = require("@nestjs/core");
 const jwt_1 = require("@nestjs/jwt");
 const permissions_decorator_1 = require("../decorators/permissions.decorator");
 let RbacGuard = class RbacGuard {
-    constructor(reflector, jwtService) {
-        this.reflector = reflector;
+    constructor(jwtService, reflector) {
         this.jwtService = jwtService;
+        this.reflector = reflector;
     }
-    async canActivate(context) {
+    canActivate(context) {
         const request = context.switchToHttp().getRequest();
-        const authHeader = request.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            throw new common_1.UnauthorizedException('Authentication token missing or invalid');
+        const authHeader = request.headers['authorization'];
+        if (!authHeader?.startsWith('Bearer ')) {
+            throw new common_1.UnauthorizedException('Missing or malformed Authorization header');
         }
-        const token = authHeader.split(' ')[1];
+        const token = authHeader.slice(7);
         let payload;
         try {
-            payload = await this.jwtService.verifyAsync(token);
-            request.user = payload;
+            payload = this.jwtService.verify(token, {
+                secret: process.env.JWT_SECRET || 'punjab-industries-survey-secret-key-2026',
+            });
         }
-        catch (err) {
-            throw new common_1.UnauthorizedException('Session expired or invalid signature');
+        catch {
+            throw new common_1.UnauthorizedException('Token is invalid or expired');
         }
-        const requiredPermissions = this.reflector.getAllAndOverride(permissions_decorator_1.PERMISSIONS_KEY, [context.getHandler(), context.getClass()]);
-        if (!requiredPermissions || requiredPermissions.length === 0) {
+        request.user = payload;
+        const required = this.reflector.getAllAndOverride(permissions_decorator_1.PERMISSIONS_KEY, [context.getHandler(), context.getClass()]) ?? [];
+        if (required.length === 0) {
             return true;
         }
-        const userPermissions = payload.permissions || [];
-        const hasAllPermissions = requiredPermissions.every((perm) => userPermissions.includes(perm));
-        if (!hasAllPermissions) {
-            throw new common_1.ForbiddenException('You do not have the required permission for this action');
+        const userPermissions = payload.permissions ?? [];
+        const hasAll = required.every((p) => userPermissions.includes(p));
+        if (!hasAll) {
+            throw new common_1.ForbiddenException(`Insufficient permissions. Required: ${required.join(', ')}`);
         }
         return true;
     }
@@ -49,7 +51,7 @@ let RbacGuard = class RbacGuard {
 exports.RbacGuard = RbacGuard;
 exports.RbacGuard = RbacGuard = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.Reflector,
-        jwt_1.JwtService])
+    __metadata("design:paramtypes", [jwt_1.JwtService,
+        core_1.Reflector])
 ], RbacGuard);
 //# sourceMappingURL=rbac.guard.js.map

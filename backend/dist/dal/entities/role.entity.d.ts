@@ -1,7 +1,8 @@
 import { User } from './user.entity';
 export declare class Role {
-    role_id: number;
-    role_name: string;
+    id: number;
+    code: string;
+    name: string;
     description: string;
     users: User[];
 }

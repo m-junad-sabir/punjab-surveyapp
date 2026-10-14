@@ -27,8 +27,8 @@ export default function Layout() {
     { to: '/dashboard', icon: '⊞',   label: 'Home'    },
     { to: '/surveys',   icon: '◧',   label: 'Surveys' },
     { to: '/sync',      icon: '↻',   label: 'Sync',   badge: pendingCount },
-    ...(hasPermission('UNIT_APPROVE') ? [{ to: '/supervisor', icon: '✓', label: 'Review' }] : []),
-    ...(hasPermission('USER_MANAGE')  ? [{ to: '/admin',      icon: '⚙', label: 'Admin'  }] : []),
+    ...(hasPermission('SURVEY_CONFIRM') ? [{ to: '/supervisor', icon: '✓', label: 'Review' }] : []),
+    ...(hasPermission('USER_CREATE')   ? [{ to: '/admin',      icon: '⚙', label: 'Admin'  }] : []),
   ];
 
   return (
