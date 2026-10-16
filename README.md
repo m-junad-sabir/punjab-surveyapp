@@ -13,7 +13,60 @@
 psql -U postgres -c "CREATE DATABASE punjab_industrial_survey;"
 psql -U postgres -d punjab_industrial_survey -f database/schema.sql
 psql -U postgres -d punjab_industrial_survey -f database/seed.sql
+psql -U postgres -d punjab_industrial_survey -f database/seed_punjab_geography.sql
+psql -U postgres -d punjab_industrial_survey -f database/seed_classification_codes.sql
 ```
+
+The geography seed populates Punjab's district and district-linked tehsil options. It uses a
+third-party 2019 administrative snapshot (36 districts, 130 tehsil entries), with division
+assignments based on the Pakistan Bureau of Statistics' 2023 district list. The source and
+snapshot date are recorded in `database/seed_punjab_geography.sql`; verify it against current
+Punjab administrative records before relying on it as an authoritative current list.
+
+For an existing database with empty geography reference tables, run:
+
+```bash
+psql -U postgres -d punjab_industrial_survey -f database/seed_punjab_geography.sql
+```
+
+To populate PSIC divisions/groups/classes and the Pakistan Customs Tariff FY 2026-27 HS codes
+in a fresh or existing database, run:
+
+```bash
+psql -U postgres -d punjab_industrial_survey -f database/seed_classification_codes.sql
+```
+
+For an existing database, add Acre, kilogram, liter, and ton measurement units with:
+
+```bash
+psql -U postgres -d punjab_industrial_survey -f database/add_common_measurement_units.sql
+```
+
+To add the Section A zone type choices to an existing database, run:
+
+```bash
+psql -U postgres -d punjab_industrial_survey -f database/update_zone_type_options.sql
+```
+
+To update the Section A ownership and legal-structure choices in an existing database, run:
+
+```bash
+psql -U postgres -d punjab_industrial_survey -f database/update_ownership_legal_structure_options.sql
+```
+
+To update the Section D workforce skill labels in an existing database, run:
+
+```bash
+psql -U postgres -d punjab_industrial_survey -f database/update_section_d_workforce_labels.sql
+```
+
+To update an existing survey form to version 3 with district and dependent tehsil selectors, run:
+
+```bash
+psql -U postgres -d punjab_industrial_survey -f database/update_location_selection_form.sql
+```
+
+For a database still on survey form version 1, run `database/migrate_full_questionnaire.sql` first. Districts and tehsils are loaded from the `districts` and `tehsils` reference tables.
 
 ---
 

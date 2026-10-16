@@ -121,6 +121,7 @@ export interface SurveyForm {
   code:     string;
   title:    string;
   version:  number;   // integer in real DB
+  client_cache_revision?: number;
   sections: SurveySection[];
   references?: Record<string, QuestionOption[]>;
 }

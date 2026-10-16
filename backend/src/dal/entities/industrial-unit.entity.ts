@@ -70,11 +70,20 @@ export class IndustrialUnit {
   @Column({ type: 'text', nullable: true })
   zone_type_other_text: string | null;
 
+  @Column({ type: 'integer', nullable: true })
+  psic_division_id: number | null;
+
   @Column({ type: 'text', nullable: true })
   psic_division_text: string | null;
 
+  @Column({ type: 'integer', nullable: true })
+  psic_group_id: number | null;
+
   @Column({ type: 'text', nullable: true })
   psic_group_text: string | null;
+
+  @Column({ type: 'integer', nullable: true })
+  psic_class_id: number | null;
 
   @Column({ type: 'text', nullable: true })
   psic_class_text: string | null;

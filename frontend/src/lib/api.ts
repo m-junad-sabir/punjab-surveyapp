@@ -1,3 +1,5 @@
+import type { IndustrialUnit } from '../types';
+
 /**
  * API client — all calls go through Vite /api proxy → NestJS :3002
  */
@@ -101,7 +103,7 @@ export const api = {
   // ── Industrial Units ─────────────────────────────────────────
   units: {
     /** GET /industrial-units — any authenticated user */
-    list: () => request<any[]>('GET', '/industrial-units'),
+    list: () => request<IndustrialUnit[]>('GET', '/industrial-units'),
 
     /** GET /industrial-units/:id */
     get: (id: string) => request<any>('GET', `/industrial-units/${id}`),

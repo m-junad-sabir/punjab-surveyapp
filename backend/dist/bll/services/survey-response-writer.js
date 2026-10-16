@@ -41,22 +41,119 @@ function staticCode(value, codes) {
     const id = selectionId(value);
     return id === null ? (typeof value === 'string' ? value : null) : codes[id - 1] ?? null;
 }
+async function resolvePsicSelection(manager, value) {
+    const divisionId = selectionId(value.psic_division_id);
+    const groupId = selectionId(value.psic_group_id);
+    const classId = selectionId(value.psic_class_id);
+    const empty = { id: null, text: null };
+    const textFor = (key) => {
+        const explicitText = value[`${key.replace(/_id$/, '')}_text`];
+        if (typeof explicitText === 'string' && explicitText.trim())
+            return explicitText.trim();
+        const rawValue = value[key];
+        return selectionId(rawValue) === null && typeof rawValue === 'string' && rawValue.trim()
+            ? rawValue.trim()
+            : null;
+    };
+    if (divisionId === null && groupId === null && classId === null) {
+        return {
+            division: { ...empty, text: textFor('psic_division_id') },
+            group: { ...empty, text: textFor('psic_group_id') },
+            class: { ...empty, text: textFor('psic_class_id') },
+        };
+    }
+    const [selected] = await manager.query(`SELECT d.id AS division_id, d.code AS division_code, d.name AS division_name,
+            g.id AS group_id, g.code AS group_code, g.name AS group_name,
+            c.id AS class_id, c.code AS class_code, c.name AS class_name
+       FROM (SELECT $1::integer AS division_id, $2::integer AS group_id, $3::integer AS class_id) requested
+       LEFT JOIN psic_divisions d ON d.id = requested.division_id
+       LEFT JOIN psic_groups g ON g.id = requested.group_id AND g.division_id = d.id
+       LEFT JOIN psic_classes c ON c.id = requested.class_id AND c.group_id = g.id`, [divisionId, groupId, classId]);
+    if ((divisionId !== null && selected.division_id !== divisionId) ||
+        (groupId !== null && selected.group_id !== groupId) ||
+        (classId !== null && selected.class_id !== classId)) {
+        throw new Error('The selected PSIC division, group, and class do not form a valid hierarchy.');
+    }
+    const valueFor = (id, code, name, manualText) => ({
+        id,
+        text: id !== null && code && name ? `${code} - ${name}` : manualText,
+    });
+    return {
+        division: valueFor(selected.division_id, selected.division_code, selected.division_name, textFor('psic_division_id')),
+        group: valueFor(selected.group_id, selected.group_code, selected.group_name, textFor('psic_group_id')),
+        class: valueFor(selected.class_id, selected.class_code, selected.class_name, textFor('psic_class_id')),
+    };
+}
+async function resolveHsCode(manager, value) {
+    const id = selectionId(value);
+    if (id === null) {
+        return {
+            id: null,
+            text: typeof value === 'string' && value.trim() ? value.trim() : null,
+        };
+    }
+    const [selected] = await manager.query(`SELECT id, code, description FROM hs_codes WHERE id = $1`, [id]);
+    if (!selected)
+        throw new Error('The selected HS code is not present in the reference list.');
+    return { id: selected.id, text: `${selected.code} - ${selected.description}` };
+}
 async function createIndustrialUnit(manager, userId, answers, unitName, gps, legacyLocationFallback) {
     const location = record(answers.get('A_LOCATION'));
     const legacyLocation = 'Not provided by the previous form version';
-    const locationNames = ['province_name', 'division_name', 'district_name', 'tehsil_name']
-        .map((key) => typeof location[key] === 'string' ? location[key].trim() : '');
-    if (legacyLocationFallback && locationNames.every((name) => !name)) {
-        locationNames.fill(legacyLocation);
+    const districtId = number(location.district_id);
+    const tehsilId = number(location.tehsil_id);
+    let geography = {
+        province_id: null,
+        province_name: '',
+        division_id: null,
+        division_name: '',
+        district_id: null,
+        district_name: '',
+        tehsil_id: null,
+        tehsil_name: '',
+    };
+    if (districtId !== null || tehsilId !== null) {
+        if (districtId === null || tehsilId === null) {
+            throw new Error('Select both a district and a tehsil before syncing this survey.');
+        }
+        const selectedLocations = await manager.query(`SELECT p.id AS province_id, p.name AS province_name,
+              dv.id AS division_id, dv.name AS division_name,
+              d.id AS district_id, d.name AS district_name,
+              t.id AS tehsil_id, t.name AS tehsil_name
+         FROM districts d
+         JOIN divisions dv ON dv.id = d.division_id
+         JOIN provinces p ON p.id = dv.province_id
+         JOIN tehsils t ON t.id = $2 AND t.district_id = d.id
+        WHERE d.id = $1 AND lower(p.name) = 'punjab'`, [districtId, tehsilId]);
+        const selectedLocation = selectedLocations[0];
+        if (!selectedLocation) {
+            throw new Error('The selected tehsil does not belong to the selected Punjab district.');
+        }
+        geography = selectedLocation;
     }
-    if (locationNames.some((name) => !name)) {
-        throw new Error('Enter the province, division, district, and tehsil before syncing this survey.');
+    else {
+        const legacyNames = ['province_name', 'division_name', 'district_name', 'tehsil_name']
+            .map((key) => typeof location[key] === 'string' ? location[key].trim() : '');
+        if (legacyLocationFallback && legacyNames.every((name) => !name)) {
+            legacyNames.fill(legacyLocation);
+        }
+        if (legacyNames.some((name) => !name)) {
+            throw new Error('Select a district and tehsil before syncing this survey.');
+        }
+        geography = {
+            ...geography,
+            province_name: legacyNames[0],
+            division_name: legacyNames[1],
+            district_name: legacyNames[2],
+            tehsil_name: legacyNames[3],
+        };
     }
     if (!unitName.trim()) {
         throw new Error('The establishment name is required before syncing this survey.');
     }
     const contact = record(answers.get('A_CONTACT'));
     const psic = record(answers.get('A_PSIC'));
+    const selectedPsic = await resolvePsicSelection(manager, psic);
     const area = record(answers.get('A_ESTABLISHMENT_AREA'));
     const ownership = field(answers, 'A_OWNERSHIP', 'ownership_type_id');
     const legalStructure = field(answers, 'A_LEGAL_STRUCTURE', 'legal_structure_id');
@@ -90,24 +187,24 @@ async function createIndustrialUnit(manager, userId, answers, unitName, gps, leg
         gpsLng,
         gps.accuracy,
         field(answers, 'A_ADDRESS', 'address') ?? null,
-        null,
-        locationNames[0],
-        null,
-        locationNames[1],
-        null,
-        locationNames[2],
-        null,
-        locationNames[3],
+        geography.province_id,
+        geography.province_name,
+        geography.division_id,
+        geography.division_name,
+        geography.district_id,
+        geography.district_name,
+        geography.tehsil_id,
+        geography.tehsil_name,
         contact.contact_name ?? null,
         contact.contact_phone ?? null,
         contact.contact_email ?? null,
         contact.website ?? null,
-        null,
-        psic.psic_division_text ?? null,
-        null,
-        psic.psic_group_text ?? null,
-        null,
-        psic.psic_class_text ?? null,
+        selectedPsic.division.id,
+        selectedPsic.division.text,
+        selectedPsic.group.id,
+        selectedPsic.group.text,
+        selectedPsic.class.id,
+        selectedPsic.class.text,
         selectionId(zoneType),
         record(zoneType).other_text ?? null,
         selectionId(ownership),
@@ -186,12 +283,15 @@ async function saveNormalizedSurveyAnswers(manager, responseId, answers, questio
         const kind = staticCode(product.product_kind, ['MAIN', 'SECONDARY']);
         if (!kind)
             throw new Error('Choose Main or Secondary product for each product row.');
+        const selectedHsCode = kind === 'MAIN'
+            ? await resolveHsCode(manager, product.hs_code_id)
+            : { id: null, text: null };
         const result = await manager.query(`INSERT INTO products
          (response_id, product_kind, product_name, daily_avg_output, daily_output_unit_id,
           annual_production, annual_production_unit_id, installed_capacity,
           installed_capacity_period, unit_of_measurement_id, revenue_share_pct, hs_code_id,
           hs_code_text, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL, $12, $13)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING id`, [
             responseId,
             kind,
@@ -204,7 +304,8 @@ async function saveNormalizedSurveyAnswers(manager, responseId, answers, questio
             staticCode(product.installed_capacity_period, ['PER_DAY', 'PER_MONTH']),
             selectionId(product.unit_of_measurement_id),
             kind === 'MAIN' ? number(product.revenue_share_pct) : null,
-            kind === 'MAIN' && typeof product.hs_code_text === 'string' ? product.hs_code_text.trim() : null,
+            selectedHsCode.id,
+            selectedHsCode.text,
             number(product.sort_order) ?? 0,
         ]);
         const productId = result[0]?.id;
@@ -217,7 +318,7 @@ async function saveNormalizedSurveyAnswers(manager, responseId, answers, questio
     for (const employee of rows(answers, 'D_EMPLOYMENT')) {
         if (isBlank(employee))
             continue;
-        const gender = staticCode(employee.gender, ['MALE', 'FEMALE']);
+        const gender = staticCode(employee.gender, ['MALE', 'FEMALE', 'Other']);
         if (!gender)
             throw new Error('Choose a gender for each employment row.');
         await manager.query(`INSERT INTO workforce_employment
@@ -233,7 +334,7 @@ async function saveNormalizedSurveyAnswers(manager, responseId, answers, questio
     for (const skill of rows(answers, 'D_SKILLS')) {
         if (isBlank(skill))
             continue;
-        const gender = staticCode(skill.gender, ['MALE', 'FEMALE']);
+        const gender = staticCode(skill.gender, ['MALE', 'FEMALE', 'Other']);
         const skillLevelId = selectionId(skill.skill_level_id);
         if (!gender || skillLevelId === null)
             throw new Error('Choose gender and skill level for each skills row.');
@@ -258,14 +359,16 @@ async function saveNormalizedSurveyAnswers(manager, responseId, answers, questio
         if (typeof input.input_name !== 'string' || !input.input_name.trim()) {
             throw new Error('Enter a name for each major input row.');
         }
+        const selectedHsCode = await resolveHsCode(manager, input.hs_code_id);
         await manager.query(`INSERT INTO major_inputs
          (response_id, input_name, unit_id, cost_share_pct, hs_code_id, hs_code_text, transformation_stage_id)
-       VALUES ($1, $2, $3, $4, NULL, $5, $6)`, [
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
             responseId,
             input.input_name.trim(),
             selectionId(input.unit_id),
             number(input.cost_share_pct),
-            typeof input.hs_code_text === 'string' ? input.hs_code_text.trim() : null,
+            selectedHsCode.id,
+            selectedHsCode.text,
             selectionId(input.transformation_stage_id),
         ]);
     }

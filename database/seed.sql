@@ -1,5 +1,5 @@
 -- Reference data taken from 'Database Design for Survey APP'. Run after 01_schema.sql.
--- NOTE: ZONE_TYPE, OWNERSHIP_TYPE and LEGAL_STRUCTURE names were not in the source document - add them.
+-- NOTE: OWNERSHIP_TYPE and LEGAL_STRUCTURE names were not in the source document - add them.
 
 INSERT INTO roles (code,name,description) VALUES
   ('ADMIN','Admin','Full access. Adds surveyors and supervisors, assigns designations and supervisors, manages roles and their rights, manages reference data, sees and edits everything.'),
@@ -28,15 +28,19 @@ SELECT r.id,p.id FROM (VALUES ('ADMIN','USER_CREATE'),('ADMIN','USER_REMOVE'),('
 INSERT INTO measurement_units (code,name,unit_kind) VALUES
   ('SQM','Square metre','AREA'),
   ('HECTARE','Hectare','AREA'),
+  ('ACRE','Acre','AREA'),
+  ('KG','Kilogram','QUANTITY'),
+  ('L','Liter','QUANTITY'),
+  ('TON','Ton','QUANTITY'),
   ('KW','Kilowatt','POWER'),
   ('KWH','Kilowatt-hour','ENERGY'),
   ('PERCENT','Percent','OTHER');
 
 -- Drop-down lists
 INSERT INTO lookup_types (code,name) VALUES
-  ('ZONE_TYPE','Zone type (6 zones - names NOT in source document)'),
-  ('OWNERSHIP_TYPE','Ownership of establishment (3 names NOT in source document + Other)'),
-  ('LEGAL_STRUCTURE','Legal structure of ownership (6 names NOT in source document + Other)'),
+  ('ZONE_TYPE','Zone type'),
+  ('OWNERSHIP_TYPE','Ownership of establishment'),
+  ('LEGAL_STRUCTURE','Legal structure of ownership'),
   ('OPERATION_STATUS','Current operation status'),
   ('DAILY_HOURS','Daily operating hours'),
   ('TRANSFORMATION_STAGE','Transformation stage on arrival'),
@@ -93,9 +97,23 @@ INSERT INTO lookup_types (code,name) VALUES
   ('GOVT_SUPPORT','Government support required');
 INSERT INTO lookup_values (type_id,code,label,requires_text,sort_order)
 SELECT t.id,v.code,v.label,v.rt,v.ord FROM (VALUES
-('ZONE_TYPE','OTHER','Other (please specify)',true,1),
-('OWNERSHIP_TYPE','OTHER','Other (please specify)',true,1),
-('LEGAL_STRUCTURE','OTHER','Other (please specify)',true,1),
+('ZONE_TYPE','INDUSTRIAL_AREA','1. Industrial Area',false,1),
+('ZONE_TYPE','RESIDENTIAL_AREA','2. Residential Area',false,2),
+('ZONE_TYPE','COMMERCIAL_AREA','3. Commercial Area',false,3),
+('ZONE_TYPE','RURAL_AGRICULTURAL','4. Rural / Agricultural',false,4),
+('ZONE_TYPE','SEZ_INDUSTRIAL_ESTATE','5. Special Economic Zone / Industrial Estate',false,5),
+('ZONE_TYPE','OTHER','6. Other (specify)',true,6),
+('OWNERSHIP_TYPE','STATE_PUBLIC','1. State owned/Public Sector',false,1),
+('OWNERSHIP_TYPE','PRIVATELY_OWNED','2. Privately Owned',false,2),
+('OWNERSHIP_TYPE','FOREIGN_CONTROLLED','3. Foreign Controlled Enterprise',false,3),
+('OWNERSHIP_TYPE','OTHER','4. Other, if any',true,4),
+('LEGAL_STRUCTURE','SOLE_PROPRIETORSHIP','1. Sole Proprietorship',false,1),
+('LEGAL_STRUCTURE','PARTNERSHIP','2. Partnership',false,2),
+('LEGAL_STRUCTURE','PRIVATE_LIMITED_COMPANY','3. Private Limited Company',false,3),
+('LEGAL_STRUCTURE','PUBLIC_LIMITED_COMPANY','4. Public Limited Company',false,4),
+('LEGAL_STRUCTURE','COOPERATIVE_SOCIETY','5. Cooperative / Society',false,5),
+('LEGAL_STRUCTURE','LIMITED_LIABILITY_COMPANY','6. Limited Liability Company',false,6),
+('LEGAL_STRUCTURE','OTHER','7. Others specify',true,7),
 ('OPERATION_STATUS','RUNNING','Running',false,1),
 ('OPERATION_STATUS','OFF_SEASON','Not running, because it is the off season',false,2),
 ('OPERATION_STATUS','TEMP_CLOSED','Temporarily Close',false,3),
@@ -110,10 +128,10 @@ SELECT t.id,v.code,v.label,v.rt,v.ord FROM (VALUES
 ('TRANSFORMATION_STAGE','T4','T4 - Specified intermediate',false,4),
 ('TRANSFORMATION_STAGE','T5','T5 - Fabricated component',false,5),
 ('TRANSFORMATION_STAGE','T6','T6 - Consumable/packaging',false,6),
-('SKILL_LEVEL','MANAGER','Managers',false,1),
-('SKILL_LEVEL','SKILLED','Skilled/Technical workers',false,2),
+('SKILL_LEVEL','MANAGER','Managers (Important decision makers)',false,1),
+('SKILL_LEVEL','SKILLED','Skilled/Technical workers (in production, accounts)',false,2),
 ('SKILL_LEVEL','SEMI_SKILLED','Semi-skilled workers',false,3),
-('SKILL_LEVEL','UNSKILLED','Unskilled worker (low level staff)',false,4),
+('SKILL_LEVEL','UNSKILLED','Unskilled Workers (low level staff)',false,4),
 ('SKILL_LEVEL','ADMIN_SUPPORT','Administrative/Supporting Staff',false,5),
 ('HIRING_CHANNEL','UNIVERSITIES','Universities and degree colleges',false,1),
 ('HIRING_CHANNEL','TVET','Technical and vocational training centers (TVETs)',false,2),
@@ -418,7 +436,7 @@ JOIN lookup_values p ON p.code=v.w AND p.type_id=(SELECT id FROM lookup_types WH
 JOIN lookup_values c ON c.code=v.m AND c.type_id=(SELECT id FROM lookup_types WHERE code='WASTE_DISPOSAL');
 
 -- Form, sections and the questions that use generic answer tables
-INSERT INTO survey_forms (code,title,version) VALUES ('INDUSTRIAL_SURVEY','Punjab Industrial Establishment Survey',2);
+INSERT INTO survey_forms (code,title,version) VALUES ('INDUSTRIAL_SURVEY','Punjab Industrial Establishment Survey',3);
 INSERT INTO survey_sections (form_id,section_code,title,sort_order)
 SELECT f.id,v.c,v.t,v.o FROM (VALUES ('A','Establishment Identity',1),('B','Operational Details',2),('C','Core & Secondary Activities',3),('D','Workforce',4),('E','Backward Linkages',5),('F','Forward Linkages',6),('G','Technology and Production Processes',7),('H','Energy and Waste Management',8),('I','Certifications and Compliances',9),('J','Strategic Business Plan',10),('K','Future Collaborations & Barriers',11)) v(c,t,o) CROSS JOIN survey_forms f WHERE f.code='INDUSTRIAL_SURVEY';
 INSERT INTO survey_questions (section_id,question_code,question_no,question_text,answer_type,lookup_type_id,stored_in)
@@ -453,7 +471,7 @@ SELECT s.id,v.code,v.no,v.txt,v.at,lt.id,v.st FROM (VALUES
 ('A','A_ESTABLISHMENT_YEAR','ii','Year of establishment','NUMBER',NULL,'industrial_units.establishment_year'),
 ('A','A_LOCATION_GPS','iii','Coordinates (capture from device)','TEXT',NULL,'industrial_units.location'),
 ('A','A_ADDRESS','iv','Address','TEXT',NULL,'industrial_units.address'),
-('A','A_LOCATION','v','Location (province, division, district and tehsil)','REPEATING_GROUP',NULL,'industrial_units'),
+('A','A_LOCATION','v','District and tehsil','REPEATING_GROUP',NULL,'industrial_units'),
 ('A','A_CONTACT','vi','Contact person, phone, email and website','REPEATING_GROUP',NULL,'industrial_units'),
 ('A','A_PSIC','vii','PSIC division, group and class','REPEATING_GROUP',NULL,'industrial_units'),
 ('A','A_ZONE_TYPE','viii','Zone type','SINGLE_CHOICE','ZONE_TYPE','industrial_units.zone_type_id'),

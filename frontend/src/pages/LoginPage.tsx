@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const ACCOUNTS = [
@@ -10,14 +10,13 @@ const ACCOUNTS = [
 
 export default function LoginPage() {
   const { login, isAuthenticated } = useAuth();
-  const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showQuick, setShowQuick] = useState(false);
 
-  if (isAuthenticated) { navigate('/dashboard', { replace: true }); return null; }
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -25,7 +24,6 @@ export default function LoginPage() {
     setLoading(true); setError('');
     try {
       await login(username.trim(), password);
-      navigate('/dashboard', { replace: true });
     } catch (err: any) {
       setError(err.message || 'Invalid credentials.');
     } finally { setLoading(false); }
@@ -43,16 +41,26 @@ export default function LoginPage() {
     }}>
       {/* Header area */}
       <div style={{
-        flex: '0 0 auto', padding: '32px 24px 28px',
+        flex: '0 0 auto', padding: '24px 20px 22px',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
       }}>
         <div style={{
-          width: 64, height: 64, borderRadius: 16,
-          background: 'rgba(255,255,255,0.2)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 32, marginBottom: 12,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-        }}>🏭</div>
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+          padding: '8px 14px', marginBottom: 12, borderRadius: 14, background: '#fff',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.16)',
+        }}>
+          <img
+            src="/logos/punjab-industries.png"
+            alt="Government of Punjab Industries"
+            style={{ width: 68, height: 68, objectFit: 'contain' }}
+          />
+          <span aria-hidden="true" style={{ width: 1, height: 48, background: '#e5e7eb' }} />
+          <img
+            src="/logos/nespak.jpeg"
+            alt="NESPAK"
+            style={{ width: 92, height: 68, objectFit: 'contain' }}
+          />
+        </div>
         <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', letterSpacing: 0.3 }}>
           Punjab Industrial Survey
         </div>

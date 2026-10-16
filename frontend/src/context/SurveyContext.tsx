@@ -14,10 +14,11 @@ import { useAuth } from './AuthContext';
 /**
  * Expected form version from the backend.
  * The API returns version as an integer (survey_forms.version).
- * Bump this constant whenever the questionnaire is re-seeded so every
- * browser discards its cached form and re-fetches.
+ * Bump this constant whenever questionnaire or reference data changes so
+ * browsers discard stale cached forms and re-fetch.
  */
-const CURRENT_FORM_VERSION = 2;
+const MINIMUM_FORM_VERSION = 2;
+const CURRENT_FORM_CACHE_REVISION = 9;
 
 interface SurveyContextValue {
   form:             SurveyForm | null;
@@ -59,13 +60,17 @@ export function SurveyProvider({ children }: { children: ReactNode }) {
     setFormError(null);
     try {
       const data = await api.form.getActive();
-      if (data.version < CURRENT_FORM_VERSION) {
+      if (data.version < MINIMUM_FORM_VERSION) {
         throw new Error(
           `The server survey form is version ${data.version}; run database/migrate_full_questionnaire.sql to load the complete questionnaire.`,
         );
       }
-      await saveSurveyForm(data);
-      setForm(data);
+      const currentForm = {
+        ...data,
+        client_cache_revision: CURRENT_FORM_CACHE_REVISION,
+      };
+      await saveSurveyForm(currentForm);
+      setForm(currentForm);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to download the survey form.';
       setFormError(message);
@@ -77,10 +82,19 @@ export function SurveyProvider({ children }: { children: ReactNode }) {
   // ── On mount: load cache, then silently refresh if online or stale ───────
   useEffect(() => {
     getSurveyForm().then((cached) => {
-      if (cached && cached.version >= CURRENT_FORM_VERSION) setForm(cached);
-      else if (cached) setForm(null);
+      if (
+        cached &&
+        cached.version >= MINIMUM_FORM_VERSION &&
+        cached.client_cache_revision === CURRENT_FORM_CACHE_REVISION
+      ) {
+        setForm(cached);
+      } else if (cached) {
+        setForm(null);
+      }
 
-      const isStale = !cached || cached.version < CURRENT_FORM_VERSION;
+      const isStale = !cached ||
+        cached.version < MINIMUM_FORM_VERSION ||
+        cached.client_cache_revision !== CURRENT_FORM_CACHE_REVISION;
 
       if (isAuthenticated && (navigator.onLine || isStale)) {
         fetchForm().catch(() => {

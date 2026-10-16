@@ -44,10 +44,8 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
   A_ADDRESS: { fields: [field('address', 'Address', 'TEXT')] },
   A_LOCATION: {
     fields: [
-      field('province_name', 'Province (enter name)', 'TEXT', undefined, true),
-      field('division_name', 'Division (enter name)', 'TEXT', undefined, true),
-      field('district_name', 'District (enter name)', 'TEXT', undefined, true),
-      field('tehsil_name', 'Tehsil (enter name)', 'TEXT', undefined, true),
+      field('district_id', 'District', 'SINGLE_CHOICE', { reference: 'districts' }, true),
+      field('tehsil_id', 'Tehsil', 'SINGLE_CHOICE', { reference: 'tehsils' }, true),
     ],
   },
   A_CONTACT: {
@@ -60,9 +58,9 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
   },
   A_PSIC: {
     fields: [
-      field('psic_division_text', 'PSIC division (code or name)', 'TEXT'),
-      field('psic_group_text', 'PSIC group (code or name)', 'TEXT'),
-      field('psic_class_text', 'PSIC class (code or name)', 'TEXT'),
+      field('psic_division_id', 'PSIC division (code or name)', 'SINGLE_CHOICE', { reference: 'psic_divisions' }),
+      field('psic_group_id', 'PSIC group (code or name)', 'SINGLE_CHOICE', { reference: 'psic_groups' }),
+      field('psic_class_id', 'PSIC class (code or name)', 'SINGLE_CHOICE', { reference: 'psic_classes' }),
     ],
   },
   A_ZONE_TYPE: { fields: [field('zone_type_id', 'Zone type', 'SINGLE_CHOICE', { lookup_type: 'ZONE_TYPE' })] },
@@ -117,7 +115,7 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
       field('unit_of_measurement_id', 'Capacity unit of measurement', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
       field('transformation_stage_ids', 'Transformation stage on arrival', 'MULTI_CHOICE', { lookup_type: 'TRANSFORMATION_STAGE' }),
       field('revenue_share_pct', 'Share in total revenue (%)', 'NUMBER'),
-      field('hs_code_text', 'HS code (enter code)', 'TEXT'),
+      field('hs_code_id', 'HS code (code or description)', 'SINGLE_CHOICE', { reference: 'hs_codes' }),
     ],
   },
   D_EMPLOYMENT: {
@@ -149,7 +147,7 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
       field('input_name', 'Major raw material / input', 'TEXT', undefined, true),
       field('unit_id', 'Unit', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
       field('cost_share_pct', 'Share of input costs (%)', 'NUMBER'),
-      field('hs_code_text', 'HS code (enter code)', 'TEXT'),
+      field('hs_code_id', 'HS code (code or description)', 'SINGLE_CHOICE', { reference: 'hs_codes' }),
       field('transformation_stage_id', 'Transformation stage', 'SINGLE_CHOICE', { lookup_type: 'TRANSFORMATION_STAGE' }),
     ],
   },
@@ -256,8 +254,36 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
 };
 
 export const SURVEY_REFERENCES = {
+  districts: `SELECT d.id, d.code, d.name AS label, false AS requires_text
+                FROM districts d
+                JOIN divisions dv ON dv.id = d.division_id
+                JOIN provinces p ON p.id = dv.province_id
+               WHERE lower(p.name) = 'punjab'
+               ORDER BY d.name`,
+  tehsils: `SELECT t.id, t.code, t.name AS label, false AS requires_text,
+                   t.district_id AS parent_id
+              FROM tehsils t
+              JOIN districts d ON d.id = t.district_id
+              JOIN divisions dv ON dv.id = d.division_id
+              JOIN provinces p ON p.id = dv.province_id
+             WHERE lower(p.name) = 'punjab'
+             ORDER BY t.name`,
   measurement_units: `SELECT id, code, name AS label FROM measurement_units ORDER BY name`,
   product_kinds: `SELECT 1 AS id, 'MAIN' AS code, 'Main product' AS label, false AS requires_text UNION ALL SELECT 2, 'SECONDARY', 'Secondary product', false`,
   capacity_periods: `SELECT 1 AS id, 'PER_DAY' AS code, 'Per day' AS label, false AS requires_text UNION ALL SELECT 2, 'PER_MONTH', 'Per month', false`,
-  genders: `SELECT 1 AS id, 'MALE' AS code, 'Male' AS label, false AS requires_text UNION ALL SELECT 2, 'FEMALE', 'Female', false`,
+  genders: `SELECT 1 AS id, 'MALE' AS code, 'Male' AS label, false AS requires_text UNION ALL SELECT 2, 'FEMALE', 'Female', false UNION ALL SELECT 3, 'Other', 'Other', false`,
+  psic_divisions: `SELECT id, code, name AS label, false AS requires_text
+                     FROM psic_divisions
+                    ORDER BY code`,
+  psic_groups: `SELECT id, code, name AS label, false AS requires_text,
+                       division_id AS parent_id
+                  FROM psic_groups
+                 ORDER BY code`,
+  psic_classes: `SELECT id, code, name AS label, false AS requires_text,
+                        group_id AS parent_id
+                   FROM psic_classes
+                  ORDER BY code`,
+  hs_codes: `SELECT id, code, description AS label, false AS requires_text
+               FROM hs_codes
+              ORDER BY code`,
 } as const;

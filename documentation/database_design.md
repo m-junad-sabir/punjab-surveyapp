@@ -69,11 +69,11 @@ The two status columns on `survey_responses` describe different things:
 
 The client also has local-only statuses such as `draft`, `pending_sync`, and `failed`; these are not values for the database `status` column.
 
-## Transitional text capture for reference data
+## PSIC and HS classification references
 
-The official province/division/district/tehsil, PSIC, HS-code, industrial-estate, and industrial-cluster datasets are not yet populated for the current workflow. As requested, those questionnaire values can currently be entered as text. Corresponding foreign-key IDs remain nullable, while text columns retain the entry. Related free-text columns include `province_name`, `division_name`, `district_name`, `tehsil_name`, `psic_division_text`, `psic_group_text`, `psic_class_text`, `major_activity_text`, `hs_code_text`, `industrial_estate_text`, and `industrial_cluster_text`.
+`database/seed_classification_codes.sql` loads PSIC Rev.4 divisions, groups, and classes, plus HS codes and descriptions from the Pakistan Customs Tariff FY 2026-27. The survey caches these references for offline use. Surveyors can search by code or description; the PSIC group and class choices are filtered by their parent selection. Sync stores the selected foreign-key IDs and resolves the official code and description on the server. The existing text columns retain a readable code-and-description value and continue to accept older offline drafts containing free text.
 
-Seed-backed lists such as zone type, ownership, legal structure, measurement units, and section lookup values remain choice controls. Loading verified reference datasets should be followed by restoring validated dependent selectors; it should not silently discard existing text values.
+Zone type, ownership, legal structure, measurement units, and Section B–K lists remain lookup-backed choice controls.
 
 ## Integrity and database behavior
 
@@ -86,6 +86,6 @@ Seed-backed lists such as zone type, ownership, legal structure, measurement uni
 
 ## Database setup and upgrade
 
-For a fresh database, apply `database/schema.sql`, then `database/seed.sql`. For a database created from the older version-1 form, apply `database/migrate_full_questionnaire.sql` once. The migration is transactional and upgrades the industrial-unit text fields, registers missing questions, adds the temporary “Other” zone option, and activates form version 2.
+For a fresh database, apply `database/schema.sql`, `database/seed.sql`, and `database/seed_classification_codes.sql`. Existing databases should also apply `database/seed_classification_codes.sql`; it is safe to rerun and upserts rows by their natural code. For a database created from the older version-1 form, apply `database/migrate_full_questionnaire.sql` once. Apply `database/add_common_measurement_units.sql` to an existing database to add kilogram, liter, and ton options to measurement dropdowns.
 
 Do not run the seed and migration indiscriminately against a live environment: review the target database and take a backup first. Runtime ORM synchronization is disabled.

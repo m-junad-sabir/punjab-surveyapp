@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { useSurvey } from '../context/SurveyContext';
 import { useAuth }   from '../context/AuthContext';
@@ -158,6 +159,176 @@ function ChoiceField({ options, value, onChange, error }: {
         />
       )}
     </>
+  );
+}
+
+function SearchableReferenceField({ options, value, onChange, disabled, manualValue, onManualChange }: {
+  options: QuestionOption[];
+  value: any;
+  onChange: (value: number | null) => void;
+  disabled?: boolean;
+  manualValue?: string;
+  onManualChange?: (value: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      const rect = inputRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      const spaceAbove = rect.top - 8;
+      const openAbove = spaceBelow < 240 && spaceAbove > spaceBelow;
+      const maxHeight = Math.max(0, Math.min(240, openAbove ? spaceAbove : spaceBelow));
+      setDropdownPosition({
+        top: openAbove ? rect.top - maxHeight : rect.bottom,
+        left: rect.left,
+        width: rect.width,
+        maxHeight,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    window.visualViewport?.addEventListener('resize', updatePosition);
+    window.visualViewport?.addEventListener('scroll', updatePosition);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+      window.visualViewport?.removeEventListener('resize', updatePosition);
+      window.visualViewport?.removeEventListener('scroll', updatePosition);
+    };
+  }, [open]);
+  if (options.length === 0 && onManualChange) {
+    return (
+      <div>
+        <input
+          className="form-input"
+          value={manualValue ?? ''}
+          placeholder={disabled ? 'Select the previous level first' : 'Enter code or name'}
+          disabled={disabled}
+          onChange={(event) => onManualChange(event.target.value)}
+        />
+        <div style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: 11 }}>
+          No official choices are available for this level. Enter the code or name manually, or ask your administrator to load the PSIC/HS reference data.
+        </div>
+      </div>
+    );
+  }
+  const selected = options.find((option) => option.id === selectedOptionId(value));
+  const selectedLabel = selected ? `${selected.code} - ${selected.label}` : '';
+  const compactLabel = (label: string) => label.length > 180 ? `${label.slice(0, 177).trimEnd()}...` : label;
+  const search = (editing ? query : open ? '' : selected ? `${selected.code} - ${selected.label}` : '')
+    .trim()
+    .toLowerCase();
+  const matches = options.filter((option) =>
+    !search || option.code.toLowerCase().includes(search) || option.label.toLowerCase().includes(search),
+  );
+  const visibleOptions = matches.slice(0, 80);
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        className="form-input"
+        value={editing ? query : compactLabel(selectedLabel)}
+        title={editing ? undefined : selectedLabel || undefined}
+        placeholder={disabled ? 'Select the previous level first' : 'Search by code or description…'}
+        disabled={disabled}
+        autoComplete="off"
+        aria-expanded={open}
+        onFocus={(event) => {
+          event.currentTarget.select();
+          setQuery('');
+          setEditing(false);
+          setOpen(true);
+        }}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setEditing(true);
+          setOpen(true);
+          if (selected) onChange(null);
+        }}
+        onBlur={() => {
+          setOpen(false);
+          if (editing && !selected) {
+            setEditing(false);
+            setQuery('');
+          }
+        }}
+      />
+      {open && !disabled && dropdownPosition && createPortal(
+        <div
+          role="listbox"
+          style={{
+            position: 'fixed',
+            zIndex: 10000,
+            top: dropdownPosition.top,
+            left: dropdownPosition.left,
+            width: dropdownPosition.width,
+            maxHeight: dropdownPosition.maxHeight,
+            overflowY: 'auto',
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            boxShadow: 'var(--shadow-md)',
+          }}
+        >
+          {visibleOptions.length ? visibleOptions.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="option"
+              aria-selected={option.id === selected?.id}
+              title={`${option.code} - ${option.label}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onChange(option.id);
+                setEditing(false);
+                setQuery('');
+                setOpen(false);
+              }}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '9px 10px',
+                border: 0,
+                borderBottom: '1px solid var(--border)',
+                background: option.id === selected?.id ? 'var(--surface2)' : 'var(--surface)',
+                color: 'var(--text)',
+                textAlign: 'left',
+                cursor: 'pointer',
+                fontSize: 12,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <strong>{option.code}</strong> — {compactLabel(option.label)}
+            </button>
+          )) : (
+            <div style={{ padding: 10, color: 'var(--text-muted)', fontSize: 12 }}>No matching codes.</div>
+          )}
+          {matches.length > visibleOptions.length && (
+            <div style={{ padding: '7px 10px', color: 'var(--text-muted)', fontSize: 11 }}>
+              Showing 80 matches. Type more to narrow the list.
+            </div>
+          )}
+        </div>,
+        document.body,
+      )}
+    </div>
   );
 }
 
@@ -341,10 +512,13 @@ function MatrixField({ question, value, onChange }: {
   );
 }
 
-function InputFieldControl({ field, value, onChange }: {
+function InputFieldControl({ field, value, onChange, disabled, manualValue, onManualChange }: {
   field: SurveyInputField;
   value: any;
   onChange: (value: any) => void;
+  disabled?: boolean;
+  manualValue?: string;
+  onManualChange?: (value: string) => void;
 }) {
   switch (field.type) {
     case 'TEXT':
@@ -364,6 +538,18 @@ function InputFieldControl({ field, value, onChange }: {
         </select>
       );
     case 'SINGLE_CHOICE':
+      if (['psic_divisions', 'psic_groups', 'psic_classes', 'hs_codes'].includes(field.reference ?? '')) {
+        return (
+          <SearchableReferenceField
+            options={field.options}
+            value={value}
+            onChange={onChange}
+            disabled={disabled}
+            manualValue={manualValue}
+            onManualChange={onManualChange}
+          />
+        );
+      }
       return <ChoiceField options={field.options} value={value} onChange={onChange} />;
     case 'MULTI_CHOICE':
     case 'MONTHS':
@@ -377,17 +563,23 @@ function InputFieldControl({ field, value, onChange }: {
   }
 }
 
-function FieldGroup({ fields, value, onChange }: {
+function FieldGroup({ fields, value, onChange, references }: {
   fields: SurveyInputField[];
   value: Record<string, any>;
   onChange: (value: Record<string, any>) => void;
+  references: Record<string, QuestionOption[]>;
 }) {
   const map = value && typeof value === 'object' ? value : {};
+  const psicTextKeys: Record<string, string> = {
+    psic_division_id: 'psic_division_text',
+    psic_group_id: 'psic_group_text',
+    psic_class_id: 'psic_class_text',
+  };
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
       {fields.map((field) => {
-        let options = field.options;
+        let options = field.reference ? (references[field.reference] ?? field.options) : field.options;
         const parentKey: Record<string, string> = {
           division_id: 'province_id',
           district_id: 'division_id',
@@ -400,6 +592,7 @@ function FieldGroup({ fields, value, onChange }: {
         const parentValue = parentKey[field.key]
           ? selectedOptionId(map[parentKey[field.key]]) ?? map[parentKey[field.key]]
           : undefined;
+        const parentTextKey = parentKey[field.key]?.replace(/_id$/, '_text');
         const hasParentLinks = options.some(
           (option) => option.parent_id !== undefined && option.parent_id !== null,
         );
@@ -410,6 +603,11 @@ function FieldGroup({ fields, value, onChange }: {
         }
 
         const visibleField = { ...field, options };
+        const manualKey = psicTextKeys[field.key];
+        const dependentFields: Record<string, string[]> = {
+          psic_division_id: ['psic_group_id', 'psic_class_id', 'psic_group_text', 'psic_class_text'],
+          psic_group_id: ['psic_class_id', 'psic_class_text'],
+        };
         if (field.key === 'transformation_stage_ids' && map.product_kind === 2) return null;
         if (['revenue_share_pct', 'hs_code_id'].includes(field.key) && map.product_kind === 2) return null;
         if (field.key === 'company_name' && map.has_parent_company === false) return null;
@@ -426,7 +624,37 @@ function FieldGroup({ fields, value, onChange }: {
             <InputFieldControl
               field={visibleField}
               value={controlValue}
-              onChange={(next) => onChange({ ...map, [field.key]: next })}
+              disabled={
+                ['psic_groups', 'psic_classes'].includes(field.reference ?? '') &&
+                parentValue == null &&
+                !map[parentTextKey ?? '']
+              }
+              manualValue={manualKey ? map[manualKey] : field.key === 'hs_code_id' ? map[field.key] : undefined}
+              onManualChange={manualKey
+                ? (text) => onChange({
+                    ...map,
+                    [field.key]: null,
+                    [manualKey]: text,
+                    ...Object.fromEntries((dependentFields[field.key] ?? []).map((key) => [key, null])),
+                  })
+                : field.key === 'hs_code_id'
+                  ? (text) => onChange({ ...map, [field.key]: text })
+                  : undefined}
+              onChange={(next) => {
+                const dependentSelectionFields: Record<string, string[]> = {
+                  district_id: ['tehsil_id'],
+                  psic_division_id: dependentFields.psic_division_id,
+                  psic_group_id: dependentFields.psic_group_id,
+                };
+                onChange({
+                  ...map,
+                  [field.key]: next,
+                  ...(manualKey ? { [manualKey]: null } : {}),
+                  ...(next !== controlValue
+                    ? Object.fromEntries((dependentSelectionFields[field.key] ?? []).map((key) => [key, null]))
+                    : {}),
+                });
+              }}
             />
           </div>
         );
@@ -435,14 +663,288 @@ function FieldGroup({ fields, value, onChange }: {
   );
 }
 
-function StructuredQuestionField({ question, value, onChange }: {
-  question: SurveyQuestion;
+function workforceGender(value: any): 'MALE' | 'FEMALE' | 'Other' | null {
+  const id = selectedOptionId(value);
+  if (id === 1 || value === 'MALE') return 'MALE';
+  if (id === 2 || value === 'FEMALE') return 'FEMALE';
+  if (id === 3 || value === 'Other') return 'Other';
+  return null;
+}
+
+function workforceCount(value: unknown): number | null {
+  if (value === '' || value === null || value === undefined) return null;
+  const count = Number(value);
+  return Number.isInteger(count) && count >= 0 ? count : null;
+}
+
+function totalWorkforceCounts(values: unknown[]): number | null {
+  const counts = values.map(workforceCount).filter((count): count is number => count !== null);
+  return counts.length ? counts.reduce((total, count) => total + count, 0) : null;
+}
+
+function WorkforceTotal({ values }: { values: unknown[] }) {
+  const total = totalWorkforceCounts(values);
+  return <strong>{total === null ? '—' : total}</strong>;
+}
+
+function WorkforceCountInput({ label, value, onChange }: {
+  label: string;
+  value: number | null;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label style={{ minWidth: 0, display: 'block', fontSize: 11, color: 'var(--text-muted)' }}>
+      {label}
+      <input
+        className="form-input"
+        type="number"
+        min={0}
+        step={1}
+        inputMode="numeric"
+        aria-label={label}
+        value={value ?? ''}
+        onChange={(event) => onChange(event.target.value)}
+        style={{ marginTop: 4, padding: '9px 10px', fontSize: 16 }}
+      />
+    </label>
+  );
+}
+
+function WorkforceCountSummary({ label, values }: { label: string; values: unknown[] }) {
+  return (
+    <div style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 8,
+      minWidth: 0,
+      padding: '9px 11px',
+      borderRadius: 8,
+      background: 'var(--primary-bg)',
+      fontSize: 12,
+    }}>
+      <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+      <strong style={{ color: 'var(--primary)', fontSize: 15 }}>
+        <WorkforceTotal values={values} />
+      </strong>
+    </div>
+  );
+}
+
+function EmploymentDetailsTable({ value, onChange }: {
   value: any;
   onChange: (value: any) => void;
 }) {
+  const rows: Array<Record<string, any>> = Array.isArray(value) ? value : [];
+  const categories = [
+    { key: 'regular_count', label: 'Regular employees' },
+    { key: 'contract_count', label: 'Contract employees' },
+    { key: 'daily_wage_count', label: 'Daily wages' },
+  ];
+  const genders = [
+    { code: 'MALE' as const, label: 'Male' },
+    { code: 'FEMALE' as const, label: 'Female' },
+    { code: 'Other' as const, label: 'Other' },
+  ];
+  const countFor = (gender: 'MALE' | 'FEMALE' | 'Other', key: string) =>
+    totalWorkforceCounts(
+      rows.filter((row) => workforceGender(row.gender) === gender).map((row) => row[key]),
+    );
+
+  const updateCount = (gender: 'MALE' | 'FEMALE' | 'Other', key: string, raw: string) => {
+    const nextCount = workforceCount(raw);
+    const genderRows = rows.filter((row) => workforceGender(row.gender) === gender);
+    const updatedRow: Record<string, any> = {
+      gender: genderRows[0]?.gender ?? (gender === 'MALE' ? 1 : gender === 'FEMALE' ? 2 : 3),
+    };
+    for (const category of categories) {
+      const existingCount = totalWorkforceCounts(genderRows.map((row) => row[category.key]));
+      if (existingCount !== null) updatedRow[category.key] = existingCount;
+    }
+    if (nextCount === null) delete updatedRow[key];
+    else updatedRow[key] = nextCount;
+
+    const otherCounts = categories
+      .filter((category) => category.key !== key)
+      .map((category) => updatedRow[category.key]);
+    const nextRows = rows.filter((row) => workforceGender(row.gender) !== gender);
+    if (nextCount !== null || otherCounts.some((count) => workforceCount(count) !== null)) {
+      nextRows.push(updatedRow);
+    }
+    onChange(nextRows);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+      {categories.map((category) => (
+        <div key={category.key} style={{
+          padding: 11,
+          border: '1px solid var(--border)',
+          borderRadius: 10,
+          background: 'var(--surface)',
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 9 }}>{category.label}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+            {genders.map((gender) => (
+              <WorkforceCountInput
+                key={gender.code}
+                label={gender.label}
+                value={countFor(gender.code, category.key)}
+                onChange={(raw) => updateCount(gender.code, category.key, raw)}
+              />
+            ))}
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <WorkforceCountSummary
+              label={`${category.label} total`}
+              values={genders.map((gender) => countFor(gender.code, category.key))}
+            />
+          </div>
+        </div>
+      ))}
+      <div style={{
+        padding: 11,
+        border: '1px solid var(--border)',
+        borderRadius: 10,
+        background: 'var(--surface2)',
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Employee subtotals</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          {genders.map((gender) => (
+            <WorkforceCountSummary
+              key={gender.code}
+              label={gender.label}
+              values={categories.map((category) => countFor(gender.code, category.key))}
+            />
+          ))}
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <WorkforceCountSummary
+            label="All employees"
+            values={categories.flatMap((category) =>
+              genders.map((gender) => countFor(gender.code, category.key)),
+            )}
+          />
+        </div>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        For seasonal employment, enter the average number of employees during the reporting or financial period.
+      </div>
+    </div>
+  );
+}
+
+function EmploymentSkillsTable({ options, value, onChange }: {
+  options: QuestionOption[];
+  value: any;
+  onChange: (value: any) => void;
+}) {
+  const rows: Array<Record<string, any>> = Array.isArray(value) ? value : [];
+  const genders = [
+    { code: 'MALE' as const, label: 'Male' },
+    { code: 'FEMALE' as const, label: 'Female' },
+    { code: 'Other' as const, label: 'Other' },
+  ];
+  const countFor = (gender: 'MALE' | 'FEMALE' | 'Other', skillId: number) =>
+    totalWorkforceCounts(rows.filter((row) =>
+      workforceGender(row.gender) === gender && selectedOptionId(row.skill_level_id) === skillId,
+    ).map((row) => row.headcount));
+
+  const updateCount = (gender: 'MALE' | 'FEMALE' | 'Other' , skillId: number, raw: string) => {
+    const nextCount = workforceCount(raw);
+    const existingRows = rows.filter((row) =>
+      workforceGender(row.gender) === gender && selectedOptionId(row.skill_level_id) === skillId,
+    );
+    const existing = existingRows[0];
+    const nextRows = rows.filter((row) =>
+      !(workforceGender(row.gender) === gender && selectedOptionId(row.skill_level_id) === skillId),
+    );
+    if (nextCount !== null) {
+      nextRows.push({
+        ...(existing ?? {}),
+        gender: existing?.gender ?? (gender === 'MALE' ? 1 : gender === 'FEMALE' ? 2 : 3),
+        skill_level_id: existing?.skill_level_id ?? skillId,
+        headcount: nextCount,
+      });
+    }
+    onChange(nextRows);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+      {options.map((option) => (
+        <div key={option.id} style={{
+          padding: 11,
+          border: '1px solid var(--border)',
+          borderRadius: 10,
+          background: 'var(--surface)',
+        }}>
+          <div style={{ fontSize: 12, lineHeight: 1.4, fontWeight: 700, marginBottom: 9 }}>
+            {option.label}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+            {genders.map((gender) => (
+              <WorkforceCountInput
+                key={gender.code}
+                label={gender.label}
+                value={countFor(gender.code, option.id)}
+                onChange={(raw) => updateCount(gender.code, option.id, raw)}
+              />
+            ))}
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <WorkforceCountSummary
+              label="Skill level total"
+              values={genders.map((gender) => countFor(gender.code, option.id))}
+            />
+          </div>
+        </div>
+      ))}
+      <div style={{
+        padding: 11,
+        border: '1px solid var(--border)',
+        borderRadius: 10,
+        background: 'var(--surface2)',
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Employee subtotals</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          {genders.map((gender) => (
+            <WorkforceCountSummary
+              key={gender.code}
+              label={gender.label}
+              values={options.map((option) => countFor(gender.code, option.id))}
+            />
+          ))}
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <WorkforceCountSummary
+            label="All employees"
+            values={options.flatMap((option) =>
+              genders.map((gender) => countFor(gender.code, option.id)),
+            )}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StructuredQuestionField({ question, value, onChange, references }: {
+  question: SurveyQuestion;
+  value: any;
+  onChange: (value: any) => void;
+  references: Record<string, QuestionOption[]>;
+}) {
   const fields = question.fields ?? [];
+  if (question.question_code === 'D_EMPLOYMENT') {
+    return <EmploymentDetailsTable value={value} onChange={onChange} />;
+  }
+  if (question.question_code === 'D_SKILLS') {
+    const skillField = fields.find((field) => field.key === 'skill_level_id');
+    return <EmploymentSkillsTable options={skillField?.options ?? []} value={value} onChange={onChange} />;
+  }
   if (!question.repeatable) {
-    return <FieldGroup fields={fields} value={value ?? {}} onChange={onChange} />;
+    return <FieldGroup fields={fields} value={value ?? {}} onChange={onChange} references={references} />;
   }
 
   const rows: Array<Record<string, any>> = Array.isArray(value) ? value : [];
@@ -461,7 +963,7 @@ function StructuredQuestionField({ question, value, onChange }: {
               Remove
             </button>
           </div>
-          <FieldGroup fields={fields} value={row} onChange={(updated) => updateRow(index, updated)} />
+          <FieldGroup fields={fields} value={row} onChange={(updated) => updateRow(index, updated)} references={references} />
         </div>
       ))}
       <button type="button" className="btn btn-outline btn-sm"
@@ -473,13 +975,14 @@ function StructuredQuestionField({ question, value, onChange }: {
 }
 
 // ─── Universal question renderer ──────────────────────────────────────────────
-function QuestionField({ q, value, onChange, error }: {
+function QuestionField({ q, value, onChange, error, references }: {
   q: SurveyQuestion; value: any; onChange: (v: any) => void; error?: string;
+  references: Record<string, QuestionOption[]>;
 }) {
   const errCls = error ? 'error' : '';
 
   if (q.fields?.length) {
-    return <StructuredQuestionField question={q} value={value} onChange={onChange} />;
+    return <StructuredQuestionField question={q} value={value} onChange={onChange} references={references} />;
   }
 
   switch (q.answer_type as AnswerType) {
@@ -530,7 +1033,7 @@ function QuestionField({ q, value, onChange, error }: {
       return <MatrixField question={q} value={value} onChange={onChange} />;
 
     case 'REPEATING_GROUP':
-      return <StructuredQuestionField question={q} value={value} onChange={onChange} />;
+      return <StructuredQuestionField question={q} value={value} onChange={onChange} references={references} />;
 
     case 'GPS':
       return <GpsField value={value} onChange={onChange} />;
@@ -624,7 +1127,7 @@ function isEmptyAnswer(value: any): boolean {
 // ─── Main SurveyPage ──────────────────────────────────────────────────────────
 export default function SurveyPage() {
   const { id }   = useParams<{ id: string }>();
-  const { form } = useSurvey();
+  const { form, fetchForm, formLoading, formError, isOnline } = useSurvey();
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -657,12 +1160,21 @@ export default function SurveyPage() {
     return (
       <div className="empty-state">
         <div className="icon">📋</div>
-        <h3>No form available</h3>
-        <p>Go to Dashboard and download the survey form first.</p>
-        <button className="btn btn-primary" style={{ marginTop: 16 }}
-          onClick={() => navigate('/dashboard')}>
-          Go to Dashboard
-        </button>
+        <h3>{formError ? 'Unable to load survey form' : 'No form available'}</h3>
+        <p>{formError ?? 'Download the survey form before starting a survey.'}</p>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16 }}>
+          <button
+            className="btn btn-primary"
+            onClick={() => fetchForm()}
+            disabled={!isOnline || formLoading}
+          >
+            {formLoading ? 'Loading…' : 'Retry download'}
+          </button>
+          <button className="btn btn-outline" onClick={() => navigate('/dashboard')}>
+            Go to Dashboard
+          </button>
+        </div>
+        {!isOnline && <p style={{ marginTop: 10 }}>Connect to the internet to download the survey form.</p>}
       </div>
     );
   }
@@ -852,15 +1364,32 @@ export default function SurveyPage() {
         {/* Title row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <button className="btn btn-ghost btn-sm" onClick={() => navigate('/surveys')}>← Back</button>
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0, textAlign: 'center' }}>
             <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {form.title}
+              Survey Form
             </div>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={saveAsDraft} disabled={saving}
             style={{ color: savedMsg ? 'var(--success)' : undefined, flexShrink: 0 }}>
-            {savedMsg ? '✓ Saved' : saving ? '…' : '💾 Draft'}
+            {savedMsg ? '✓ Saved' : saving ? '…' : '💾 Save'}
           </button>
+        </div>
+
+        <div aria-label="Punjab Industries and NESPAK" style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          padding: '0 0 8px',
+        }}>
+          <img
+            src="/logos/punjab-industries.png"
+            alt="Government of Punjab Industries"
+            style={{ width: 28, height: 28, objectFit: 'contain' }}
+          />
+          <span aria-hidden="true" style={{ width: 1, height: 22, background: 'var(--border)' }} />
+          <img
+            src="/logos/nespak.jpeg"
+            alt="NESPAK"
+            style={{ width: 40, height: 28, objectFit: 'contain' }}
+          />
         </div>
 
         {/* Progress bar */}
@@ -941,6 +1470,7 @@ export default function SurveyPage() {
                 value={answers[q.question_id]}
                 onChange={(v) => setAnswer(q.question_id, v)}
                 error={errors[q.question_id]}
+                references={form?.references ?? {}}
               />
 
               {errors[q.question_id] && (
@@ -972,7 +1502,11 @@ export default function SurveyPage() {
         <div style={{ padding: '0 14px 12px' }}>
           <button
             className="btn btn-outline"
-            onClick={() => downloadSurveyPdf(buildResponse('draft'))}
+            onClick={() => {
+              void downloadSurveyPdf(buildResponse('draft'), form).catch((error: unknown) => {
+                window.alert(error instanceof Error ? error.message : 'Unable to generate the survey PDF.');
+              });
+            }}
             style={{ width: '100%' }}
           >
             ⬇ Download Survey PDF
