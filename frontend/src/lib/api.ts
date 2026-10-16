@@ -1,9 +1,9 @@
 import type { IndustrialUnit } from '../types';
 
 /**
- * API client — all calls go through Vite /api proxy → NestJS :3002
+ * API client — uses the configured API URL or Vite's local /api proxy.
  */
-const BASE = '/api';
+const BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
 
 function getToken(): string | null {
   return localStorage.getItem('survey_token');

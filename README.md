@@ -113,6 +113,36 @@ Open **http://localhost:5173** in your browser.
 
 ---
 
+## 6. Cloud Deployment (Internal Testing)
+
+### Neon database
+
+1. Create a PostgreSQL project in Neon and copy its pooled connection string with
+   `sslmode=require`.
+2. Initialize the database by running `database/schema.sql`, `database/seed.sql`,
+   `database/seed_punjab_geography.sql`, and
+   `database/seed_classification_codes.sql` against that connection.
+
+### Render API
+
+1. Create a Render Blueprint from this repository and use the included
+   `render.yaml`. When prompted, provide the Neon connection string as
+   `DATABASE_URL`; Render generates `JWT_SECRET`.
+2. After the service deploys, copy its public `onrender.com` URL.
+
+### Netlify frontend
+
+1. Import this repository into Netlify; `netlify.toml` configures the frontend
+   build and client-side routes.
+2. Set the Netlify environment variable `VITE_API_BASE_URL` to the Render URL
+   (for example, `https://punjab-survey-api.onrender.com`, without a trailing
+   slash or `/api`), then trigger a deploy.
+
+Never commit database connection strings or other secrets. Share the resulting
+public service URLs if you need help verifying the deployment.
+
+---
+
 ## API Endpoints
 
 | Method | Route                           | Auth Required    |
