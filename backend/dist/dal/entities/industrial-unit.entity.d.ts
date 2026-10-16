@@ -21,8 +21,11 @@ export declare class IndustrialUnit {
     legal_structure_id: number | null;
     zone_type_id: number | null;
     zone_type_other_text: string | null;
+    psic_division_id: number | null;
     psic_division_text: string | null;
+    psic_group_id: number | null;
     psic_group_text: string | null;
+    psic_class_id: number | null;
     psic_class_text: string | null;
     industrial_estate_id: number | null;
     industrial_estate_text: string | null;

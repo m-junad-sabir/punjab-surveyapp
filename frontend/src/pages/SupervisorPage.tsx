@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useSurvey } from '../context/SurveyContext';
+import type { IndustrialUnit } from '../types';
 
 export default function SupervisorPage() {
   const { isOnline } = useSurvey();
-  const [units, setUnits] = useState<any[]>([]);
+  const [units, setUnits] = useState<IndustrialUnit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<'all' | 'pending' | 'verified'>('pending');
@@ -22,12 +23,12 @@ export default function SupervisorPage() {
   useEffect(() => { load(); }, [isOnline]);
 
   const filtered = units.filter((u) => {
-    if (filter === 'pending')  return !u.is_verified;
-    if (filter === 'verified') return u.is_verified;
+    if (filter === 'pending')  return u.approval_status === 'PENDING';
+    if (filter === 'verified') return u.approval_status === 'CONFIRMED';
     return true;
   });
 
-  const pendingCount = units.filter((u) => !u.is_verified).length;
+  const pendingCount = units.filter((u) => u.approval_status === 'PENDING').length;
 
   return (
     <div>
@@ -76,23 +77,27 @@ export default function SupervisorPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {filtered.map((unit) => (
-            <div key={unit.unit_id} className="card" style={{ padding: '14px 18px' }}>
+            <div key={unit.id} className="card" style={{ padding: '14px 18px' }}>
               <div className="flex items-center justify-between">
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="flex items-center gap-8">
-                    <span style={{ fontWeight: 600 }} className="truncate">{unit.unit_name}</span>
-                    <span className={`badge ${unit.is_verified ? 'badge-green' : 'badge-yellow'}`}>
-                      {unit.is_verified ? 'Verified' : 'Pending'}
+                    <span style={{ fontWeight: 600 }} className="truncate">{unit.name}</span>
+                    <span className={`badge ${
+                      unit.approval_status === 'CONFIRMED'
+                        ? 'badge-green'
+                        : unit.approval_status === 'REJECTED'
+                          ? 'badge-red'
+                          : 'badge-yellow'
+                    }`}>
+                      {unit.approval_status}
                     </span>
                   </div>
                   <div className="text-small text-muted" style={{ marginTop: 4 }}>
-                    <span>{unit.unit_code}</span>
-                    {unit.ownership_type && <span> • {unit.ownership_type}</span>}
-                    <span> • {unit.operational_status}</span>
+                    <span>{unit.unit_code ?? '—'}</span>
                     <span> • {new Date(unit.created_at).toLocaleDateString()}</span>
                   </div>
                 </div>
-                <Link to={`/supervisor/units/${unit.unit_id}`} className="btn btn-outline btn-sm" style={{ marginLeft: 12 }}>
+                <Link to={`/supervisor/units/${unit.id}`} className="btn btn-outline btn-sm" style={{ marginLeft: 12 }}>
                   Review →
                 </Link>
               </div>

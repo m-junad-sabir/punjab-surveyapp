@@ -388,7 +388,7 @@ CREATE TABLE product_transformation_stages (
 CREATE TABLE workforce_employment (
   id bigserial NOT NULL PRIMARY KEY,
   response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
-  gender varchar(10) NOT NULL CHECK (gender IN ('MALE','FEMALE')),
+  gender varchar(10) NOT NULL CHECK (gender IN ('MALE','FEMALE','Other')),
   regular_count int DEFAULT 0 NOT NULL CHECK (regular_count >= 0),
   contract_count int DEFAULT 0 NOT NULL CHECK (contract_count >= 0),
   daily_wage_count int DEFAULT 0 NOT NULL CHECK (daily_wage_count >= 0),
@@ -400,7 +400,7 @@ CREATE TABLE workforce_employment (
 CREATE TABLE workforce_skills (
   id bigserial NOT NULL PRIMARY KEY,
   response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
-  gender varchar(10) NOT NULL CHECK (gender IN ('MALE','FEMALE')),
+  gender varchar(10) NOT NULL CHECK (gender IN ('MALE','FEMALE','Other')),
   skill_level_id integer NOT NULL REFERENCES lookup_values(id),
   headcount int DEFAULT 0 NOT NULL CHECK (headcount >= 0),
   UNIQUE (response_id, gender, skill_level_id)

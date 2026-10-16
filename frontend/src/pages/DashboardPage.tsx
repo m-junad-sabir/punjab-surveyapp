@@ -55,7 +55,7 @@ export default function DashboardPage() {
           {user?.role_name}
         </div>
         <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginTop: 2 }}>
-          Hello, {user?.full_name?.split(' ')[0]} 👋
+          Hello, {user?.full_name} 
         </div>
 
         {/* Form status chip */}
@@ -66,7 +66,7 @@ export default function DashboardPage() {
           }}>
             {form ? (
               <span style={{ fontSize: 12, color: '#fff' }}>
-                ✅ Form v{form.version} ready · {form.sections.length} sections
+              ✅ Survey form ready
               </span>
             ) : (
               <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)' }}>
@@ -91,7 +91,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Stats row ── */}
-      <div style={{
+      {/* <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
         gap: 1, background: 'var(--border)', marginBottom: 8,
       }}>
@@ -99,7 +99,7 @@ export default function DashboardPage() {
           { v: stats.total,   l: 'Total',   c: 'var(--primary)' },
           { v: stats.synced,  l: 'Synced',  c: 'var(--secondary)' },
           { v: stats.pending, l: 'Pending', c: 'var(--warning)' },
-          { v: stats.draft,   l: 'Draft',   c: 'var(--text-muted)' },
+          { v: stats.draft,   l: 'Save',    c: 'var(--text-muted)' },
         ].map((s) => (
           <div key={s.l} style={{ background: '#fff', padding: '12px 6px', textAlign: 'center' }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: s.c, lineHeight: 1 }}>{s.v}</div>
@@ -109,7 +109,7 @@ export default function DashboardPage() {
             }}>{s.l}</div>
           </div>
         ))}
-      </div>
+      </div> */}
 
       {/* ── Quick actions ── */}
       <div style={{ background: '#fff', marginBottom: 8 }}>
@@ -185,11 +185,15 @@ export default function DashboardPage() {
                 </div>
               </div>
               <span className={`chip ${statusChip[r.sync_status] ?? 'chip-neutral'}`}>
-                {r.sync_status.replace('_', ' ')}
+                {r.sync_status === 'draft' ? 'Save' : r.sync_status.replace('_', ' ')}
               </span>
               <button
                 className="btn btn-outline btn-sm"
-                onClick={() => downloadSurveyPdf(r)}
+                onClick={() => {
+                  void downloadSurveyPdf(r, form).catch((error: unknown) => {
+                    window.alert(error instanceof Error ? error.message : 'Unable to generate the survey PDF.');
+                  });
+                }}
                 aria-label={`Download PDF for ${getSurveyUnitName(r)}`}
               >
                 ⬇ PDF

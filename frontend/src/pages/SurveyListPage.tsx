@@ -52,7 +52,7 @@ export default function SurveyListPage() {
           <button key={s}
             className={`btn btn-sm ${filter === s ? 'btn-primary' : 'btn-ghost'}`}
             onClick={() => setFilter(s)}>
-            {s === 'all' ? 'All' : s.replace('_', ' ')}
+            {s === 'all' ? 'All' : s === 'draft' ? 'Save' : s.replace('_', ' ')}
             {s !== 'all' && <span style={{ marginLeft: 4, opacity: 0.7 }}>({countFor(s)})</span>}
           </button>
         ))}
@@ -86,7 +86,7 @@ export default function SurveyListPage() {
                   </div>
                   <div className="flex items-center gap-8" style={{ marginLeft: 12 }}>
                     <span className={`badge ${statusColor[r.sync_status] ?? 'badge-gray'}`}>
-                      {r.sync_status.replace('_', ' ')}
+                      {r.sync_status === 'draft' ? 'Save' : r.sync_status.replace('_', ' ')}
                     </span>
                     {canEdit && (
                       <Link to={`/surveys/${r.response_id}`} className="btn btn-outline btn-sm">
@@ -114,7 +114,7 @@ export default function SurveyListPage() {
           <div className="modal">
             <div className="modal-header"><h3>Delete Survey?</h3></div>
             <div className="modal-body">
-              <p>This will permanently delete this local draft. This cannot be undone.</p>
+              <p>This will permanently delete this locally saved survey. This cannot be undone.</p>
             </div>
             <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setConfirmDelete(null)}>Cancel</button>

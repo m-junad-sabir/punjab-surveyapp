@@ -127,7 +127,9 @@ let SurveyFormService = class SurveyFormService {
                     question_id: q.id,
                     question_code: q.question_code,
                     question_no: q.question_no,
-                    question_text: q.question_text,
+                    question_text: q.question_code === 'A_LOCATION'
+                        ? 'District and tehsil'
+                        : q.question_text,
                     answer_type: q.answer_type,
                     is_required: q.is_required,
                     stored_in: q.stored_in,
@@ -139,7 +141,9 @@ let SurveyFormService = class SurveyFormService {
                         options: input.lookup_type
                             ? (lookupCodeMap.get(input.lookup_type) ?? [])
                             : input.reference
-                                ? (referenceData[input.reference] ?? [])
+                                ? ['psic_divisions', 'psic_groups', 'psic_classes', 'hs_codes'].includes(input.reference)
+                                    ? []
+                                    : (referenceData[input.reference] ?? [])
                                 : input.type === 'MONTHS'
                                     ? Array.from({ length: 12 }, (_, i) => ({
                                         id: i + 1,
