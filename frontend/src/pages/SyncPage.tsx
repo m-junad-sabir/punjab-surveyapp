@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { getAllResponses, getPendingResponses, saveResponse, saveSyncLog, getSyncLogs } from '../lib/db';
+import { getResponsesForOwner, getPendingResponsesForOwner, saveResponse, saveSyncLog, getSyncLogs } from '../lib/db';
 import { getDeviceId } from '../lib/deviceId';
 import { useSurvey } from '../context/SurveyContext';
+import { useAuth } from '../context/AuthContext';
 import type { OfflineResponse, SyncItemResult } from '../types';
 
 export default function SyncPage() {
   const { isOnline, refreshResponses } = useSurvey();
+  const { user } = useAuth();
   const [all,     setAll]     = useState<OfflineResponse[]>([]);
   const [pending, setPending] = useState<OfflineResponse[]>([]);
   const [results, setResults] = useState<SyncItemResult[]>([]);
@@ -16,12 +18,18 @@ export default function SyncPage() {
   const [error,   setError]   = useState('');
 
   const load = async () => {
-    setAll(await getAllResponses());
-    setPending(await getPendingResponses());
-    setLogs(await getSyncLogs());
+    if (!user?.user_id) {
+      setAll([]);
+      setPending([]);
+      setLogs([]);
+      return;
+    }
+    setAll(await getResponsesForOwner(user.user_id));
+    setPending(await getPendingResponsesForOwner(user.user_id));
+    setLogs(await getSyncLogs(user.user_id));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [user?.user_id]);
 
   const handleSync = async () => {
     if (!isOnline)       { alert('You are offline. Connect to internet to sync.'); return; }
@@ -36,6 +44,7 @@ export default function SyncPage() {
         device_id: getDeviceId(),
         responses: pending.map((r) => ({
           response_id:    r.response_id,
+          surveyor_id:    r.surveyor_id,
           form_id:        r.form_id,
           gps_lat:        r.gps_lat,
           gps_lng:        r.gps_lng,
@@ -66,6 +75,7 @@ export default function SyncPage() {
       }
 
       await saveSyncLog({
+        owner_id: user!.user_id,
         at:      new Date().toISOString(),
         sync_id: data.sync_id,
         status:  data.status,

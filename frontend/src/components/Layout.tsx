@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSurvey } from '../context/SurveyContext';
+import { getResponsesForOwner } from '../lib/db';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard':  'Punjab Survey',
@@ -59,7 +60,14 @@ export default function Layout() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer'
           }}
-            onClick={() => { if(confirm('Sign out?')) { logout(); navigate('/login'); } }}
+            onClick={async () => {
+              const localResponses = user?.user_id ? await getResponsesForOwner(user.user_id) : [];
+              const unsynced = localResponses.filter((response) => response.sync_status !== 'synced').length;
+              const message = unsynced
+                ? `You have ${unsynced} unsynced survey${unsynced === 1 ? '' : 's'}. They will remain on this device and be available when you sign back in. Sign out?`
+                : 'Sign out?';
+              if (confirm(message)) { logout(); navigate('/login'); }
+            }}
           >
             {user?.full_name?.charAt(0)?.toUpperCase() || '?'}
           </div>

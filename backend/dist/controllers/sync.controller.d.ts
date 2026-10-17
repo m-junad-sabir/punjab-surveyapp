@@ -3,6 +3,7 @@ interface SyncBody {
     device_id: string;
     responses: Array<{
         response_id: string;
+        surveyor_id: string;
         form_id: number;
         gps_lat?: number;
         gps_lng?: number;

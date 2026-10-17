@@ -27,9 +27,13 @@ __decorate([
     __metadata("design:type", String)
 ], DuplicateFlag.prototype, "matched_unit_id", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ length: 255 }),
+    (0, typeorm_1.Column)({ length: 30 }),
     __metadata("design:type", String)
 ], DuplicateFlag.prototype, "reason", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], DuplicateFlag.prototype, "details", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'numeric', precision: 5, scale: 4, nullable: true }),
     __metadata("design:type", Number)

@@ -160,7 +160,8 @@ let SyncService = class SyncService {
                         await trx.save(duplicate_flag_entity_1.DuplicateFlag, trx.create(duplicate_flag_entity_1.DuplicateFlag, {
                             unit_id: linkedUnitId,
                             matched_unit_id: matchedUnitId,
-                            reason: matchReason,
+                            reason: 'BOTH',
+                            details: matchReason,
                             name_similarity: similarity,
                             distance_m: distanceM,
                             resolution: 'OPEN',

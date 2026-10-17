@@ -2,22 +2,15 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth }   from '../context/AuthContext';
 import { useSurvey } from '../context/SurveyContext';
-import { getAllResponses } from '../lib/db';
 import { api } from '../lib/api';
 import { downloadSurveyPdf } from '../lib/surveyPdf';
 import { getSurveyUnitName } from '../lib/surveyResponse';
-import type { OfflineResponse } from '../types';
 
 export default function DashboardPage() {
   const { user, hasPermission } = useAuth();
-  const { form, fetchForm, formLoading, formError, isOnline, pendingCount } = useSurvey();
-  const [responses,    setResponses]    = useState<OfflineResponse[]>([]);
+  const { form, fetchForm, formLoading, formError, isOnline, pendingCount, responses } = useSurvey();
   const [pendingUnits, setPendingUnits] = useState(0);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    getAllResponses().then(setResponses);
-  }, []);
 
   useEffect(() => {
     if (hasPermission('SURVEY_CONFIRM') && isOnline) {

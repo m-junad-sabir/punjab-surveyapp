@@ -26,6 +26,9 @@ let SyncController = class SyncController {
         if (!Array.isArray(body?.responses) || body.responses.length === 0) {
             throw new common_1.BadRequestException('Request must include a non-empty responses array');
         }
+        if (body.responses.some((response) => response.surveyor_id !== user.user_id)) {
+            throw new common_1.ForbiddenException('A survey response can only be synced by its owning account.');
+        }
         const payload = {
             device_id: body.device_id || 'unknown',
             user_id: user.user_id,

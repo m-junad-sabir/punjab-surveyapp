@@ -7,7 +7,7 @@ import {
   ReactNode,
 } from 'react';
 import { api } from '../lib/api';
-import { getSurveyForm, saveSurveyForm, getAllResponses, getPendingResponses } from '../lib/db';
+import { getSurveyForm, saveSurveyForm, getResponsesForOwner, getPendingResponsesForOwner } from '../lib/db';
 import type { SurveyForm, OfflineResponse } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -34,7 +34,7 @@ interface SurveyContextValue {
 const SurveyContext = createContext<SurveyContextValue | null>(null);
 
 export function SurveyProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [form,         setForm]         = useState<SurveyForm | null>(null);
   const [formLoading,  setFormLoading]  = useState(false);
   const [formError,    setFormError]    = useState<string | null>(null);
@@ -107,11 +107,16 @@ export function SurveyProvider({ children }: { children: ReactNode }) {
 
   // ── Response list ────────────────────────────────────────────────────────
   const refreshResponses = useCallback(async () => {
-    const all     = await getAllResponses();
-    const pending = await getPendingResponses();
+    if (!user?.user_id) {
+      setResponses([]);
+      setPendingCount(0);
+      return;
+    }
+    const all     = await getResponsesForOwner(user.user_id);
+    const pending = await getPendingResponsesForOwner(user.user_id);
     setResponses(all.sort((a, b) => (b.created_at > a.created_at ? 1 : -1)));
     setPendingCount(pending.length);
-  }, []);
+  }, [user?.user_id]);
 
   useEffect(() => { refreshResponses(); }, [refreshResponses]);
 

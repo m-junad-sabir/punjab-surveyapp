@@ -196,7 +196,7 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 | 0 Secrets & env | Done |
 | 1 JWT fallback | Code done — awaiting migration_01 + verification |
 | 2 Roles + Gender | Code done — awaiting role audit and gender migration |
-| 3 Offline ownership + duplicate flag | Not started |
+| 3 Offline ownership + duplicate flag | Code done — awaiting migration_04 + account-switch verification |
 | 4 Photo capture | Not started |
 | 5 Admin users | Not started |
 | 6 Leave guard + autosave | Not started |

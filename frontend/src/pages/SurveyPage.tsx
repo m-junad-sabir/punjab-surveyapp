@@ -1135,6 +1135,8 @@ export default function SurveyPage() {
   const [answers,  setAnswers]  = useState<Record<number, any>>({});
   const [errors,   setErrors]   = useState<Record<number, string>>({});
   const [saving,   setSaving]   = useState(false);
+  const [existingResponseLoaded, setExistingResponseLoaded] = useState(!id);
+  const [ownerMismatch, setOwnerMismatch] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
   const [responseId] = useState(() => id || uuidv4());
   const [startedAt]  = useState(() => new Date().toISOString());
@@ -1144,17 +1146,38 @@ export default function SurveyPage() {
   useEffect(() => {
     if (!id) return;
     getResponse(id).then((r) => {
-      if (!r) return;
+      if (!r) {
+        setOwnerMismatch(true);
+        return;
+      }
+      if (!user?.user_id || r.surveyor_id !== user.user_id) {
+        setOwnerMismatch(true);
+        return;
+      }
       const map: Record<number, any> = {};
       r.answers.forEach((a) => { map[a.question_id] = a.answer_value; });
       setAnswers(map);
-    });
-  }, [id]);
+    }).catch(() => setOwnerMismatch(true)).finally(() => setExistingResponseLoaded(true));
+  }, [id, user?.user_id]);
 
   const setAnswer = useCallback((qid: number, val: any) => {
     setAnswers((prev) => ({ ...prev, [qid]: val }));
     setErrors((prev) => { const e = { ...prev }; delete e[qid]; return e; });
   }, []);
+
+  if (ownerMismatch) {
+    return (
+      <div className="empty-state">
+        <h3>Survey belongs to another account</h3>
+        <p>Sign in with its owner, or ask an admin to claim this unassigned legacy survey.</p>
+        <button className="btn btn-outline" onClick={() => navigate('/surveys')}>Back to surveys</button>
+      </div>
+    );
+  }
+
+  if (!existingResponseLoaded) {
+    return <div className="empty-state"><p>Loading saved survey…</p></div>;
+  }
 
   if (!form) {
     return (

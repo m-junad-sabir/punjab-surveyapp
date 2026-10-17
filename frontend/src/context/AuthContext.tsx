@@ -24,6 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string) => {
     const data = await api.auth.login(username, password);
+    if (navigator.storage?.persist) await navigator.storage.persist().catch(() => false);
     localStorage.setItem(TOKEN_KEY, data.access_token);
     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
     setToken(data.access_token);

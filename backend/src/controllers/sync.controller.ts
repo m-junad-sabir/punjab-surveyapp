@@ -4,6 +4,7 @@ import {
   Body,
   UseGuards,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { SyncService, SyncPayload } from '../bll/services/sync.service';
 import { RbacGuard } from '../common/guards/rbac.guard';
@@ -14,6 +15,7 @@ interface SyncBody {
   device_id: string;
   responses: Array<{
     response_id: string;
+    surveyor_id: string;
     form_id: number;
     gps_lat?: number;
     gps_lng?: number;
@@ -40,6 +42,9 @@ export class SyncController {
   async syncBatch(@Body() body: SyncBody, @CurrentUser() user: any) {
     if (!Array.isArray(body?.responses) || body.responses.length === 0) {
       throw new BadRequestException('Request must include a non-empty responses array');
+    }
+    if (body.responses.some((response) => response.surveyor_id !== user.user_id)) {
+      throw new ForbiddenException('A survey response can only be synced by its owning account.');
     }
 
     const payload: SyncPayload = {
