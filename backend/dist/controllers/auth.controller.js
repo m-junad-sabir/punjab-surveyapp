@@ -36,9 +36,12 @@ let AuthController = class AuthController {
             email: body.email,
             phone: body.phone,
             password: body.password,
-            role_id: body.role_id,
+            role_code: body.role_code,
         };
         return this.authService.register(dto);
+    }
+    async listRoles() {
+        return this.authService.listRoles();
     }
     async listUsers() {
         return this.authService.listUsers();
@@ -68,6 +71,14 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "register", null);
+__decorate([
+    (0, common_1.Get)('roles'),
+    (0, common_1.UseGuards)(rbac_guard_1.RbacGuard),
+    (0, permissions_decorator_1.RequirePermissions)('USER_CREATE'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "listRoles", null);
 __decorate([
     (0, common_1.Get)('users'),
     (0, common_1.UseGuards)(rbac_guard_1.RbacGuard),

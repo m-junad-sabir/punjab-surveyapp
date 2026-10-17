@@ -5,7 +5,7 @@ interface RegisterBody {
     email?: string;
     phone?: string;
     password: string;
-    role_id: number;
+    role_code: string;
 }
 interface LoginBody {
     username: string;
@@ -23,6 +23,11 @@ export declare class AuthController {
         id: string;
         username: string;
     }>;
+    listRoles(): Promise<{
+        id: number;
+        code: string;
+        name: string;
+    }[]>;
     listUsers(): Promise<object[]>;
     setUserStatus(userId: string, body: {
         is_active: boolean;

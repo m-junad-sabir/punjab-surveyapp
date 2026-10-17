@@ -8,7 +8,7 @@ export interface RegisterDto {
     email?: string;
     phone?: string;
     password: string;
-    role_id: number;
+    role_code: string;
     supervisor_id?: string;
 }
 export interface LoginDto {
@@ -25,6 +25,11 @@ export declare class AuthService {
         id: string;
         username: string;
     }>;
+    listRoles(): Promise<Array<{
+        id: number;
+        code: string;
+        name: string;
+    }>>;
     login(dto: LoginDto): Promise<{
         access_token: string;
         user: object;

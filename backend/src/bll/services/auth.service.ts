@@ -17,7 +17,7 @@ export interface RegisterDto {
   email?: string;
   phone?: string;
   password: string;
-  role_id: number;
+  role_code: string;
   supervisor_id?: string;
 }
 
@@ -46,6 +46,12 @@ export class AuthService {
     const existing = await this.userRepo.findOne({ where: conditions as any });
     if (existing) throw new ConflictException('Username or email already taken');
 
+    const roles: Array<{ id: number }> = await this.dataSource.query(
+      'SELECT id FROM roles WHERE code = $1',
+      [dto.role_code.trim().toUpperCase()],
+    );
+    if (!roles[0]) throw new NotFoundException('Role not found');
+
     const password_hash = await bcrypt.hash(dto.password, 10);
 
     const user = this.userRepo.create({
@@ -55,13 +61,19 @@ export class AuthService {
       email:        dto.email?.trim()       ?? null,
       phone:        dto.phone?.trim()       ?? null,
       password_hash,
-      role_id:      dto.role_id,
+      role_id:      roles[0].id,
       supervisor_id: dto.supervisor_id     ?? null,
       is_active:    true,
     });
 
     const saved = await this.userRepo.save(user);
     return { message: `User "${saved.username}" created`, id: saved.id, username: saved.username };
+  }
+
+  async listRoles(): Promise<Array<{ id: number; code: string; name: string }>> {
+    return this.dataSource.query(
+      'SELECT id, code, name FROM roles ORDER BY name, id',
+    );
   }
 
   // ── Login ───────────────────────────────────────────────────────────────────
@@ -97,6 +109,7 @@ export class AuthService {
       role_code: user.role?.code ?? '',
       role_name: user.role?.name ?? '',
       permissions,
+      tv:        user.token_version,
     };
 
     return {
@@ -138,7 +151,10 @@ export class AuthService {
     if (!user) throw new NotFoundException('User not found');
 
     const update: Partial<User> = { is_active: isActive };
-    if (!isActive) update.deactivated_at = new Date();
+    if (!isActive) {
+      update.deactivated_at = new Date();
+      update.token_version  = user.token_version + 1;
+    }
 
     await this.userRepo.update(userId, update);
     return { message: `User "${user.username}" ${isActive ? 'activated' : 'deactivated'}` };

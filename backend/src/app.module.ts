@@ -46,9 +46,12 @@ import { IndustrialUnitController } from './controllers/industrial-unit.controll
       LookupValue,
     ]),
 
-    JwtModule.register({
-      secret:      process.env.JWT_SECRET || 'punjab-industries-survey-secret-key-2026',
-      signOptions: { expiresIn: '1d' },
+    // Factory runs after main.ts has loaded .env and validated JWT_SECRET.
+    JwtModule.registerAsync({
+      useFactory: () => ({
+        secret:      process.env.JWT_SECRET,
+        signOptions: { expiresIn: '1d' },
+      }),
     }),
   ],
 

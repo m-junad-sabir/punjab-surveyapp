@@ -63,9 +63,11 @@ export const api = {
       email?:      string;
       phone?:      string;
       password:    string;   // plain text — hashed server-side
-      role_id:     number;
+      role_code:   string;
       supervisor_id?: string;
     }) => request<any>('POST', '/auth/register', body),   // auth=true (default)
+
+    listRoles: () => request<Array<{ id: number; code: string; name: string }>>('GET', '/auth/roles'),
 
     /**
      * GET /auth/users

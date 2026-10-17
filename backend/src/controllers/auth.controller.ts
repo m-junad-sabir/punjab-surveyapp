@@ -23,7 +23,7 @@ interface RegisterBody {
   phone?: string;
   /** Plain-text password — hashed server-side */
   password: string;
-  role_id: number;
+  role_code: string;
 }
 
 interface LoginBody {
@@ -67,9 +67,16 @@ export class AuthController {
       email:     body.email,
       phone:     body.phone,
       password:  body.password,
-      role_id:   body.role_id,
+      role_code: body.role_code,
     };
     return this.authService.register(dto);
+  }
+
+  @Get('roles')
+  @UseGuards(RbacGuard)
+  @RequirePermissions('USER_CREATE')
+  async listRoles() {
+    return this.authService.listRoles();
   }
 
   /**

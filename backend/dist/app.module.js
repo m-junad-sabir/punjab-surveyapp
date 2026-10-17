@@ -48,9 +48,11 @@ exports.AppModule = AppModule = __decorate([
                 duplicate_flag_entity_1.DuplicateFlag,
                 lookup_value_entity_1.LookupValue,
             ]),
-            jwt_1.JwtModule.register({
-                secret: process.env.JWT_SECRET || 'punjab-industries-survey-secret-key-2026',
-                signOptions: { expiresIn: '1d' },
+            jwt_1.JwtModule.registerAsync({
+                useFactory: () => ({
+                    secret: process.env.JWT_SECRET,
+                    signOptions: { expiresIn: '1d' },
+                }),
             }),
         ],
         controllers: [
