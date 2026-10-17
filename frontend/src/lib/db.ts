@@ -38,6 +38,29 @@ interface SurveyDB extends DBSchema {
     };
     indexes: { 'by-owner': string };
   };
+  photos: {
+    key: string;
+    value: StoredPhoto;
+    indexes: {
+      'by-response': string;
+      'by-owner': string;
+    };
+  };
+}
+
+export interface StoredPhoto {
+  photo_id: string;
+  response_id: string;
+  owner_id: string;
+  photo_type: string;
+  blob: Blob;
+  mime_type: 'image/jpeg';
+  size_bytes: number;
+  latitude: number;
+  longitude: number;
+  accuracy_m: number;
+  captured_at: string;
+  uploaded?: boolean;
 }
 
 let db: IDBPDatabase<SurveyDB> | null = null;
@@ -45,7 +68,7 @@ let db: IDBPDatabase<SurveyDB> | null = null;
 export async function getDB(): Promise<IDBPDatabase<SurveyDB>> {
   if (db) return db;
 
-  db = await openDB<SurveyDB>('survey-pwa', 6, {
+  db = await openDB<SurveyDB>('survey-pwa', 7, {
     upgrade(database, oldVersion, _newVersion, transaction) {
       // ── Fresh install ──────────────────────────────────────────────────────
       if (oldVersion < 1) {
@@ -64,6 +87,10 @@ export async function getDB(): Promise<IDBPDatabase<SurveyDB>> {
           autoIncrement: true,
         });
         syncLogStore.createIndex('by-owner', 'owner_id');
+
+        const photoStore = database.createObjectStore('photos', { keyPath: 'photo_id' });
+        photoStore.createIndex('by-response', 'response_id');
+        photoStore.createIndex('by-owner', 'owner_id');
       }
 
       // ── v2/v3/v4 legacy: wipe stale form cache ────────────────────────────
@@ -87,6 +114,12 @@ export async function getDB(): Promise<IDBPDatabase<SurveyDB>> {
         if (!syncLogStore.indexNames.contains('by-owner')) {
           syncLogStore.createIndex('by-owner', 'owner_id');
         }
+      }
+
+      if (oldVersion >= 1 && oldVersion < 7 && !database.objectStoreNames.contains('photos')) {
+        const photoStore = database.createObjectStore('photos', { keyPath: 'photo_id' });
+        photoStore.createIndex('by-response', 'response_id');
+        photoStore.createIndex('by-owner', 'owner_id');
       }
     },
   });
@@ -150,6 +183,26 @@ export async function getUnassignedResponses(): Promise<OfflineResponse[]> {
 export async function deleteResponse(id: string): Promise<void> {
   const database = await getDB();
   await database.delete('offline_responses', id);
+}
+
+export async function savePhoto(photo: StoredPhoto): Promise<void> {
+  const database = await getDB();
+  await database.put('photos', photo);
+}
+
+export async function getPhoto(photoId: string): Promise<StoredPhoto | undefined> {
+  const database = await getDB();
+  return database.get('photos', photoId);
+}
+
+export async function getPhotosForResponse(responseId: string): Promise<StoredPhoto[]> {
+  const database = await getDB();
+  return database.getAllFromIndex('photos', 'by-response', responseId);
+}
+
+export async function deletePhoto(photoId: string): Promise<void> {
+  const database = await getDB();
+  await database.delete('photos', photoId);
 }
 
 // ── Sync Log ──────────────────────────────────────────────────

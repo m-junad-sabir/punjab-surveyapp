@@ -18,6 +18,7 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const survey_response_entity_1 = require("../../dal/entities/survey-response.entity");
 const duplicate_flag_entity_1 = require("../../dal/entities/duplicate-flag.entity");
+const photo_service_1 = require("./photo.service");
 const survey_response_writer_1 = require("./survey-response-writer");
 function nameSimilarity(a, b) {
     const s1 = (a ?? '').toLowerCase().trim();
@@ -43,9 +44,10 @@ function finiteNumber(value) {
     return null;
 }
 let SyncService = class SyncService {
-    constructor(responseRepo, dataSource) {
+    constructor(responseRepo, dataSource, photoService) {
         this.responseRepo = responseRepo;
         this.dataSource = dataSource;
+        this.photoService = photoService;
     }
     async syncBatch(payload) {
         const { device_id, user_id, responses } = payload;
@@ -156,6 +158,7 @@ let SyncService = class SyncService {
                     });
                     await trx.save(survey_response_entity_1.SurveyResponse, surveyResp);
                     await (0, survey_response_writer_1.saveNormalizedSurveyAnswers)(trx, resp.response_id, answers, questions);
+                    await this.photoService.attachRequiredPhotos(trx, resp.form_id, resp.response_id, user_id, answers);
                     if (isDuplicate && matchedUnitId) {
                         await trx.save(duplicate_flag_entity_1.DuplicateFlag, trx.create(duplicate_flag_entity_1.DuplicateFlag, {
                             unit_id: linkedUnitId,
@@ -211,6 +214,7 @@ exports.SyncService = SyncService = __decorate([
     __param(0, (0, typeorm_1.InjectRepository)(survey_response_entity_1.SurveyResponse)),
     __param(1, (0, typeorm_1.InjectDataSource)()),
     __metadata("design:paramtypes", [typeorm_2.Repository,
-        typeorm_2.DataSource])
+        typeorm_2.DataSource,
+        photo_service_1.PhotoService])
 ], SyncService);
 //# sourceMappingURL=sync.service.js.map

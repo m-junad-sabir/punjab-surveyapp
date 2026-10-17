@@ -100,6 +100,67 @@ export const api = {
     /** POST /sync — requires SYNC_DATA permission */
     push: (payload: { device_id: string; responses: any[] }) =>
       request<any>('POST', '/sync', payload),
+
+    uploadPhoto: async (photo: {
+      photo_id: string;
+      response_id: string;
+      owner_id: string;
+      photo_type: string;
+      blob: Blob;
+      latitude: number;
+      longitude: number;
+      accuracy_m: number;
+      captured_at: string;
+    }) => {
+      const formData = new FormData();
+      formData.append('file', photo.blob, `${photo.photo_id}.jpg`);
+      formData.append('photo_id', photo.photo_id);
+      formData.append('response_id', photo.response_id);
+      formData.append('photo_type', photo.photo_type);
+      formData.append('latitude', String(photo.latitude));
+      formData.append('longitude', String(photo.longitude));
+      formData.append('accuracy_m', String(photo.accuracy_m));
+      formData.append('captured_at', photo.captured_at);
+
+      const headers: Record<string, string> = {};
+      const token = getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const response = await fetch(`${BASE}/sync/photos`, { method: 'POST', headers, body: formData });
+      if (!response.ok) {
+        if (response.status === 401) window.dispatchEvent(new Event('survey:unauthorized'));
+        let message = `Photo upload failed (HTTP ${response.status}).`;
+        try {
+          const error = await response.json();
+          message = error.message || message;
+        } catch { /* response has no JSON body */ }
+        throw new Error(message);
+      }
+      return response.json() as Promise<{ photo_id: string; status: string }>;
+    },
+  },
+
+  attachments: {
+    listForUnit: (unitId: string) =>
+      request<Array<{
+        id: string;
+        photo_type: string;
+        captured_at: string;
+        latitude: number;
+        longitude: number;
+        accuracy_m: number;
+      }>>('GET', `/attachments/unit/${unitId}`),
+
+    getFile: async (attachmentId: string): Promise<Blob> => {
+      const headers: Record<string, string> = {};
+      const token = getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const response = await fetch(`${BASE}/attachments/${attachmentId}`, { headers });
+      if (!response.ok) {
+        if (response.status === 401) window.dispatchEvent(new Event('survey:unauthorized'));
+        throw new Error(`Unable to load photo (HTTP ${response.status}).`);
+      }
+      return response.blob();
+    },
   },
 
   // ── Industrial Units ─────────────────────────────────────────

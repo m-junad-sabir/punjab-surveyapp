@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { getResponsesForOwner, getPendingResponsesForOwner, saveResponse, saveSyncLog, getSyncLogs } from '../lib/db';
+import { getPhoto, getPhotosForResponse, getResponsesForOwner, getPendingResponsesForOwner, saveResponse, saveSyncLog, getSyncLogs } from '../lib/db';
 import { getDeviceId } from '../lib/deviceId';
 import { useSurvey } from '../context/SurveyContext';
 import { useAuth } from '../context/AuthContext';
@@ -40,6 +40,20 @@ export default function SyncPage() {
     setError('');
 
     try {
+      for (const response of pending) {
+        const photoIds = response.answers
+          .map((answer) => answer.answer_value?.photo_id)
+          .filter((photoId): photoId is string => typeof photoId === 'string');
+        const localPhotos = await getPhotosForResponse(response.response_id);
+        for (const photoId of photoIds) {
+          const photo = localPhotos.find((candidate) => candidate.photo_id === photoId) ?? await getPhoto(photoId);
+          if (!photo || photo.owner_id !== user?.user_id || photo.response_id !== response.response_id) {
+            throw new Error('A required photo is missing from this account’s local storage. Reopen the survey and recapture it.');
+          }
+          await api.sync.uploadPhoto(photo);
+        }
+      }
+
       const payload = {
         device_id: getDeviceId(),
         responses: pending.map((r) => ({

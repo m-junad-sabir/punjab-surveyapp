@@ -13,6 +13,8 @@ export default function UnitDetailPage() {
   const [remarks,    setRemarks]    = useState('');
   const [showRemarks, setShowRemarks] = useState<'approve' | 'reject' | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
+  const [photos, setPhotos] = useState<Array<any>>([]);
+  const [photoFiles, setPhotoFiles] = useState<Array<{ id: string; src: string; photo_type: string; captured_at: string; latitude: number; longitude: number; accuracy_m: number }>>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -21,6 +23,30 @@ export default function UnitDetailPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    api.attachments.listForUnit(id).then(setPhotos).catch(() => setPhotos([]));
+  }, [id]);
+
+  useEffect(() => {
+    let active = true;
+    const urls: string[] = [];
+    Promise.all(photos.map(async (photo) => {
+      const blob = await api.attachments.getFile(photo.id);
+      const src = URL.createObjectURL(blob);
+      urls.push(src);
+      return { ...photo, src };
+    })).then((loaded) => {
+      if (active) setPhotoFiles(loaded);
+    }).catch(() => {
+      if (active) setPhotoFiles([]);
+    });
+    return () => {
+      active = false;
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [photos]);
 
   const doAction = async (action: 'approve' | 'reject') => {
     if (!id) return;
@@ -101,6 +127,24 @@ export default function UnitDetailPage() {
           </table>
         </div>
       </div>
+
+      {photoFiles.length > 0 && (
+        <section style={{ marginBottom: 20 }}>
+          <h2 style={{ marginBottom: 12 }}>Photo Evidence</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+            {photoFiles.map((photo) => (
+              <figure key={photo.id} className="card" style={{ margin: 0, padding: 12 }}>
+                <img src={photo.src} alt={photo.photo_type.replace(/_/g, ' ').toLowerCase()} style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'contain', background: '#111' }} />
+                <figcaption className="text-small" style={{ marginTop: 8 }}>
+                  <strong>{photo.photo_type === 'L_PHOTO_INTERVIEW_SESSION' ? 'Interview session' : 'Entrance signboard'}</strong>
+                  <div>{new Date(photo.captured_at).toLocaleString()}</div>
+                  <div>{Number(photo.latitude).toFixed(6)}, {Number(photo.longitude).toFixed(6)} · ±{Math.round(Number(photo.accuracy_m))} m</div>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Review actions — only for PENDING units */}
       {isPending && (

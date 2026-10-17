@@ -49,9 +49,9 @@ async function bootstrap() {
     logger: ['log', 'error', 'warn'],
   });
 
-  // ── Body size limit (photos are sent as base64 in sync payload) ────────────
-  app.use(require('express').json({ limit: '25mb' }));
-  app.use(require('express').urlencoded({ limit: '25mb', extended: true }));
+  // ── JSON body limit; photo data is uploaded separately as multipart ────────
+  app.use(require('express').json({ limit: '2mb' }));
+  app.use(require('express').urlencoded({ limit: '2mb', extended: true }));
 
   // ── CORS ───────────────────────────────────────────────────────────────────
   // credentials:true is intentionally omitted — the app uses Bearer tokens,

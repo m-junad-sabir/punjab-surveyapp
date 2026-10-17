@@ -3,6 +3,7 @@ import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { SurveyResponse } from '../../dal/entities/survey-response.entity';
 import { DuplicateFlag }  from '../../dal/entities/duplicate-flag.entity';
+import { PhotoService } from './photo.service';
 import {
   createIndustrialUnit,
   saveNormalizedSurveyAnswers,
@@ -71,6 +72,8 @@ export class SyncService {
 
     @InjectDataSource()
     private readonly dataSource: DataSource,
+
+    private readonly photoService: PhotoService,
   ) {}
 
   async syncBatch(payload: SyncPayload) {
@@ -217,6 +220,13 @@ export class SyncService {
           await trx.save(SurveyResponse, surveyResp);
 
           await saveNormalizedSurveyAnswers(trx, resp.response_id, answers, questions);
+          await this.photoService.attachRequiredPhotos(
+            trx,
+            resp.form_id,
+            resp.response_id,
+            user_id,
+            answers,
+          );
 
           // ── Flag duplicate ─────────────────────────────────────────────────
           if (isDuplicate && matchedUnitId) {

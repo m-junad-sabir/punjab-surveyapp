@@ -18,7 +18,7 @@ import { useAuth } from './AuthContext';
  * browsers discard stale cached forms and re-fetch.
  */
 const MINIMUM_FORM_VERSION = 2;
-const CURRENT_FORM_CACHE_REVISION = 9;
+const CURRENT_FORM_CACHE_REVISION = 11;
 
 interface SurveyContextValue {
   form:             SurveyForm | null;
@@ -64,6 +64,16 @@ export function SurveyProvider({ children }: { children: ReactNode }) {
         throw new Error(
           `The server survey form is version ${data.version}; run database/migrate_full_questionnaire.sql to load the complete questionnaire.`,
         );
+      }
+      const photoQuestionCodes = new Set(
+        data.sections
+          .flatMap((section: any) => section.questions)
+          .filter((question: any) => question.answer_type === 'PHOTO')
+          .map((question: any) => question.question_code),
+      );
+      if (!photoQuestionCodes.has('L_PHOTO_INTERVIEW_SESSION') ||
+          !photoQuestionCodes.has('L_PHOTO_ENTRANCE_SIGNBOARD')) {
+        throw new Error('Photo Evidence is missing from the active form. Run database/migration_05_photo_evidence.sql, then download the form again.');
       }
       const currentForm = {
         ...data,

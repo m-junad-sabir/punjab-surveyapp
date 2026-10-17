@@ -18,6 +18,7 @@ frontend/build/
 backend/coverage/
 coverage/
 *.tsbuildinfo
+backend/uploads/
 
 # Vite / cache files
 frontend/.vite/
