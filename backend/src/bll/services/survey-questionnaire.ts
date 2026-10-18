@@ -58,9 +58,7 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
   },
   A_PSIC: {
     fields: [
-      field('psic_division_id', 'PSIC division (code or name)', 'SINGLE_CHOICE', { reference: 'psic_divisions' }),
-      field('psic_group_id', 'PSIC group (code or name)', 'SINGLE_CHOICE', { reference: 'psic_groups' }),
-      field('psic_class_id', 'PSIC class (code or name)', 'SINGLE_CHOICE', { reference: 'psic_classes' }),
+      field('psic_class_id', 'PSIC class', 'SINGLE_CHOICE', { reference: 'unit_type_psic_classes' }, true),
     ],
   },
   A_ZONE_TYPE: { fields: [field('zone_type_id', 'Zone type', 'SINGLE_CHOICE', { lookup_type: 'ZONE_TYPE' })] },

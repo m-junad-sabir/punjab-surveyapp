@@ -40,6 +40,12 @@ export class User {
   @Column({ default: true })
   is_active: boolean;
 
+  @Column({ type: 'integer', default: 0 })
+  token_version: number;
+
+  @Column({ default: false })
+  must_change_password: boolean;
+
   @Column({ type: 'uuid', nullable: true })
   created_by: string;
 

@@ -104,6 +104,13 @@ let SurveyFormService = class SurveyFormService {
             }
             lookupCodeMap.set(option.type_code, byCode);
         }
+        if (questions.some((question) => question.question_code === 'A_UNIT_TYPE')) {
+            referenceData.unit_type_psic_classes = await this.dataSource.query(`SELECT c.id, c.code, c.code || ' - ' || c.name AS label,
+                false AS requires_text, m.unit_type_id AS parent_id
+           FROM unit_type_psic_classes m
+           JOIN psic_classes c ON c.id = m.psic_class_id
+          ORDER BY c.code`);
+        }
         const qBySection = new Map();
         for (const q of questions) {
             const list = qBySection.get(q.section_id) ?? [];

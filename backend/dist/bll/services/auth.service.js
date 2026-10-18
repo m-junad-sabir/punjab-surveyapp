@@ -32,6 +32,9 @@ let AuthService = class AuthService {
         const existing = await this.userRepo.findOne({ where: conditions });
         if (existing)
             throw new common_1.ConflictException('Username or email already taken');
+        const roles = await this.dataSource.query('SELECT id FROM roles WHERE code = $1', [dto.role_code.trim().toUpperCase()]);
+        if (!roles[0])
+            throw new common_1.NotFoundException('Role not found');
         const password_hash = await bcrypt.hash(dto.password, 10);
         const user = this.userRepo.create({
             username: dto.username.trim(),
@@ -40,12 +43,15 @@ let AuthService = class AuthService {
             email: dto.email?.trim() ?? null,
             phone: dto.phone?.trim() ?? null,
             password_hash,
-            role_id: dto.role_id,
+            role_id: roles[0].id,
             supervisor_id: dto.supervisor_id ?? null,
             is_active: true,
         });
         const saved = await this.userRepo.save(user);
         return { message: `User "${saved.username}" created`, id: saved.id, username: saved.username };
+    }
+    async listRoles() {
+        return this.dataSource.query('SELECT id, code, name FROM roles ORDER BY name, id');
     }
     async login(dto) {
         const user = await this.userRepo.findOne({
@@ -72,6 +78,7 @@ let AuthService = class AuthService {
             role_code: user.role?.code ?? '',
             role_name: user.role?.name ?? '',
             permissions,
+            tv: user.token_version,
         };
         return {
             access_token: this.jwtService.sign(payload),
@@ -107,8 +114,10 @@ let AuthService = class AuthService {
         if (!user)
             throw new common_1.NotFoundException('User not found');
         const update = { is_active: isActive };
-        if (!isActive)
+        if (!isActive) {
             update.deactivated_at = new Date();
+            update.token_version = user.token_version + 1;
+        }
         await this.userRepo.update(userId, update);
         return { message: `User "${user.username}" ${isActive ? 'activated' : 'deactivated'}` };
     }

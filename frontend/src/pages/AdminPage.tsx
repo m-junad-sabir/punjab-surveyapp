@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useSurvey } from '../context/SurveyContext';
 
@@ -8,29 +8,31 @@ interface RegisterForm {
   email: string;
   phone: string;
   password: string;
-  role_id: number;
+  role_code: string;
 }
-
-const ROLES = [
-  { id: 1, name: 'Surveyor' },
-  { id: 2, name: 'Supervisor' },
-  { id: 3, name: 'DB Admin' },
-];
 
 export default function AdminPage() {
   const { isOnline } = useSurvey();
+  const [roles, setRoles] = useState<Array<{ id: number; code: string; name: string }>>([]);
   const [form, setForm] = useState<RegisterForm>({
     username: '',
     full_name: '',
     email: '',
     phone: '',
     password: '',
-    role_id: 1,
+    role_code: 'SURVEYOR',
   });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [errors, setErrors] = useState<Partial<RegisterForm>>({});
+
+  useEffect(() => {
+    if (!isOnline) return;
+    api.auth.listRoles()
+      .then(setRoles)
+      .catch((err: Error) => setError(err.message || 'Could not load roles.'));
+  }, [isOnline]);
 
   const validate = () => {
     const e: Partial<RegisterForm> = {};
@@ -55,10 +57,10 @@ export default function AdminPage() {
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
         password: form.password,
-        role_id: form.role_id,
+        role_code: form.role_code,
       });
       setSuccess(`✅ User "${form.username}" created successfully!`);
-      setForm({ username: '', full_name: '', email: '', phone: '', password: '', role_id: 1 });
+      setForm({ username: '', full_name: '', email: '', phone: '', password: '', role_code: 'SURVEYOR' });
     } catch (err: any) {
       setError(err.message || 'Registration failed.');
     } finally {
@@ -109,11 +111,11 @@ export default function AdminPage() {
               <label className="form-label">Role *</label>
               <select
                 className="form-select"
-                value={form.role_id}
-                onChange={(e) => setForm((prev) => ({ ...prev, role_id: parseInt(e.target.value) }))}
+                value={form.role_code}
+                onChange={(e) => setForm((prev) => ({ ...prev, role_code: e.target.value }))}
               >
-                {ROLES.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
+                {roles.map((r) => (
+                  <option key={r.code} value={r.code}>{r.name}</option>
                 ))}
               </select>
             </div>
@@ -121,7 +123,7 @@ export default function AdminPage() {
             <button
               type="submit"
               className="btn btn-primary btn-block btn-lg"
-              disabled={loading || !isOnline}
+              disabled={loading || !isOnline || roles.length === 0}
             >
               {loading ? <><span className="spinner spinner-sm" /> Creating…</> : '➕ Create User'}
             </button>

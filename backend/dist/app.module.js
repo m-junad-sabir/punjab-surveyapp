@@ -25,6 +25,8 @@ const auth_service_1 = require("./bll/services/auth.service");
 const survey_form_service_1 = require("./bll/services/survey-form.service");
 const sync_service_1 = require("./bll/services/sync.service");
 const industrial_unit_service_1 = require("./bll/services/industrial-unit.service");
+const photo_service_1 = require("./bll/services/photo.service");
+const photo_storage_service_1 = require("./bll/services/photo-storage.service");
 const auth_controller_1 = require("./controllers/auth.controller");
 const survey_form_controller_1 = require("./controllers/survey-form.controller");
 const sync_controller_1 = require("./controllers/sync.controller");
@@ -48,15 +50,18 @@ exports.AppModule = AppModule = __decorate([
                 duplicate_flag_entity_1.DuplicateFlag,
                 lookup_value_entity_1.LookupValue,
             ]),
-            jwt_1.JwtModule.register({
-                secret: process.env.JWT_SECRET || 'punjab-industries-survey-secret-key-2026',
-                signOptions: { expiresIn: '1d' },
+            jwt_1.JwtModule.registerAsync({
+                useFactory: () => ({
+                    secret: process.env.JWT_SECRET,
+                    signOptions: { expiresIn: '1d' },
+                }),
             }),
         ],
         controllers: [
             auth_controller_1.AuthController,
             survey_form_controller_1.SurveyFormController,
             sync_controller_1.SyncController,
+            sync_controller_1.AttachmentController,
             industrial_unit_controller_1.IndustrialUnitController,
         ],
         providers: [
@@ -64,6 +69,8 @@ exports.AppModule = AppModule = __decorate([
             survey_form_service_1.SurveyFormService,
             sync_service_1.SyncService,
             industrial_unit_service_1.IndustrialUnitService,
+            photo_service_1.PhotoService,
+            photo_storage_service_1.PhotoStorageService,
         ],
     })
 ], AppModule);

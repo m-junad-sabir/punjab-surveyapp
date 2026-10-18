@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 
 @Injectable()
@@ -14,9 +16,11 @@ export class RbacGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
     private readonly reflector: Reflector,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
 
     // ── Extract Bearer token ────────────────────────────────────────────────
@@ -30,11 +34,19 @@ export class RbacGuard implements CanActivate {
     // ── Verify & decode ─────────────────────────────────────────────────────
     let payload: any;
     try {
-      payload = this.jwtService.verify(token, {
-        secret: process.env.JWT_SECRET || 'punjab-industries-survey-secret-key-2026',
-      });
+      payload = this.jwtService.verify(token);
     } catch {
       throw new UnauthorizedException('Token is invalid or expired');
+    }
+
+    // ── Revocation check: deactivated users and bumped token versions ──────
+    const rows: Array<{ is_active: boolean; token_version: number }> = await this.dataSource.query(
+      'SELECT is_active, token_version FROM users WHERE id = $1',
+      [payload.sub],
+    );
+    const current = rows[0];
+    if (!current || !current.is_active || current.token_version !== payload.tv) {
+      throw new UnauthorizedException('Session is no longer valid. Please sign in again.');
     }
 
     // Attach decoded user to request for use in @CurrentUser()

@@ -22,11 +22,13 @@ import { AuthService }           from './bll/services/auth.service';
 import { SurveyFormService }     from './bll/services/survey-form.service';
 import { SyncService }           from './bll/services/sync.service';
 import { IndustrialUnitService } from './bll/services/industrial-unit.service';
+import { PhotoService }          from './bll/services/photo.service';
+import { PhotoStorageService }   from './bll/services/photo-storage.service';
 
 // ─── Controllers ──────────────────────────────────────────────────────────────
 import { AuthController }           from './controllers/auth.controller';
 import { SurveyFormController }     from './controllers/survey-form.controller';
-import { SyncController }           from './controllers/sync.controller';
+import { AttachmentController, SyncController } from './controllers/sync.controller';
 import { IndustrialUnitController } from './controllers/industrial-unit.controller';
 
 @Module({
@@ -46,9 +48,12 @@ import { IndustrialUnitController } from './controllers/industrial-unit.controll
       LookupValue,
     ]),
 
-    JwtModule.register({
-      secret:      process.env.JWT_SECRET || 'punjab-industries-survey-secret-key-2026',
-      signOptions: { expiresIn: '1d' },
+    // Factory runs after main.ts has loaded .env and validated JWT_SECRET.
+    JwtModule.registerAsync({
+      useFactory: () => ({
+        secret:      process.env.JWT_SECRET,
+        signOptions: { expiresIn: '1d' },
+      }),
     }),
   ],
 
@@ -56,6 +61,7 @@ import { IndustrialUnitController } from './controllers/industrial-unit.controll
     AuthController,
     SurveyFormController,
     SyncController,
+    AttachmentController,
     IndustrialUnitController,
   ],
 
@@ -64,6 +70,8 @@ import { IndustrialUnitController } from './controllers/industrial-unit.controll
     SurveyFormService,
     SyncService,
     IndustrialUnitService,
+    PhotoService,
+    PhotoStorageService,
   ],
 })
 export class AppModule {}

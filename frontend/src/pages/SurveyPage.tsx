@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { useSurvey } from '../context/SurveyContext';
 import { useAuth }   from '../context/AuthContext';
-import { saveResponse, getResponse } from '../lib/db';
+import { deletePhoto, getPhoto, savePhoto, saveResponse, getResponse } from '../lib/db';
 import { getDeviceId } from '../lib/deviceId';
 import { downloadSurveyPdf } from '../lib/surveyPdf';
 import type {
@@ -68,43 +68,172 @@ function GpsField({ value, onChange }: { value: any; onChange: (v: any) => void 
 }
 
 // ─── Photo capture ────────────────────────────────────────────────────────────
-function PhotoField({ qid, value, onChange }: { qid: number; value: any; onChange: (v: any) => void }) {
-  const [preview, setPreview] = useState<string | null>(value?.preview ?? null);
+function PhotoField({ photoType, responseId, ownerId, unitName, value, onChange }: {
+  photoType: string;
+  responseId: string;
+  ownerId: string;
+  unitName: string;
+  value: any;
+  onChange: (v: any) => void;
+}) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const dataUrl = ev.target?.result as string;
-      setPreview(dataUrl);
-      onChange({ file_name: file.name, preview: dataUrl, type: file.type });
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    if (!value?.photo_id) {
+      setPreview(null);
+      return;
+    }
+    getPhoto(value.photo_id).then((photo) => {
+      if (!active || !photo) return;
+      objectUrl = URL.createObjectURL(photo.blob);
+      setPreview(objectUrl);
+    });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-    reader.readAsDataURL(file);
+  }, [value?.photo_id]);
+
+  useEffect(() => {
+    if (!cameraActive) return;
+    let disposed = false;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Camera capture requires a supported browser on HTTPS or localhost.');
+      setCameraActive(false);
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { exact: 'environment' }, width: { ideal: 1600 } },
+    }).then((stream) => {
+      if (disposed) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+    }).catch((error: unknown) => {
+      setCameraError(error instanceof Error ? error.message : 'Unable to open the camera.');
+      setCameraActive(false);
+    });
+    return () => {
+      disposed = true;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    };
+  }, [cameraActive]);
+
+  const capture = async () => {
+    setCapturing(true);
+    setCameraError('');
+    try {
+      if (!navigator.geolocation) throw new Error('Location access is required to capture this photo.');
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 0,
+        });
+      });
+      const { latitude, longitude, accuracy } = position.coords;
+      if (accuracy > 100) throw new Error(`GPS accuracy is ±${Math.round(accuracy)} m; improve the location fix to 100 m or better.`);
+      if (accuracy > 50 && !window.confirm(`GPS accuracy is ±${Math.round(accuracy)} m. Capture this photo anyway?`)) return;
+
+      const video = videoRef.current;
+      if (!video?.videoWidth || !video.videoHeight) throw new Error('Camera is not ready yet.');
+      const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Unable to process the camera image.');
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const capturedAt = new Date(position.timestamp).toISOString();
+      const watermarkHeight = Math.max(54, Math.round(canvas.height * 0.12));
+      context.fillStyle = 'rgba(0, 0, 0, 0.68)';
+      context.fillRect(0, canvas.height - watermarkHeight, canvas.width, watermarkHeight);
+      context.fillStyle = '#fff';
+      context.font = `600 ${Math.max(12, Math.round(canvas.width / 40))}px sans-serif`;
+      context.textBaseline = 'middle';
+      context.fillText(unitName.slice(0, 64), 12, canvas.height - watermarkHeight / 2 - 10, canvas.width - 24);
+      context.fillText(
+        `${new Date(capturedAt).toLocaleString()} | ${latitude.toFixed(6)}, ${longitude.toFixed(6)} | ±${Math.round(accuracy)}m`,
+        12,
+        canvas.height - watermarkHeight / 2 + 12,
+        canvas.width - 24,
+      );
+
+      const encodeJpeg = (quality: number) => new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Could not encode the captured photo.')), 'image/jpeg', quality);
+      });
+      let blob = await encodeJpeg(0.75);
+      if (blob.size > 3 * 1024 * 1024) blob = await encodeJpeg(0.55);
+      if (blob.size > 3 * 1024 * 1024) throw new Error('Captured image is over 3 MB. Retake it in better lighting.');
+      const photoId = uuidv4();
+      await savePhoto({
+        photo_id: photoId,
+        response_id: responseId,
+        owner_id: ownerId,
+        photo_type: photoType,
+        blob,
+        mime_type: 'image/jpeg',
+        size_bytes: blob.size,
+        latitude,
+        longitude,
+        accuracy_m: accuracy,
+        captured_at: capturedAt,
+      });
+      onChange({
+        photo_id: photoId,
+        photo_type: photoType,
+        latitude,
+        longitude,
+        accuracy_m: accuracy,
+        captured_at: capturedAt,
+      });
+      setCameraActive(false);
+    } catch (error) {
+      setCameraError(error instanceof Error ? error.message : 'Unable to capture this photo.');
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  const remove = async () => {
+    if (value?.photo_id) await deletePhoto(value.photo_id);
+    setPreview(null);
+    onChange(null);
   };
 
   return (
     <div>
-      <label htmlFor={`photo-${qid}`} style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center',
-        justifyContent: 'center', background: 'var(--surface2)',
-        border: '1.5px dashed var(--border)', borderRadius: 'var(--radius)',
-        padding: 16, cursor: 'pointer', minHeight: 100,
-      }}>
-        {preview
-          ? <img src={preview} alt="preview" style={{ maxWidth: '100%', maxHeight: 140, borderRadius: 6, objectFit: 'cover' }} />
-          : <><div style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Tap to capture or upload</div></>
-        }
-      </label>
-      <input id={`photo-${qid}`} type="file" accept="image/*" capture="environment"
-        style={{ display: 'none' }} onChange={handleFile} />
-      {preview && (
-        <button className="btn btn-ghost btn-sm" style={{ marginTop: 6, color: 'var(--danger)' }}
-          onClick={() => { setPreview(null); onChange(null); }}>
-          ✕ Remove
-        </button>
+      {cameraActive ? (
+        <div>
+          <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', maxHeight: 320, background: '#111', objectFit: 'cover' }} />
+          <button type="button" className="btn btn-primary btn-block" onClick={capture} disabled={capturing} style={{ marginTop: 8 }}>
+            {capturing ? 'Capturing…' : 'Capture photo'}
+          </button>
+          <button type="button" className="btn btn-ghost btn-block" onClick={() => setCameraActive(false)}>Cancel camera</button>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {preview && <img src={preview} alt="Captured photo evidence" style={{ width: '100%', maxHeight: 260, objectFit: 'contain' }} />}
+          <button type="button" className="btn btn-primary" onClick={() => { setCameraError(''); setCameraActive(true); }}>
+            {preview ? 'Retake with camera' : 'Open main camera'}
+          </button>
+          {preview && <div className="text-small text-muted">GPS ±{Math.round(value.accuracy_m)} m · Captured {new Date(value.captured_at).toLocaleString()}</div>}
+          {preview && <button type="button" className="btn btn-ghost" onClick={remove}>Remove photo</button>}
+        </div>
       )}
+      {cameraError && <div className="form-error" role="alert" style={{ marginTop: 8 }}>{cameraError}</div>}
     </div>
   );
 }
@@ -975,11 +1104,24 @@ function StructuredQuestionField({ question, value, onChange, references }: {
 }
 
 // ─── Universal question renderer ──────────────────────────────────────────────
-function QuestionField({ q, value, onChange, error, references }: {
+function QuestionField({ q, value, onChange, error, references, responseId, ownerId, unitName, industryTypeId }: {
   q: SurveyQuestion; value: any; onChange: (v: any) => void; error?: string;
   references: Record<string, QuestionOption[]>;
+  responseId: string; ownerId: string; unitName: string;
+  industryTypeId: number | null;
 }) {
   const errCls = error ? 'error' : '';
+
+  if (q.question_code === 'A_PSIC') {
+    const options = (references.unit_type_psic_classes ?? []).filter((option) => option.parent_id === industryTypeId);
+    return (
+      <select className={`form-select ${errCls}`} value={selectedOptionId(value?.psic_class_id) ?? ''}
+        disabled={!industryTypeId} onChange={(event) => onChange({ psic_class_id: event.target.value ? Number(event.target.value) : null })}>
+        <option value="">{industryTypeId ? 'Select PSIC class' : 'Select Type of Unit first'}</option>
+        {options.map((option) => <option key={option.id} value={option.id}>{option.code === '9609' ? `Other (${option.code})` : option.label}</option>)}
+      </select>
+    );
+  }
 
   if (q.fields?.length) {
     return <StructuredQuestionField question={q} value={value} onChange={onChange} references={references} />;
@@ -1039,7 +1181,7 @@ function QuestionField({ q, value, onChange, error, references }: {
       return <GpsField value={value} onChange={onChange} />;
 
     case 'PHOTO':
-      return <PhotoField qid={q.question_id} value={value} onChange={onChange} />;
+      return <PhotoField photoType={q.question_code} responseId={responseId} ownerId={ownerId} unitName={unitName} value={value} onChange={onChange} />;
 
     default:
       return (
@@ -1135,6 +1277,8 @@ export default function SurveyPage() {
   const [answers,  setAnswers]  = useState<Record<number, any>>({});
   const [errors,   setErrors]   = useState<Record<number, string>>({});
   const [saving,   setSaving]   = useState(false);
+  const [existingResponseLoaded, setExistingResponseLoaded] = useState(!id);
+  const [ownerMismatch, setOwnerMismatch] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
   const [responseId] = useState(() => id || uuidv4());
   const [startedAt]  = useState(() => new Date().toISOString());
@@ -1144,17 +1288,46 @@ export default function SurveyPage() {
   useEffect(() => {
     if (!id) return;
     getResponse(id).then((r) => {
-      if (!r) return;
+      if (!r) {
+        setOwnerMismatch(true);
+        return;
+      }
+      if (!user?.user_id || r.surveyor_id !== user.user_id) {
+        setOwnerMismatch(true);
+        return;
+      }
       const map: Record<number, any> = {};
       r.answers.forEach((a) => { map[a.question_id] = a.answer_value; });
       setAnswers(map);
-    });
-  }, [id]);
+    }).catch(() => setOwnerMismatch(true)).finally(() => setExistingResponseLoaded(true));
+  }, [id, user?.user_id]);
 
   const setAnswer = useCallback((qid: number, val: any) => {
-    setAnswers((prev) => ({ ...prev, [qid]: val }));
+    setAnswers((prev) => {
+      const next = { ...prev, [qid]: val };
+      const questions = form?.sections.flatMap((section) => section.questions) ?? [];
+      if (questions.find((question) => question.question_id === qid)?.question_code === 'A_UNIT_TYPE') {
+        const psicQuestion = questions.find((question) => question.question_code === 'A_PSIC');
+        if (psicQuestion) delete next[psicQuestion.question_id];
+      }
+      return next;
+    });
     setErrors((prev) => { const e = { ...prev }; delete e[qid]; return e; });
-  }, []);
+  }, [form]);
+
+  if (ownerMismatch) {
+    return (
+      <div className="empty-state">
+        <h3>Survey belongs to another account</h3>
+        <p>Sign in with its owner, or ask an admin to claim this unassigned legacy survey.</p>
+        <button className="btn btn-outline" onClick={() => navigate('/surveys')}>Back to surveys</button>
+      </div>
+    );
+  }
+
+  if (!existingResponseLoaded) {
+    return <div className="empty-state"><p>Loading saved survey…</p></div>;
+  }
 
   if (!form) {
     return (
@@ -1214,6 +1387,17 @@ export default function SurveyPage() {
 
   const questionIsIncomplete = (q: SurveyQuestion): boolean => {
     const value = answers[q.question_id];
+    if (q.question_code === 'A_UNIT_TYPE') {
+      const option = q.options.find((candidate) => candidate.id === selectedOptionId(value));
+      return !option || (option.requires_text && !selectedOtherText(value).trim());
+    }
+    if (q.question_code === 'A_PSIC') {
+      const industryId = selectedOptionId(answerForCode('A_UNIT_TYPE'));
+      return !(form.references?.unit_type_psic_classes ?? []).some((option) =>
+        option.parent_id === industryId && option.id === selectedOptionId(value?.psic_class_id),
+      );
+    }
+    if (q.answer_type === 'PHOTO') return q.is_required && !value?.photo_id;
     if (q.is_required && isEmptyAnswer(value)) return true;
     const fields = q.fields ?? [];
     if (!fields.length) return false;
@@ -1242,6 +1426,7 @@ export default function SurveyPage() {
     if (requiredFields.length) {
       return requiredFields.filter((field) => !isEmptyAnswer(value?.[field.key])).length;
     }
+    if (q.is_required && q.answer_type === 'PHOTO') return value?.photo_id ? 1 : 0;
     return q.is_required && !isEmptyAnswer(value) ? 1 : 0;
   };
   const visibleQuestions = allQs.filter(showQuestion);
@@ -1471,6 +1656,10 @@ export default function SurveyPage() {
                 onChange={(v) => setAnswer(q.question_id, v)}
                 error={errors[q.question_id]}
                 references={form?.references ?? {}}
+                responseId={responseId}
+                industryTypeId={selectedOptionId(answerForCode('A_UNIT_TYPE'))}
+                ownerId={user!.user_id}
+                unitName={String(answerForCode('A_ESTABLISHMENT_NAME')?.name ?? answerForCode('A_ESTABLISHMENT_NAME') ?? 'Industrial unit')}
               />
 
               {errors[q.question_id] && (

@@ -16,8 +16,11 @@ export class DuplicateFlag {
   @Column({ type: 'uuid' })
   matched_unit_id: string;
 
-  @Column({ length: 255 })
+  @Column({ length: 30 })
   reason: string;
+
+  @Column({ type: 'text', nullable: true })
+  details: string | null;
 
   @Column({ type: 'numeric', precision: 5, scale: 4, nullable: true })
   name_similarity: number;

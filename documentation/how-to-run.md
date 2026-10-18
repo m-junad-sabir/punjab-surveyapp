@@ -8,6 +8,11 @@ This guide explains how to set up and run the application on a new Windows compu
 
 The frontend can save drafts offline in the browser. The backend and database must be running to sign in, download the latest survey form, and synchronize responses.
 
+Delivery checkpoint, 18 October 2026: Phases 0-4 and 7 are implemented. Phase 7
+was confirmed working by the owner. Phase 5 was rolled back after login regressions;
+Phase 6 autosave/leave protection is deferred. Save drafts explicitly. See the
+[workplan](workplan-to-solve-issues.md) for the remaining phases.
+
 ## 1. Install the required software
 
 Install the following before starting:
@@ -50,23 +55,60 @@ DB_USERNAME=postgres
 DB_PASSWORD=REPLACE_WITH_YOUR_LOCAL_POSTGRES_PASSWORD
 DB_DATABASE=punjab_industrial_survey
 JWT_SECRET=REPLACE_WITH_A_LONG_RANDOM_LOCAL_SECRET
+CORS_ORIGIN=http://localhost:5173
+STORAGE_DRIVER=local
+STORAGE_LOCAL_DIR=./uploads
 ```
 
 Use the username and password created for your PostgreSQL installation. Keep this file private; do not put real secrets in shared source control.
 
+`JWT_SECRET` must contain at least 32 characters; use an independently generated
+random secret in each environment. If `DATABASE_URL` is present, the backend
+ignores all `DB_*` values. For local PostgreSQL, unset `DATABASE_URL` both in the
+shell environment and in `.env`. For Neon, use its URL and TLS settings instead;
+no local PostgreSQL service is required. Existing process environment variables
+take precedence over `.env`, so restart after configuration changes.
+
+For local frontend development, leave `VITE_API_BASE_URL` unset to use Vite's
+`/api` proxy on port 3002. Never put private credentials in `VITE_*` variables.
+
 ## 4. Create and populate the database
 
-Start the PostgreSQL service first. The simplest Windows setup is:
+Start your local PostgreSQL service if using a local database. Do not edit scripts
+to save passwords. In PowerShell set the psql connection environment:
 
-1. Open `SETUP_DATABASE.bat` in a text editor.
-2. Set its `PGUSER`, `PGPASSWORD`, `PGHOST`, `PGPORT`, and `DBNAME` values to match your local PostgreSQL server and the backend settings above. The batch file has local defaults; do not assume those credentials match a newly installed PostgreSQL server.
-3. Save the file and run it from File Explorer, or from PowerShell:
+```powershell
+$env:PGHOST = 'localhost'
+$env:PGPORT = '5432'
+$env:PGUSER = 'postgres'
+$env:DBNAME = 'punjab_industrial_survey'
+.\SETUP_DATABASE.bat /plan
+# Only for a NEW database:
+.\SETUP_DATABASE.bat fresh
+```
 
-   ```powershell
-   .\SETUP_DATABASE.bat
-   ```
+Use the correct host/user/database for your installation. For Neon set its host,
+role and database plus `PGSSLMODE=verify-full`; use `migrate` on a provisioned
+Neon database, not `fresh`. Setup reads these PG variables, not backend `.env`
+or `DATABASE_URL`. Authentication uses private `%APPDATA%\postgresql\pgpass.conf`
+or psql's password prompts. Multiple psql invocations can prompt more than once.
 
-The script creates the `punjab_industrial_survey` database (if it does not exist), then loads the schema and base, Punjab geography, PSIC and HS-code reference data. It is intended for initial setup. If the database already exists, the script may print an “already exists” message while continuing.
+`fresh` creates a NEW database and fails if it already exists. `migrate` keeps
+the existing database and never reruns the base schema/seed. Both confirm before
+SQL execution and stop on the first SQL error. No arguments show help only;
+`/plan` prints the exact sequence without connecting to PostgreSQL.
+
+Fresh setup enables required extensions, loads the unchanged schema/base seed,
+then reference seeds/updates and implemented migrations 01-05 and 07. Existing
+database migration requires an active form version 3 or newer. Back up before:
+
+```powershell
+.\SETUP_DATABASE.bat migrate
+```
+
+Phase 5/migration 06, legacy cleanup scripts and credential-reset scripts are
+intentionally excluded. If a file fails, earlier files may already be committed;
+inspect the error and resume with the appropriate migration, not `fresh` mode.
 
 If `psql` is not found, add the PostgreSQL `bin` directory to `PATH` and reopen PowerShell. The batch file also checks common PostgreSQL install folders, but making `psql` available on `PATH` is the most portable option.
 
@@ -76,6 +118,7 @@ Alternatively, run the following from the project root. Replace `postgres` if yo
 
 ```powershell
 psql -U postgres -h localhost -p 5432 -d postgres -c "CREATE DATABASE punjab_industrial_survey;"
+psql -U postgres -h localhost -p 5432 -d punjab_industrial_survey -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto;'
 psql -U postgres -h localhost -p 5432 -d punjab_industrial_survey -v ON_ERROR_STOP=1 -f database\schema.sql
 psql -U postgres -h localhost -p 5432 -d punjab_industrial_survey -v ON_ERROR_STOP=1 -f database\seed.sql
 psql -U postgres -h localhost -p 5432 -d punjab_industrial_survey -v ON_ERROR_STOP=1 -f database\seed_punjab_geography.sql
@@ -85,6 +128,29 @@ psql -U postgres -h localhost -p 5432 -d punjab_industrial_survey -v ON_ERROR_ST
 The first command will report an error if the database already exists; for an existing database, skip that command. Do not rerun `schema.sql` on a populated database. The seed files can be rerun to refresh reference data, but `seed.sql` is for initializing a new database.
 
 For an existing database, use the specific migration/update script required for its current schema or survey-form version. Do not run `migrate_full_questionnaire.sql` on a fresh database initialized from the current `schema.sql` and `seed.sql`.
+
+After the manual base/reference setup, run the implemented migrations in order:
+
+```powershell
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_01_users_token_version.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_02_audit_roles.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_03_workforce_gender_other.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_04_duplicate_flags_details.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_05_photo_evidence.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_07_type_of_unit.sql
+```
+
+These examples use your psql PG environment; adjust it for the target server.
+Review migration 02's role report; it does not automatically correct users.
+Migration 07 requires all mapped PSIC classes, including 9609, and aborts if
+references are missing. The allowlisted setup modes also run the common units,
+zone-type, ownership/legal-structure, and workforce-label updates.
+
+An older version-1 form needs the reviewed full-questionnaire migration, then
+the location-selection update to version 3, before these delivery migrations.
+Do not apply those legacy form upgrades blindly to a current installation.
+For manual SQL, inspect each exit status before proceeding; PowerShell does not
+automatically stop a pasted sequence after a failed external command.
 
 ### Check that the reference data loaded
 
@@ -138,25 +204,49 @@ Open **http://localhost:5173** in a browser. Keep both PowerShell windows open w
 
 ### Windows shortcut: `START.bat`
 
-You can also run `START.bat` from File Explorer. It checks PostgreSQL, installs packages if it does not find them, starts the backend and frontend in separate command windows, and opens the browser.
+Run `START.bat /check` to validate Node/npm, dependency folders and configuration
+presence without side effects, then run `START.bat`. It opens two named command
+windows and the browser, using `.env` without injecting credentials or changing
+execution policy/services. It does not install dependencies or apply SQL. If a
+required port is occupied it exits instead of starting another server. Watch both
+windows for actual readiness; refresh the browser after they finish booting.
 
-The launcher sets database connection values for the backend process itself. If you use `START.bat` with a non-default database password, host, port, or name, edit the `DB_PASSWORD`, `DB_USERNAME`, `DB_DATABASE`, and related `DB_*` values in the launcher so they agree with `backend\.env` and `SETUP_DATABASE.bat`. Treat any password saved in the launcher as a secret and do not share it. The two-window method above avoids this launcher override.
+Use `PORT=3002` and frontend port 5173 for this launcher/proxy. A separate preview
+on 5174 is not controlled by these scripts. `DATABASE_URL` still takes precedence
+over `DB_*`, so Neon works without a local PostgreSQL check.
 
-To stop the app, close the two server windows. `STOP.bat` is also provided for Windows.
+Stop manually started apps with Ctrl+C in their terminals. `STOP.bat` asks before
+closing the launcher's named windows and child processes. `STOP.bat /check`
+lists listeners without stopping them. `STOP.bat /ports` is a confirmed fallback
+for Node process trees listening on exactly 3002/5173; it could stop another Node
+app on those ports, so inspect first. PostgreSQL and browser storage are untouched.
 
 ## 7. Sign in and try a survey
 
-The seed data provides demonstration accounts:
+Existing users retain their credentials. The current base seed does not create
+accounts. For a fresh database, follow the [initial administrator bootstrap](../README.md#4-initial-administrator)
+using a bcrypt hash, then sign in and register users through the protected admin
+page. Do not depend on or publish demonstration passwords. Advanced user editing
+and password reset from Phase 5 are not included in this release.
 
-| Role | Username | Password |
-|---|---|---|
-| Administrator | `admin` | `admin123` |
-| Surveyor | `surveyor1` | `surveyor123` |
-| Supervisor | `supervisor1` | `supervisor123` |
+In Section A, choose Type of Unit at vii. The PSIC class dropdown at viii shows
+only L4-mapped classes; changing industry clears the previous class. Group and
+division are derived on the server. Other requires specified industry text and
+offers PSIC class 9609. The PDF uses the selected industry/class labels. Load
+classification references and migration 07 before testing this workflow.
 
-Use these accounts only for local demonstration. Change or disable default accounts before exposing the application to other people or networks. An administrator can create user accounts from the application.
+Section L, immediately before submit, requires interview-session and entrance/
+signboard photos. Allow camera/location permissions over HTTPS or localhost.
+The current rear-camera constraint may reject laptop webcams. On a phone,
+accuracy up to 50 m passes; 50-100 m asks for confirmation; over 100 m blocks
+capture. Files are watermarked JPEGs stored locally as Blobs and uploaded first.
 
-For PSIC and HS-code dropdowns, confirm the classification seed completed and the four reference-table counts above are non-zero. A surveyor can save a draft locally; syncing requires the backend and database to be available.
+Local storage uses `backend/uploads` when started from the backend folder. For
+Render, use private R2 storage with `STORAGE_DRIVER=s3`, `S3_REGION=auto`,
+`S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY`.
+The endpoint is `https://<account-id>.r2.cloudflarestorage.com`. Do not use
+Render's ephemeral filesystem for photos. A future server move requires copying
+the objects while preserving stored keys, alongside a database backup.
 
 ## 8. Build and type-check
 
@@ -184,13 +274,19 @@ The frontend build is written to `frontend\dist`; the backend build is written t
 
 Offline drafts are stored in the browser's local storage (IndexedDB). Clearing site data or changing browser/device can remove access to unsynchronized drafts. Sync important work as soon as a connection is available.
 
+Drafts, pending records and sync logs are scoped to their creator. Logout does not
+delete them, but another account cannot upload them. Photos remain in the local
+Blob store for preview/PDF use. Save explicitly before leaving: autosave and leave
+guards are not implemented. Complete an offline-to-online photo sync and confirm
+both attachment rows and actual stored/retrievable files before client testing.
+
 ## Troubleshooting
 
 ### Backend cannot connect to PostgreSQL
 
 - Confirm the PostgreSQL service is running and listening on the configured port (normally `5432`).
 - Check `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, and `DB_DATABASE` in `backend\.env`.
-- If using `START.bat`, also check that its `DB_*` values match; the launcher overrides some `.env` values.
+- Check whether `DATABASE_URL` or inherited shell variables are overriding `.env`; the updated launcher no longer injects `DB_*` values.
 - Confirm the database exists and the PostgreSQL user can connect to it.
 
 ### `psql` is not recognized
@@ -205,11 +301,49 @@ Install the PostgreSQL PostGIS package for your PostgreSQL version and use a dat
 
 Run `database\seed_classification_codes.sql` against the same database named by `DB_DATABASE`, then verify the four classification counts in section 4. Refresh the application after the backend is running.
 
+If `DATABASE_URL` is set, inspect that target instead. For PSIC, apply migration
+07 and select an industry first; only its mapped classes are offered. Reload
+online to fetch form cache revision 12. Do not manually choose group/division.
+
+### Photo Evidence is missing
+
+Run [verify_photo_evidence.sql](../database/verify_photo_evidence.sql) against the
+backend's database. Apply migration 05 there if necessary, then reload the app
+online. The form API must return both `L_PHOTO_INTERVIEW_SESSION` and
+`L_PHOTO_ENTRANCE_SIGNBOARD` as required PHOTO questions. Changing frontend code
+alone cannot create questionnaire rows.
+
+### Session invalid or unauthorized after deployment
+
+Inspect the failed request's response message and confirm the backend is actually
+running. Secret rotation, account deactivation and token-version changes revoke
+sessions. Remove only `survey_token` and `survey_user` from local storage and
+sign in again; do not clear IndexedDB. Never share bearer tokens or `.env` values.
+If a fresh login still fails, compare account state in the database actually used
+by the running backend. Phase 5's reset-token flow is deferred, not deployed.
+
 ### Port 3002 or 5173 is already in use
 
 Stop the other process using that port, or close the previous backend/frontend terminal before starting another copy. The frontend development proxy is configured for the backend on port `3002`.
 
 ### The browser shows an old form or application build
 
-Refresh the page. If the installed PWA continues to show an old version, close its tabs and clear that site's cached data/service worker in the browser's site settings, then open `http://localhost:5173` again while online.
+Refresh online and reopen the installed PWA after closing its tabs. Try a fresh
+browser profile to distinguish a stale service worker from a server problem.
+Do not use Clear site data or delete IndexedDB while unsynced work exists.
+Sync/back up important records before removing any browser data. Form revision
+12 refreshes the questionnaire without deleting drafts or photo Blobs.
+
+## 10. Client-testing deployment
+
+On Render, use the Neon `DATABASE_URL`, a strong independent `JWT_SECRET`,
+`NODE_ENV=production`, `CORS_ORIGIN=https://<site>.netlify.app`, and the private
+R2 settings above. On Netlify set only the public `VITE_API_BASE_URL` to the Render
+origin without `/api`, then rebuild. Apply the allowed migrations manually to a
+Neon branch first, then main, before deploying dependent application code.
+No scripts in this update have been executed against your database by the assistant.
+
+Free Render/Neon services may need time to wake up. A successful survey sync is
+not sufficient evidence that image storage works: verify attachment metadata,
+private retrieval, the reviewer view and PDF on an actual phone before delivery.
 

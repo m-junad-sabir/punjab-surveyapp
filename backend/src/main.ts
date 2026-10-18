@@ -30,20 +30,34 @@ import { AppModule }         from './app.module';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  const jwtSecret = process.env.JWT_SECRET ?? '';
+  if (jwtSecret.length < 32) {
+    throw new Error('JWT_SECRET must be set and at least 32 characters long.');
+  }
+
+  const corsOrigins = (process.env.CORS_ORIGIN ?? (isProduction ? '' : 'http://localhost:5173'))
+    .split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+  if (corsOrigins.length === 0) {
+    throw new Error('CORS_ORIGIN must be set in production (comma-separated list of allowed origins).');
+  }
 
   const app = await NestFactory.create(AppModule, {
     logger: ['log', 'error', 'warn'],
   });
 
-  // ── Body size limit (photos are sent as base64 in sync payload) ────────────
-  app.use(require('express').json({ limit: '25mb' }));
-  app.use(require('express').urlencoded({ limit: '25mb', extended: true }));
+  // ── JSON body limit; photo data is uploaded separately as multipart ────────
+  app.use(require('express').json({ limit: '2mb' }));
+  app.use(require('express').urlencoded({ limit: '2mb', extended: true }));
 
   // ── CORS ───────────────────────────────────────────────────────────────────
   // credentials:true is intentionally omitted — the app uses Bearer tokens,
   // not cookies, so it isn't needed and would break origin:* in browsers.
   app.enableCors({
-    origin:  '*',
+    origin:  corsOrigins,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
   });
 
@@ -61,7 +75,8 @@ async function bootstrap() {
   await app.listen(port);
 
   logger.log(`✅ Backend running  → http://localhost:${port}`);
-  logger.log(`🗄️  Database        → ${process.env.DB_DATABASE}@${process.env.DB_HOST}:${process.env.DB_PORT}`);
+  logger.log(`🗄️  Database        → ${process.env.DATABASE_URL ? 'DATABASE_URL' : `${process.env.DB_DATABASE}@${process.env.DB_HOST}:${process.env.DB_PORT}`}`);
+  logger.log(`🌐 CORS origins    → ${corsOrigins.join(', ')}`);
   logger.log(`🔑 JWT expires in  → 1d`);
 }
 

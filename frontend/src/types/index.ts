@@ -153,7 +153,7 @@ export interface AnswerValue {
 export interface OfflineResponse {
   response_id:    string;   // client-generated UUID — IDB primary key
   form_id:        number;
-  surveyor_id:    string;
+  surveyor_id?:   string;
   device_id:      string;
   gps_lat?:       number;
   gps_lng?:       number;
