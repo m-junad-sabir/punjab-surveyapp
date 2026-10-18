@@ -2,11 +2,12 @@ import { useState, FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const ACCOUNTS = [
+// Stripped from production builds: Vite replaces import.meta.env.DEV with false.
+const ACCOUNTS = import.meta.env.DEV ? [
   { u: 'admin',       p: 'admin123',      r: 'DB Admin',   color: '#0D47A1' },
   { u: 'surveyor1',   p: 'surveyor123',   r: 'Surveyor',   color: '#1B5E20' },
   { u: 'supervisor1', p: 'supervisor123', r: 'Supervisor', color: '#E65100' },
-];
+] : [];
 
 export default function LoginPage() {
   const { login, isAuthenticated } = useAuth();
@@ -123,7 +124,8 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Quick sign-in */}
+        {/* Quick sign-in (development builds only) */}
+        {ACCOUNTS.length > 0 && (
         <div style={{ marginTop: 20 }}>
           <button
             style={{
@@ -175,6 +177,7 @@ export default function LoginPage() {
             </div>
           )}
         </div>
+        )}
 
         <div style={{ textAlign: 'center', marginTop: 16 }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>

@@ -218,7 +218,31 @@ export async function createIndustrialUnit(
   }
 
   const contact = record(answers.get('A_CONTACT'));
-  const psic = record(answers.get('A_PSIC'));
+  const psic = { ...record(answers.get('A_PSIC')) };
+  const unitType = answers.get('A_UNIT_TYPE');
+  const unitTypeId = selectionId(unitType);
+  if (unitType !== undefined) {
+    const [industry] = await manager.query(
+      `SELECT v.requires_text FROM lookup_values v JOIN lookup_types t ON t.id = v.type_id
+        WHERE v.id = $1 AND t.code = 'UNIT_TYPE' AND v.is_active = true`,
+      [unitTypeId],
+    );
+    if (!industry) throw new Error('Select a valid Type of Unit.');
+    if (industry.requires_text && !(typeof record(unitType).other_text === 'string' && String(record(unitType).other_text).trim())) {
+      throw new Error('Specify the other Type of Unit.');
+    }
+    const [classification] = await manager.query(
+      `SELECT c.id, c.group_id, g.division_id
+         FROM unit_type_psic_classes m
+         JOIN psic_classes c ON c.id = m.psic_class_id
+         JOIN psic_groups g ON g.id = c.group_id
+        WHERE m.unit_type_id = $1 AND c.id = $2`,
+      [unitTypeId, selectionId(psic.psic_class_id)],
+    );
+    if (!classification) throw new Error('Select a PSIC class belonging to the chosen Type of Unit.');
+    psic.psic_group_id = classification.group_id;
+    psic.psic_division_id = classification.division_id;
+  }
   const selectedPsic = await resolvePsicSelection(manager, psic);
   const area = record(answers.get('A_ESTABLISHMENT_AREA'));
   const ownership = field(answers, 'A_OWNERSHIP', 'ownership_type_id');
@@ -292,6 +316,13 @@ export async function createIndustrialUnit(
   ) as Array<{ id: string }>;
   const unitId = inserted[0]?.id;
   if (!unitId) throw new Error('The industrial unit could not be saved.');
+
+  if (unitType !== undefined) {
+    await manager.query(
+      'UPDATE industrial_units SET unit_type_id = $2, unit_type_other_text = $3 WHERE id = $1',
+      [unitId, unitTypeId, typeof record(unitType).other_text === 'string' ? String(record(unitType).other_text).trim() || null : null],
+    );
+  }
 
   const hasParent = record(answers.get('A_PARENT_COMPANY')).has_parent_company === true;
   if (hasParent) {

@@ -1,111 +1,60 @@
 @echo off
+setlocal
 title Punjab Industrial Survey - Launcher
-color 1F
-cls
+if /i "%~1"=="/help" goto help
+if /i "%~1"=="--help" goto help
+if not "%~1"=="" if /i not "%~1"=="/check" goto help
 
-echo ============================================
-echo   Punjab Industrial Survey App
-echo   Starting Backend + Frontend...
-echo ============================================
-echo.
-
-:: ── Fix PowerShell execution policy ──────────────
-powershell -Command "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force" >nul 2>&1
-
-:: ── Check PostgreSQL is running ───────────────────
-echo [0/4] Checking PostgreSQL...
-sc query postgresql-x64-14 >nul 2>&1
-if %errorlevel% neq 0 (
-    sc query postgresql-x64-15 >nul 2>&1
-    if %errorlevel% neq 0 (
-        sc query postgresql-x64-16 >nul 2>&1
-        if %errorlevel% neq 0 (
-            :: Try starting any postgresql service
-            echo       Attempting to start PostgreSQL...
-            for /f "tokens=1" %%s in ('sc query type^= all state^= all ^| findstr /i "postgresql"') do (
-                net start %%s >nul 2>&1
-            )
-        )
-    )
-)
-
-:: Check port 5432 is open
-netstat -an | findstr ":5432" >nul 2>&1
-if %errorlevel% neq 0 (
-    color 4F
-    echo.
-    echo  ERROR: PostgreSQL is NOT running on port 5432!
-    echo.
-    echo  Please start PostgreSQL first:
-    echo  1. Open "Services" (Win+R, type services.msc)
-    echo  2. Find "postgresql-x64-XX" and click Start
-    echo  3. OR open pgAdmin and start the server
-    echo  4. Then run START.bat again
-    echo.
-    pause
+where node >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: Install Node.js LTS and reopen this window.
     exit /b 1
 )
-echo       PostgreSQL is running on port 5432. OK.
-
-:: ── Install Backend deps if needed ───────────────
-echo [1/4] Checking backend dependencies...
-if not exist "%~dp0backend\node_modules\@nestjs" (
-    echo       Installing backend packages (first time, please wait)...
-    cd /d "%~dp0backend"
-    call npm.cmd install
-    if %errorlevel% neq 0 (
-        echo  ERROR: npm install failed for backend!
-        pause
-        exit /b 1
-    )
-) else (
-    echo       Backend packages OK.
+where npm.cmd >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: npm.cmd is not on PATH.
+    exit /b 1
+)
+if not exist "%~dp0backend\.env" if not defined JWT_SECRET (
+    echo ERROR: Configure backend\.env before starting. See documentation\how-to-run.md.
+    exit /b 1
+)
+if not exist "%~dp0backend\node_modules\@nestjs\core\package.json" (
+    echo ERROR: Run npm ci in the backend folder first.
+    exit /b 1
+)
+if not exist "%~dp0frontend\node_modules\vite\package.json" (
+    echo ERROR: Run npm ci in the frontend folder first.
+    exit /b 1
+)
+if /i "%~1"=="/check" (
+    echo Launcher prerequisites found. No servers were started.
+    echo The backend checks configuration values and database connectivity at startup.
+    exit /b 0
 )
 
-:: ── Install Frontend deps if needed ──────────────
-echo [2/4] Checking frontend dependencies...
-if not exist "%~dp0frontend\node_modules\react" (
-    echo       Installing frontend packages (first time, please wait)...
-    cd /d "%~dp0frontend"
-    call npm.cmd install
-    if %errorlevel% neq 0 (
-        echo  ERROR: npm install failed for frontend!
-        pause
-        exit /b 1
-    )
-) else (
-    echo       Frontend packages OK.
+powershell -NoProfile -Command "$ports = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 3002, 5173 }; if ($ports) { $ports | Select-Object LocalPort, OwningProcess | Format-Table; exit 1 }"
+if errorlevel 1 (
+    echo ERROR: A required port is occupied, or the port check failed.
+    echo Close the existing server before starting another copy. No processes were stopped.
+    exit /b 1
 )
 
-:: ── Start Backend in new window ───────────────────
-echo [3/4] Starting Backend on http://localhost:3002 ...
-start "Survey Backend :3002" cmd /k "title Survey Backend :3002 && cd /d "%~dp0backend" && set DB_PASSWORD=postgres123&& set DB_USERNAME=postgres&& set DB_DATABASE=punjab_industrial_survey&& set DB_HOST=localhost&& set DB_PORT=5432&& set PORT=3002&& npm.cmd run start:dev"
-
-:: Wait 5 seconds for NestJS to boot
-timeout /t 5 /nobreak >nul
-
-:: ── Start Frontend in new window ──────────────────
-echo [4/4] Starting Frontend on http://localhost:5173 ...
-start "Survey Frontend :5173" cmd /k "title Survey Frontend :5173 && cd /d "%~dp0frontend" && npm.cmd run dev"
-
-:: Wait 3 seconds then open browser
-timeout /t 3 /nobreak >nul
-
-echo.
-echo ============================================
-echo   Both servers are starting up!
-echo.
-echo   Backend  : http://localhost:3002
-echo   Frontend : http://localhost:5173
-echo.
-echo   Test Accounts:
-echo     admin       / admin123
-echo     surveyor    / surveyor123
-echo     supervisor  / supervisor123
-echo ============================================
-echo.
+start "Survey Backend :3002" cmd /k "cd /d ""%~dp0backend"" && title Survey Backend :3002 && npm.cmd run start:dev"
+start "Survey Frontend :5173" cmd /k "cd /d ""%~dp0frontend"" && title Survey Frontend :5173 && npm.cmd run dev -- --port 5173 --strictPort"
+echo Backend and frontend startup requested. Check both windows for errors.
+echo Backend reads backend\.env; existing environment variables take precedence.
+echo Use PORT=3002 for the local Vite proxy. DATABASE_URL overrides DB_* settings.
+echo Backend: http://localhost:3002
+echo Frontend: http://localhost:5173
+echo Refresh the browser once both servers report ready.
 start "" "http://localhost:5173"
-echo   Browser opened. Close this window when done.
-echo   To stop servers: run STOP.bat
-echo.
-pause >nul
+exit /b 0
+
+:help
+echo Usage: START.bat [/check ^| /help]
+echo Starts the backend and frontend in separate named command windows.
+echo /check validates prerequisites without installing packages or starting servers.
+echo Configure backend\.env first; no database credentials are set by this launcher.
+echo Local PostgreSQL is optional when DATABASE_URL points to Neon.
+exit /b 0

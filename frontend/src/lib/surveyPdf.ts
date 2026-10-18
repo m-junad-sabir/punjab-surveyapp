@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { getPhoto } from './db';
 import type {
   OfflineResponse,
   QuestionOption,
@@ -18,6 +19,7 @@ const SECTION_TITLES: Record<string, string> = {
   I: 'Certifications and Compliances',
   J: 'Strategic Business Plan',
   K: 'Future Collaborations and Barriers',
+  L: 'Photo Evidence',
 };
 
 type AnswerLine = { label: string; value: string };
@@ -113,6 +115,13 @@ function getQuestionAnswers(question: SurveyQuestion, answer: unknown): AnswerLi
       label: option.label,
       value: answer[String(option.id)] == null ? 'Not provided' : `${answer[String(option.id)]}%`,
     }));
+  }
+
+  if (question.answer_type === 'PHOTO' && isRecord(answer)) {
+    const captured = typeof answer.captured_at === 'string'
+      ? new Date(answer.captured_at).toLocaleString()
+      : 'Capture time unavailable';
+    return [{ label: 'Evidence', value: `Captured ${captured}; see photo evidence page.` }];
   }
 
   return [{ label: 'Answer', value: displayValue(answer, question.options) }];
@@ -376,6 +385,46 @@ export async function downloadSurveyPdf(response: OfflineResponse, form?: Survey
       writeWrapped(displayValue(answer), margin + 4, contentW - 8, 8, colors.ink);
       y += 4;
     }
+  }
+
+  const photoQuestions = (form?.sections ?? []).flatMap((section) => section.questions)
+    .filter((question) => question.answer_type === 'PHOTO');
+  for (const question of photoQuestions) {
+    const answer = answersByQuestion.get(question.question_id);
+    const photoId = isRecord(answer) && typeof answer.photo_id === 'string' ? answer.photo_id : null;
+    if (!photoId) continue;
+    const storedPhoto = await getPhoto(photoId);
+    if (!storedPhoto || storedPhoto.owner_id !== response.surveyor_id) continue;
+
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Photo could not be read.'));
+      reader.onerror = () => reject(new Error('Photo could not be read.'));
+      reader.readAsDataURL(storedPhoto.blob);
+    });
+    const bitmap = await createImageBitmap(storedPhoto.blob);
+    pdf.addPage();
+    pdf.setTextColor(...colors.navy);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(12);
+    pdf.text(question.question_text, margin, 24);
+
+    const maxWidth = contentW;
+    const maxHeight = footerY - 34 - 24;
+    const scale = Math.min(maxWidth / bitmap.width, maxHeight / bitmap.height);
+    const imageWidth = bitmap.width * scale;
+    const imageHeight = bitmap.height * scale;
+    pdf.addImage(dataUrl, 'JPEG', margin + (contentW - imageWidth) / 2, 34, imageWidth, imageHeight);
+    bitmap.close();
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(...colors.muted);
+    pdf.text(
+      `${new Date(storedPhoto.captured_at).toLocaleString()} | ${storedPhoto.latitude.toFixed(6)}, ${storedPhoto.longitude.toFixed(6)} | ±${Math.round(storedPhoto.accuracy_m)} m`,
+      margin,
+      pageH - footerY - 8,
+    );
   }
 
   const total = pdf.getNumberOfPages();

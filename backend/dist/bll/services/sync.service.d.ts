@@ -1,5 +1,6 @@
 import { Repository, DataSource } from 'typeorm';
 import { SurveyResponse } from '../../dal/entities/survey-response.entity';
+import { PhotoService } from './photo.service';
 export interface AnswerPayload {
     question_id: number;
     answer_value: any;
@@ -28,7 +29,8 @@ export interface SyncItemResult {
 export declare class SyncService {
     private readonly responseRepo;
     private readonly dataSource;
-    constructor(responseRepo: Repository<SurveyResponse>, dataSource: DataSource);
+    private readonly photoService;
+    constructor(responseRepo: Repository<SurveyResponse>, dataSource: DataSource, photoService: PhotoService);
     syncBatch(payload: SyncPayload): Promise<{
         sync_id: number;
         status: string;

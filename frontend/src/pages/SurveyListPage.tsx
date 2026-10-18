@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { deleteResponse, getAllResponses } from '../lib/db';
+import { deleteResponse, getResponsesForOwner, getUnassignedResponses, saveResponse } from '../lib/db';
 import { useSurvey } from '../context/SurveyContext';
+import { useAuth } from '../context/AuthContext';
 import { getSurveyUnitName } from '../lib/surveyResponse';
 import type { OfflineResponse } from '../types';
 
@@ -9,14 +10,28 @@ export default function SurveyListPage() {
   const [responses,     setResponses]     = useState<OfflineResponse[]>([]);
   const [filter,        setFilter]        = useState('all');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const { user, hasPermission } = useAuth();
   const { refreshResponses } = useSurvey();
 
   const load = async () => {
-    const all = await getAllResponses();
+    if (!user?.user_id) {
+      setResponses([]);
+      return;
+    }
+    const own = await getResponsesForOwner(user.user_id);
+    const unassigned = hasPermission('USER_CREATE') ? await getUnassignedResponses() : [];
+    const all = [...own, ...unassigned];
     setResponses(all.sort((a, b) => b.created_at.localeCompare(a.created_at)));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [user?.user_id, hasPermission]);
+
+  const claim = async (response: OfflineResponse) => {
+    if (!user?.user_id || !window.confirm('Claim this unassigned survey for your account?')) return;
+    await saveResponse({ ...response, surveyor_id: user.user_id });
+    await refreshResponses();
+    await load();
+  };
 
   const remove = async (id: string) => {
     await deleteResponse(id);
@@ -71,6 +86,7 @@ export default function SurveyListPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {filtered.map((r) => {
+            const unassigned = !r.surveyor_id;
             const canEdit = r.sync_status === 'draft' || r.sync_status === 'failed';
             return (
               <div key={r.response_id} className="card" style={{ padding: '14px 18px' }}>
@@ -82,18 +98,21 @@ export default function SurveyListPage() {
                     <div className="text-small text-muted" style={{ marginTop: 3 }}>
                       {new Date(r.created_at).toLocaleString()} · {r.answers.length} answers
                       {r.gps_lat && r.gps_lng ? ' · 📍 GPS' : ''}
+                      {unassigned ? ' · Unassigned legacy survey' : ''}
                     </div>
                   </div>
                   <div className="flex items-center gap-8" style={{ marginLeft: 12 }}>
                     <span className={`badge ${statusColor[r.sync_status] ?? 'badge-gray'}`}>
                       {r.sync_status === 'draft' ? 'Save' : r.sync_status.replace('_', ' ')}
                     </span>
-                    {canEdit && (
+                    {unassigned ? (
+                      <button className="btn btn-outline btn-sm" onClick={() => claim(r)}>Claim</button>
+                    ) : canEdit && (
                       <Link to={`/surveys/${r.response_id}`} className="btn btn-outline btn-sm">
                         Edit
                       </Link>
                     )}
-                    {r.sync_status !== 'synced' && (
+                    {!unassigned && r.sync_status !== 'synced' && (
                       <button className="btn btn-ghost btn-sm"
                         style={{ color: 'var(--danger)' }}
                         onClick={() => setConfirmDelete(r.response_id)}>
