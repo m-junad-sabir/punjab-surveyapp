@@ -1104,12 +1104,24 @@ function StructuredQuestionField({ question, value, onChange, references }: {
 }
 
 // ─── Universal question renderer ──────────────────────────────────────────────
-function QuestionField({ q, value, onChange, error, references, responseId, ownerId, unitName }: {
+function QuestionField({ q, value, onChange, error, references, responseId, ownerId, unitName, industryTypeId }: {
   q: SurveyQuestion; value: any; onChange: (v: any) => void; error?: string;
   references: Record<string, QuestionOption[]>;
   responseId: string; ownerId: string; unitName: string;
+  industryTypeId: number | null;
 }) {
   const errCls = error ? 'error' : '';
+
+  if (q.question_code === 'A_PSIC') {
+    const options = (references.unit_type_psic_classes ?? []).filter((option) => option.parent_id === industryTypeId);
+    return (
+      <select className={`form-select ${errCls}`} value={selectedOptionId(value?.psic_class_id) ?? ''}
+        disabled={!industryTypeId} onChange={(event) => onChange({ psic_class_id: event.target.value ? Number(event.target.value) : null })}>
+        <option value="">{industryTypeId ? 'Select PSIC class' : 'Select Type of Unit first'}</option>
+        {options.map((option) => <option key={option.id} value={option.id}>{option.code === '9609' ? `Other (${option.code})` : option.label}</option>)}
+      </select>
+    );
+  }
 
   if (q.fields?.length) {
     return <StructuredQuestionField question={q} value={value} onChange={onChange} references={references} />;
@@ -1291,9 +1303,17 @@ export default function SurveyPage() {
   }, [id, user?.user_id]);
 
   const setAnswer = useCallback((qid: number, val: any) => {
-    setAnswers((prev) => ({ ...prev, [qid]: val }));
+    setAnswers((prev) => {
+      const next = { ...prev, [qid]: val };
+      const questions = form?.sections.flatMap((section) => section.questions) ?? [];
+      if (questions.find((question) => question.question_id === qid)?.question_code === 'A_UNIT_TYPE') {
+        const psicQuestion = questions.find((question) => question.question_code === 'A_PSIC');
+        if (psicQuestion) delete next[psicQuestion.question_id];
+      }
+      return next;
+    });
     setErrors((prev) => { const e = { ...prev }; delete e[qid]; return e; });
-  }, []);
+  }, [form]);
 
   if (ownerMismatch) {
     return (
@@ -1367,6 +1387,16 @@ export default function SurveyPage() {
 
   const questionIsIncomplete = (q: SurveyQuestion): boolean => {
     const value = answers[q.question_id];
+    if (q.question_code === 'A_UNIT_TYPE') {
+      const option = q.options.find((candidate) => candidate.id === selectedOptionId(value));
+      return !option || (option.requires_text && !selectedOtherText(value).trim());
+    }
+    if (q.question_code === 'A_PSIC') {
+      const industryId = selectedOptionId(answerForCode('A_UNIT_TYPE'));
+      return !(form.references?.unit_type_psic_classes ?? []).some((option) =>
+        option.parent_id === industryId && option.id === selectedOptionId(value?.psic_class_id),
+      );
+    }
     if (q.answer_type === 'PHOTO') return q.is_required && !value?.photo_id;
     if (q.is_required && isEmptyAnswer(value)) return true;
     const fields = q.fields ?? [];
@@ -1627,6 +1657,7 @@ export default function SurveyPage() {
                 error={errors[q.question_id]}
                 references={form?.references ?? {}}
                 responseId={responseId}
+                industryTypeId={selectedOptionId(answerForCode('A_UNIT_TYPE'))}
                 ownerId={user!.user_id}
                 unitName={String(answerForCode('A_ESTABLISHMENT_NAME')?.name ?? answerForCode('A_ESTABLISHMENT_NAME') ?? 'Industrial unit')}
               />

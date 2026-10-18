@@ -3,10 +3,14 @@
 Source: investigation reports 2 and 3, plus owner's improvement list.
 Environments: **localhost** (developer machine) and **testing production** (Netlify free + Render free + Neon free).
 
+## Delivery Checkpoint - 18 October 2026
+
+Phases 0-4 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 was rolled back after login regressions and is deferred; Phase 6 was skipped for this delivery. Resume the remaining phases after the planned two-to-three-day pause, with fresh verification before deployment. R2 credentials, live database migration state, and physical-device photo capture must still be checked per environment; code completion is not evidence of those operational checks.
+
 ## Conventions
 
 - **DB changes:** every change is a standalone `.sql` file in `database/`, named `migration_NN_<topic>.sql`. The owner runs them manually: Neon branch first, then Neon main, then localhost. Scripts are safe to re-run (`IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS`, `ON CONFLICT DO NOTHING`) and wrapped in `BEGIN/COMMIT`.
-- [SETUP_DATABASE.bat](../SETUP_DATABASE.bat) is updated at the end so fresh installs run all migrations.
+- [SETUP_DATABASE.bat](../SETUP_DATABASE.bat) now has explicit `fresh`, `migrate`, and `/plan` modes. It runs an allowlist of implemented migrations 01-05 and 07, never deferred Phase 5/migration 06 or legacy cleanup scripts. Existing databases never rerun the base schema/seed.
 - Each phase ends with a verification checklist. Do not start the next phase until it passes.
 
 ## Decisions Log
@@ -19,6 +23,7 @@ Environments: **localhost** (developer machine) and **testing production** (Netl
 | Photo GPS accuracy | Accept ≤ 50 m. Warn but allow 50–100 m. Block > 100 m or no fix. |
 | Photo storage (testing) | Cloudflare R2 (S3-compatible, 10 GB free). Full scale: own server via `STORAGE_DRIVER=local` (or MinIO). DB stores only `storage_key`. |
 | Type of Unit options | Industry list L1 (60 items) + "Other (specify)". Section A question **vii**; later questions shift by one (14 → 15). |
+| PSIC selection | Question **viii** is one class dropdown filtered by Type of Unit through L4. Changing industry clears the class. The backend validates the pair and derives group/division. Type of Unit Other maps to existing class **9609**; its specified industry text is stored separately. |
 | Gender | Keep existing value `'Other'` (mixed case) to match frontend, writer and `schema.sql`. |
 | `.env` | Removed from Git tracking; all secrets that were committed are rotated. |
 
@@ -125,6 +130,8 @@ Environments: **localhost** (developer machine) and **testing production** (Netl
 
 ## Phase 5 — Admin User Management Page
 
+**Deferred:** the implementation was rolled back after authentication regressions. Do not deploy its reset flow or execute migration 06 as part of the current release. Review the owner's error report before restarting this phase; the scope below remains future work.
+
 **SQL:** `database/migration_06_user_admin_audit.sql`. New table `user_admin_audit` (actor, target, action, changes jsonb, created_at).
 
 **Backend:** `GET /auth/users` (search, role filter, pagination), `PATCH /auth/users/:id` (name, email, phone, role, supervisor), status toggle, and `POST /auth/users/:id/reset-password`.
@@ -137,6 +144,8 @@ Environments: **localhost** (developer machine) and **testing production** (Netl
 ---
 
 ## Phase 6 — Leave Guard + 30 s Autosave
+
+**Deferred for this delivery.** No autosave or leave-protection guarantee is made by the current release; save drafts explicitly.
 
 1. Migrate `BrowserRouter` to `createBrowserRouter` + `RouterProvider` (required for `useBlocker`).
 2. Survey page: `useBlocker` dialog with "Save draft & leave" / "Stay", plus `beforeunload` and Android back-button handling.
@@ -152,8 +161,12 @@ Environments: **localhost** (developer machine) and **testing production** (Netl
 - In Section A of the active form, every question numbered vii and later moves one numeral up (vii→viii … xiii→xiv, including both `xi` rows).
 - Inserts `A_UNIT_TYPE`, question_no `vii`, `SINGLE_CHOICE`, stored in `industrial_units.unit_type_id`, required.
 - Questions are ordered by `question_no` numeral in `survey-form.service.ts`, which already supports up to xvi.
+- Adds `unit_type_psic_classes` with all 94 industry/class pairs from revised L4, including Other mapped to existing PSIC class 9609. The migration aborts if required reference classes are missing.
+- Renumbering happens only on first insertion of `A_UNIT_TYPE`; rerunning the migration does not shift questions again.
 
-**Code:** writer branch in `survey-response-writer.ts`; bump `CURRENT_FORM_CACHE_REVISION` (currently 9 → 10); add to the PDF.
+**Implemented:** the frontend offers only mapped PSIC classes and clears a previous class when industry changes. Group/division selectors are removed; the backend derives their IDs and labels from the class and rejects unrelated pairs. Other industry text is required. The API supplies mapping data for offline use and PDF labels. Form cache revision is **12**.
+
+**Verified:** the owner confirmed the form works; all 60 L1 labels plus Other and all 94 L4 pairs were checked against the migration. Three mocked persistence tests, backend/frontend type checks, and the frontend production build passed. No database scripts were executed by the assistant. Run the migration separately against each target database before deploying the API/frontend changes.
 
 ---
 
@@ -179,7 +192,7 @@ Frontend only: a "Select all 12 months" checkbox (with a partial state) above th
 5. Fix the PWA runtime cache URL rule; fix the misleading "can submit" message.
 6. Pagination, login rate limiting (`@nestjs/throttler`), `helmet`.
 7. Tests: auth, roles, sync ownership, duplicate flag, photos, approval.
-8. Update `SETUP_DATABASE.bat` to run all `migration_NN_*.sql` files.
+8. Keep the setup script's explicit migration allowlist current as phases are approved. Do not glob every migration, since deferred migrations must not run accidentally.
 
 ---
 
@@ -194,13 +207,13 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 | Phase | Status |
 |---|---|
 | 0 Secrets & env | Done |
-| 1 JWT fallback | Code done — awaiting migration_01 + verification |
-| 2 Roles + Gender | Code done — awaiting role audit and gender migration |
-| 3 Offline ownership + duplicate flag | Code done — awaiting migration_04 + account-switch verification |
-| 4 Photo capture | Code done — awaiting migration_05 + R2 configuration and device verification |
-| 5 Admin users | Not started |
-| 6 Leave guard + autosave | Not started |
-| 7 Type of Unit | Not started |
+| 1 JWT fallback | Implemented in delivery baseline; verify environment secrets and migration 01 per deployment |
+| 2 Roles + Gender | Implemented; verify live role audit and migration 03 per deployment |
+| 3 Offline ownership + duplicate flag | Implemented; retain account-switch and duplicate-sync regression checks |
+| 4 Photo capture | Implemented; Section L confirmed visible; R2/device capture verification remains environment-specific |
+| 5 Admin users | Deferred; rolled back after login regressions |
+| 6 Leave guard + autosave | Deferred; not implemented |
+| 7 Type of Unit + filtered PSIC | Working, confirmed by owner on 18 October 2026; migration 07 required per database |
 | 8 Months select all | Not started |
 | 9 Sync progress | Not started |
 | 10 Remaining findings | Not started |
