@@ -7,6 +7,7 @@ import { useAuth }   from '../context/AuthContext';
 import { deletePhoto, getPhoto, savePhoto, saveResponse, getResponse } from '../lib/db';
 import { getDeviceId } from '../lib/deviceId';
 import { downloadSurveyPdf } from '../lib/surveyPdf';
+import { clearHiddenAnswers, isQuestionVisible } from '../lib/surveyVisibility';
 import type {
   OfflineResponse,
   SurveySection,
@@ -1302,18 +1303,32 @@ export default function SurveyPage() {
     }).catch(() => setOwnerMismatch(true)).finally(() => setExistingResponseLoaded(true));
   }, [id, user?.user_id]);
 
-  const setAnswer = useCallback((qid: number, val: any) => {
-    setAnswers((prev) => {
-      const next = { ...prev, [qid]: val };
-      const questions = form?.sections.flatMap((section) => section.questions) ?? [];
-      if (questions.find((question) => question.question_id === qid)?.question_code === 'A_UNIT_TYPE') {
-        const psicQuestion = questions.find((question) => question.question_code === 'A_PSIC');
-        if (psicQuestion) delete next[psicQuestion.question_id];
-      }
-      return next;
-    });
-    setErrors((prev) => { const e = { ...prev }; delete e[qid]; return e; });
+  useEffect(() => {
+    if (!form) return;
+    const questions = form.sections.flatMap((section) => section.questions);
+    setAnswers((previous) => clearHiddenAnswers(questions, previous));
   }, [form]);
+
+  const setAnswer = useCallback((qid: number, val: any) => {
+    const questions = form?.sections.flatMap((section) => section.questions) ?? [];
+    const next = { ...answers, [qid]: val };
+    if (questions.find((question) => question.question_id === qid)?.question_code === 'A_UNIT_TYPE') {
+      const psicQuestion = questions.find((question) => question.question_code === 'A_PSIC');
+      if (psicQuestion) delete next[psicQuestion.question_id];
+    }
+    const cleanedAnswers = clearHiddenAnswers(questions, next);
+    setAnswers(cleanedAnswers);
+    setErrors((previous) => {
+      const remaining = { ...previous };
+      delete remaining[qid];
+      for (const question of questions) {
+        if (!isQuestionVisible(question, questions, cleanedAnswers)) {
+          delete remaining[question.question_id];
+        }
+      }
+      return remaining;
+    });
+  }, [answers, form]);
 
   if (ownerMismatch) {
     return (
@@ -1362,28 +1377,7 @@ export default function SurveyPage() {
     const question = questionByCode.get(code);
     return question ? answers[question.question_id] : undefined;
   };
-  const showQuestion = (q: SurveyQuestion): boolean => {
-    if (q.question_code === 'A_PARENT_COMPANY_DETAILS') {
-      return answerForCode('A_PARENT_COMPANY')?.has_parent_company === true;
-    }
-    if (q.question_code === 'B_CLOSURE_REASON') {
-      const statusQuestion = questionByCode.get('B_OPERATION_STATUS');
-      const statusId = statusQuestion
-        ? selectedOptionId(answers[statusQuestion.question_id])
-        : null;
-      return statusQuestion?.options.find((option) => option.id === statusId)?.code === 'PERM_CLOSED';
-    }
-    if (q.question_code === 'E_SUPPLY_DISRUPTION_REASON') {
-      return answerForCode('E_SUPPLY_DISRUPTION')?.had_supply_disruption === true;
-    }
-    if (q.question_code === 'F_DEMAND_GAP_REASON') {
-      return answerForCode('F_DEMAND_GAP')?.had_demand_gap === true;
-    }
-    if (q.question_code.startsWith('K_') && q.question_code !== 'K_FUTURE_PLAN') {
-      return answerForCode('K_FUTURE_PLAN')?.has_future_plan !== false;
-    }
-    return true;
-  };
+  const showQuestion = (q: SurveyQuestion): boolean => isQuestionVisible(q, allQs, answers);
 
   const questionIsIncomplete = (q: SurveyQuestion): boolean => {
     const value = answers[q.question_id];
@@ -1460,10 +1454,15 @@ export default function SurveyPage() {
       gps_accuracy_m: gpsVal?.accuracy,
       started_at:     startedAt,
       submitted_at:   status === 'pending_sync' ? new Date().toISOString() : undefined,
-      answers: Object.entries(answers).map(([qid, val]) => ({
-        question_id:  parseInt(qid),
-        answer_value: val,
-      })),
+      answers: Object.entries(answers)
+        .filter(([qid]) => {
+          const question = allQs.find((candidate) => candidate.question_id === Number(qid));
+          return !question || showQuestion(question);
+        })
+        .map(([qid, val]) => ({
+          question_id:  parseInt(qid),
+          answer_value: val,
+        })),
       sync_status: status,
       created_at:  new Date().toISOString(),
     };

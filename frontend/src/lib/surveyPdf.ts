@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { getPhoto } from './db';
+import { isQuestionVisible } from './surveyVisibility';
 import type {
   OfflineResponse,
   QuestionOption,
@@ -350,10 +351,13 @@ export async function downloadSurveyPdf(response: OfflineResponse, form?: Survey
 
   if (form?.sections.length) {
     const knownQuestionIds = new Set<number>();
+    const questions = form.sections.flatMap((section) => section.questions);
+    const answersRecord = Object.fromEntries(answersByQuestion);
     for (const section of form.sections) {
       drawSection(section.section_code, sectionTitle(section.section_code, section.title));
       for (const question of section.questions) {
         knownQuestionIds.add(question.question_id);
+        if (!isQuestionVisible(question, questions, answersRecord)) continue;
         drawQuestion(question, answersByQuestion.get(question.question_id));
       }
     }

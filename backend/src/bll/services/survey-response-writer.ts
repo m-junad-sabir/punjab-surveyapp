@@ -38,6 +38,55 @@ function rows(answers: SurveyAnswers, code: string): Array<Record<string, unknow
   return Array.isArray(value) ? value.map(record) : [];
 }
 
+export async function clearHiddenSurveyAnswers(
+  manager: EntityManager,
+  answers: SurveyAnswers,
+): Promise<boolean> {
+  const parentCompany = field(answers, 'A_PARENT_COMPANY', 'has_parent_company') === true;
+  if (!parentCompany) {
+    answers.delete('A_PARENT_COMPANY_DETAILS');
+    answers.delete('A_ASSOCIATED_ESTABLISHMENTS');
+  }
+
+  const operationStatusId = selectionId(answers.get('B_OPERATION_STATUS'));
+  const operationStatusRows = operationStatusId === null
+    ? []
+    : await manager.query(
+      `SELECT lv.code
+         FROM lookup_values lv
+         JOIN lookup_types lt ON lt.id = lv.type_id
+        WHERE lv.id = $1 AND lv.is_active = true AND lt.code = 'OPERATION_STATUS'`,
+      [operationStatusId],
+    ) as Array<{ code: string }>;
+  if (operationStatusId !== null && !operationStatusRows[0]) {
+    throw new Error('The selected operation status is not present in the active reference list.');
+  }
+
+  const operationStatus = operationStatusRows[0]?.code ?? null;
+  if (operationStatus !== 'PERM_CLOSED') {
+    answers.delete('B_CLOSURE_REASON');
+  }
+  if (operationStatus === null || operationStatus === 'PERM_CLOSED') {
+    answers.delete('B_OPERATION_MONTHS');
+    answers.delete('B_OPERATIONAL_HOURS');
+  }
+
+  if (field(answers, 'E_SUPPLY_DISRUPTION', 'had_supply_disruption') !== true) {
+    answers.delete('E_SUPPLY_DISRUPTION_REASON');
+  }
+  if (field(answers, 'F_DEMAND_GAP', 'had_demand_gap') !== true) {
+    answers.delete('F_DEMAND_GAP_REASON');
+  }
+  if (field(answers, 'K_FUTURE_PLAN', 'has_future_plan') !== true) {
+    for (const questionCode of answers.keys()) {
+      if (questionCode.startsWith('K_') && questionCode !== 'K_FUTURE_PLAN') {
+        answers.delete(questionCode);
+      }
+    }
+  }
+  return operationStatus === 'PERM_CLOSED';
+}
+
 function selectionIds(value: unknown): number[] {
   const list = Array.isArray(value) ? value : record(value).option_ids;
   return Array.isArray(list)
@@ -369,6 +418,7 @@ export async function saveNormalizedSurveyAnswers(
   responseId: string,
   answers: SurveyAnswers,
   questions: SubmittedQuestion[],
+  isPermanentlyClosed = false,
 ): Promise<void> {
   const operatingMonths = selectionIds(field(answers, 'B_OPERATION_MONTHS', 'operating_months'));
   const operationStatus = selectionId(answers.get('B_OPERATION_STATUS'));
@@ -377,7 +427,7 @@ export async function saveNormalizedSurveyAnswers(
   await manager.query(
     `INSERT INTO sec_b_operations
        (response_id, operating_months, operation_status_id, closure_reason, daily_shift_id, daily_hours, working_days_per_week)
-     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 6))`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
       responseId,
       operatingMonths.length ? operatingMonths : null,
@@ -387,7 +437,7 @@ export async function saveNormalizedSurveyAnswers(
         ? null
         : selectionId(field(answers, 'B_OPERATIONAL_HOURS', 'daily_shift_id')),
       dailyHours,
-      daysPerWeek,
+      isPermanentlyClosed ? null : daysPerWeek ?? 6,
     ],
   );
 

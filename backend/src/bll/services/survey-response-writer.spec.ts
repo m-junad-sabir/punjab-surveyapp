@@ -1,5 +1,100 @@
 import { EntityManager } from 'typeorm';
-import { createIndustrialUnit } from './survey-response-writer';
+import {
+  clearHiddenSurveyAnswers,
+  createIndustrialUnit,
+  saveNormalizedSurveyAnswers,
+} from './survey-response-writer';
+
+describe('conditional survey answers', () => {
+  it('removes stale answers from branches excluded by their controlling responses', async () => {
+    const query = jest.fn(async () => [{ code: 'PERM_CLOSED' }]);
+    const answers = new Map<string, unknown>([
+      ['A_PARENT_COMPANY', { has_parent_company: false }],
+      ['A_PARENT_COMPANY_DETAILS', { company_name: 'Old parent' }],
+      ['A_ASSOCIATED_ESTABLISHMENTS', [{ name: 'Old establishment' }]],
+      ['B_OPERATION_STATUS', 12],
+      ['B_OPERATION_MONTHS', { operating_months: [1, 2] }],
+      ['B_OPERATIONAL_HOURS', { daily_hours: 8 }],
+      ['B_CLOSURE_REASON', { closure_reason: 'Closed' }],
+      ['E_SUPPLY_DISRUPTION', { had_supply_disruption: false }],
+      ['E_SUPPLY_DISRUPTION_REASON', [1]],
+      ['F_DEMAND_GAP', { had_demand_gap: false }],
+      ['F_DEMAND_GAP_REASON', [2]],
+      ['K_FUTURE_PLAN', { has_future_plan: false }],
+      ['K_COLLABORATIONS', [{ collaborator_type_id: 3 }]],
+    ]);
+
+    const isPermanentlyClosed = await clearHiddenSurveyAnswers(
+      { query } as unknown as EntityManager,
+      answers,
+    );
+
+    expect(isPermanentlyClosed).toBe(true);
+    expect(answers.has('A_PARENT_COMPANY_DETAILS')).toBe(false);
+    expect(answers.has('A_ASSOCIATED_ESTABLISHMENTS')).toBe(false);
+    expect(answers.has('B_OPERATION_MONTHS')).toBe(false);
+    expect(answers.has('B_OPERATIONAL_HOURS')).toBe(false);
+    expect(answers.has('B_CLOSURE_REASON')).toBe(true);
+    expect(answers.has('E_SUPPLY_DISRUPTION_REASON')).toBe(false);
+    expect(answers.has('F_DEMAND_GAP_REASON')).toBe(false);
+    expect(answers.has('K_COLLABORATIONS')).toBe(false);
+  });
+
+  it('removes the closure reason when the establishment is operating', async () => {
+    const query = jest.fn(async () => [{ code: 'ACTIVE' }]);
+    const answers = new Map<string, unknown>([
+      ['B_OPERATION_STATUS', 4],
+      ['B_OPERATION_MONTHS', { operating_months: [1] }],
+      ['B_OPERATIONAL_HOURS', { daily_hours: 8 }],
+      ['B_CLOSURE_REASON', { closure_reason: 'Stale reason' }],
+    ]);
+
+    const isPermanentlyClosed = await clearHiddenSurveyAnswers(
+      { query } as unknown as EntityManager,
+      answers,
+    );
+
+    expect(isPermanentlyClosed).toBe(false);
+    expect(answers.has('B_CLOSURE_REASON')).toBe(false);
+    expect(answers.has('B_OPERATION_MONTHS')).toBe(true);
+    expect(answers.has('B_OPERATIONAL_HOURS')).toBe(true);
+  });
+
+  it('stores null working days for a permanently closed establishment', async () => {
+    const query = jest.fn(async (_sql: string, _parameters?: unknown[]) => []);
+    await saveNormalizedSurveyAnswers(
+      { query } as unknown as EntityManager,
+      'response-id',
+      new Map(),
+      [],
+      true,
+    );
+
+    const operationInsert = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO sec_b_operations'));
+    expect(operationInsert?.[1]).toEqual([
+      'response-id',
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  it('retains the existing working-day default for a non-closed establishment', async () => {
+    const query = jest.fn(async (_sql: string, _parameters?: unknown[]) => []);
+    await saveNormalizedSurveyAnswers(
+      { query } as unknown as EntityManager,
+      'response-id',
+      new Map(),
+      [],
+    );
+
+    const operationInsert = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO sec_b_operations'));
+    expect(operationInsert?.[1]?.[6]).toBe(6);
+  });
+});
 
 describe('industry PSIC selection', () => {
   function setup(other = false, mapped = true) {

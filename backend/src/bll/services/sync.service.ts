@@ -5,6 +5,7 @@ import { SurveyResponse } from '../../dal/entities/survey-response.entity';
 import { DuplicateFlag }  from '../../dal/entities/duplicate-flag.entity';
 import { PhotoService } from './photo.service';
 import {
+  clearHiddenSurveyAnswers,
   createIndustrialUnit,
   saveNormalizedSurveyAnswers,
   SubmittedQuestion,
@@ -125,6 +126,7 @@ export class SyncService {
             if (!question) throw new Error(`Question ${answer.question_id} is not part of this form.`);
             answers.set(question.question_code, answer.answer_value);
           }
+          const isPermanentlyClosed = await clearHiddenSurveyAnswers(trx, answers);
 
           const gpsValue = answers.get('A_LOCATION_GPS');
           const gpsRecord = gpsValue && typeof gpsValue === 'object'
@@ -219,7 +221,13 @@ export class SyncService {
           });
           await trx.save(SurveyResponse, surveyResp);
 
-          await saveNormalizedSurveyAnswers(trx, resp.response_id, answers, questions);
+          await saveNormalizedSurveyAnswers(
+            trx,
+            resp.response_id,
+            answers,
+            questions,
+            isPermanentlyClosed,
+          );
           await this.photoService.attachRequiredPhotos(
             trx,
             resp.form_id,

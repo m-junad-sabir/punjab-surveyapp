@@ -39,7 +39,26 @@
 5. Add or update regression-test fixtures for a response containing blank answers, intentional zeros, conditional branches, and repeating-group entries.
 6. Create/update `Changelog.md` using the categories requested in the evaluation report. Keep one dated/versioned entry per delivered phase.
 
-**Exit checks:** Baseline can be reproduced locally; each reported item is mapped to a phase below; list ownership and unresolved value decisions are recorded; migration numbering and form-cache revision strategy are agreed.
+### Repository baseline recorded
+
+- **Repository snapshot:** inspected at commit `e91d2e9` (`Fixes (#51) made workplan 2 after app testing`). The working tree also contains the Phase 1 implementation in this delivery; it is not a clean-commit snapshot.
+- **Form revisions:** the frontend cache revision is `12`; the frontend accepts backend form versions `2` and later. The active database form version cannot be inferred safely from repository files and has not been queried.
+- **Form/data flow:** the backend loads active sections/questions/lookups and `QUESTION_INPUTS`; the frontend renders structured/repeating answers and stores drafts in IndexedDB; sync maps question codes into normalized survey tables and generic choice/share/matrix tables; the frontend generates the PDF from the saved response and form definition.
+- **PDF baseline:** unanswered scalar/field values render as `Not provided`; empty repeating groups render as `No entries recorded`; empty share categories render as `Not provided`. Phase 1 now omits questions hidden by the existing parent-company, operation-status, supply-disruption, demand-gap, and future-plan conditions. Section-specific zero/default and not-applicable behavior remains assigned to later phases.
+- **Test baseline:** backend Jest tests are available and the survey-response-writer suite now covers hidden-answer normalization and the closed-status persistence behavior. The frontend package has build and TypeScript-check commands but no configured test script. Frontend production build and type-check, backend build, and the focused backend tests passed during Phase 1.
+- **Migration/setup baseline:** `SETUP_DATABASE.bat` statically allowlists geography/classification/unit reference scripts and migrations 01–05 and 07; it omits migration 06 and legacy cleanup/reset scripts. New migrations must be added explicitly after approval. No migration or database setup command has been run for this plan.
+- **Schema evidence:** repository inspection documents describe a schema snapshot, not proof of any live environment's current migration state.
+- **Available list references:** the repository contains area and product-unit lists, L1, L2 main/secondary product and machine/spec lists, and the L3/L5 equipment briefs. The L2 references use a numeric industry label column and have no source/version metadata in their headers; authoritative client approval and exact mapping against current `UNIT_TYPE` codes are unverified.
+
+### Remaining Phase 0 prerequisites
+
+- Confirm the active form version and applied migration state against each target database. This requires owner-approved access/verification in Neon branch, Neon main, and/or localhost; static files cannot establish live state. The attempted setup-plan command was declined, so it was not run.
+- Confirm with the owner/client that the checked-in L1/L2/L3/L5 and unit lists are the authoritative release inputs and that L2 industry numbers map to the active Type of Unit codes. Do not load or transform these lists into application data until confirmed.
+- Confirm the Section H quantity label and unit: the evaluation report requests `kW` for monthly energy consumption, but that is a power unit and may not describe monthly energy quantity. This decision is needed before Phase 8 implementation, not before unrelated phases.
+- Keep operational condition semantics tied to active lookup codes. In the checked-in seed, the stable closure code is `PERM_CLOSED` while its label is “Permanently Close”; the evaluation report says “Permanently closed.” Any label change should be approved and made consistently in the form reference data.
+- The default/sentinel behavior for each later section remains governed by its requirements below; do not generalize Section D/E/F/G zero defaults to all blank values.
+
+**Exit checks:** Repository-level revision, migration allowlist, architecture/data-flow inventory, PDF defaults, available test tooling, and available list files are recorded above. Phase 0 remains open until live migration/form state and list authority/mapping are confirmed; the Section H unit decision is a Phase 8 prerequisite. Do not block unrelated phases on the Section H decision.
 
 ## Phase 1 — Shared conditional-answer and PDF behavior
 
@@ -219,8 +238,8 @@
 
 | Phase | Status |
 |---|---|
-| 0 Baseline, decisions, shared infrastructure | Not started |
-| 1 Shared conditional-answer and PDF behavior | Not started |
+| 0 Baseline, decisions, shared infrastructure | In progress — repository baseline and data-flow inventory recorded; waiting on live database/form-state verification and owner/client confirmation of list authority and L1/L2 mapping |
+| 1 Shared conditional-answer and PDF behavior | Complete for the existing parent-company, operation-status, disruption, demand-gap, and future-plan branches; subsequent section-specific gates remain in their corresponding phases |
 | 2 Section A | Not started |
 | 3 Section B | Not started |
 | 4 Section C | Not started |
