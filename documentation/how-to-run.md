@@ -99,7 +99,7 @@ SQL execution and stop on the first SQL error. No arguments show help only;
 `/plan` prints the exact sequence without connecting to PostgreSQL.
 
 Fresh setup enables required extensions, loads the schema/base seed,
-then reference seeds/updates and implemented migrations 01-05 and 07-10. Existing
+then reference seeds/updates and implemented migrations 01-05 and 07-11. Existing
 database migration requires an active form version 3 or newer. Back up before:
 
 ```powershell
@@ -141,6 +141,7 @@ psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_07_
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_08_section_a_additions.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_09_section_b_operations.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_10_section_c_products.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_11_section_e_f_lookups.sql
 ```
 
 These examples use your psql PG environment; adjust it for the target server.
@@ -159,8 +160,18 @@ Run its verification queries separately: confirm 15 active product units and
 Review historical secondary-product and transformation-stage violations before
 validating any `NOT VALID` constraint; the migration does not rewrite those rows.
 Apply it before deploying the API that loads the Section C references. Reload
-the form online after deployment so revision 15 is cached before offline use.
+the form online after deployment so the current revision 17 is cached before offline use.
 Previously selected legacy units and free-text product names are retained.
+
+Review and back up each target before applying migration 11 after migration 10.
+Its verification queries must show active `NOT_FORMALLY_TRACKED` options for
+both Section E bands, `DK_NA` for strength and `NA` for digital presence. Check
+that each F matrix question is present and `matrix_rows` equals
+`rows_with_active_default` (six strength and five digital rows in the checked-in
+seed). The migration preserves lookup IDs and does not backfill historical
+responses. Deploy the API before the frontend, refresh the revision-17 form
+online, then verify live sync, stored share totals, PDFs, and an offline-device
+draft round trip. Do not assume the migration has already been applied.
 
 An older version-1 form needs the reviewed full-questionnaire migration, then
 the location-selection update to version 3, before these delivery migrations.

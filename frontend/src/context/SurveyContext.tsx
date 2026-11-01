@@ -18,7 +18,7 @@ import { useAuth } from './AuthContext';
  * browsers discard stale cached forms and re-fetch.
  */
 const MINIMUM_FORM_VERSION = 2;
-const CURRENT_FORM_CACHE_REVISION = 16;
+const CURRENT_FORM_CACHE_REVISION = 17;
 
 interface SurveyContextValue {
   form:             SurveyForm | null;

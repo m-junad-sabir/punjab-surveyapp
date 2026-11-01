@@ -5,6 +5,11 @@ import { SurveyResponse } from '../../dal/entities/survey-response.entity';
 import { DuplicateFlag }  from '../../dal/entities/duplicate-flag.entity';
 import { PhotoService } from './photo.service';
 import {
+  normalizeSectionEFAnswers,
+  SECTION_EF_MATRIX_DEFAULTS,
+  SECTION_EF_SHARE_CODES,
+} from './section-e-f';
+import {
   clearHiddenSurveyAnswers,
   createIndustrialUnit,
   normalizeSectionCAnswers,
@@ -111,13 +116,19 @@ export class SyncService {
           }
 
           const questionIds = [...new Set(resp.answers.map((answer) => answer.question_id))];
+          const defaultedQuestionCodes = [
+            'D_EMPLOYMENT',
+            'D_SKILLS',
+            ...SECTION_EF_SHARE_CODES,
+            ...Object.keys(SECTION_EF_MATRIX_DEFAULTS),
+          ];
           const questions: SubmittedQuestion[] = await trx.query(
             `SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
                FROM survey_questions q
                JOIN survey_sections s ON s.id = q.section_id
               WHERE s.form_id = $2
-                AND (q.id = ANY($1::int[]) OR q.question_code IN ('D_EMPLOYMENT', 'D_SKILLS'))`,
-            [questionIds, resp.form_id],
+                AND (q.id = ANY($1::int[]) OR q.question_code = ANY($3::text[]))`,
+            [questionIds, resp.form_id, defaultedQuestionCodes],
           );
           if (questions.filter((question) => questionIds.includes(question.id)).length !== questionIds.length) {
             throw new Error('The response contains a question that does not belong to its survey form.');
@@ -131,11 +142,11 @@ export class SyncService {
             answers.set(question.question_code, answer.answer_value);
           }
           for (const question of questions) {
-            if (
-              (question.question_code === 'D_EMPLOYMENT' || question.question_code === 'D_SKILLS') &&
-              !answers.has(question.question_code)
-            ) {
-              answers.set(question.question_code, []);
+            if (defaultedQuestionCodes.includes(question.question_code) && !answers.has(question.question_code)) {
+              answers.set(
+                question.question_code,
+                question.question_code === 'D_EMPLOYMENT' || question.question_code === 'D_SKILLS' ? [] : {},
+              );
             }
           }
           const isPermanentlyClosed = await clearHiddenSurveyAnswers(trx, answers);
@@ -143,6 +154,7 @@ export class SyncService {
           await validateSectionBAnswers(trx, answers);
           await normalizeSectionCAnswers(trx, answers);
           await normalizeSectionDAnswers(trx, answers);
+          await normalizeSectionEFAnswers(trx, answers, questions);
 
           const gpsValue = answers.get('A_LOCATION_GPS');
           const gpsRecord = gpsValue && typeof gpsValue === 'object'

@@ -996,11 +996,14 @@ async function saveNormalizedSurveyAnswers(manager, responseId, answers, questio
                 const matrixAnswer = record(answer);
                 const choiceValueId = selectionId(matrixAnswer.choice_value_id);
                 const rating = number(matrixAnswer.rating);
-                if (choiceValueId === null && rating === null)
+                const otherText = typeof matrixAnswer.other_text === 'string' && matrixAnswer.other_text.trim()
+                    ? matrixAnswer.other_text.trim()
+                    : null;
+                if (choiceValueId === null && rating === null && otherText === null)
                     continue;
                 await manager.query(`INSERT INTO response_matrix_answers
              (response_id, item_id, choice_value_id, rating, other_text)
-           VALUES ($1, $2, $3, $4, $5)`, [responseId, itemId, choiceValueId, rating, matrixAnswer.other_text ?? null]);
+           VALUES ($1, $2, $3, $4, $5)`, [responseId, itemId, choiceValueId, rating, otherText]);
             }
         }
     }

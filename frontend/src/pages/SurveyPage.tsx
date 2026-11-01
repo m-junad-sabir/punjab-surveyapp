@@ -26,6 +26,27 @@ import {
 } from '../lib/sectionDWorkforce';
 import type { WorkforceGender, WorkforceSkillOption } from '../lib/sectionDWorkforce';
 import {
+  SECTION_EF_MATRIX_DEFAULTS,
+  formatPercentage,
+  invalidMatrixKeys,
+  invalidShareKeys,
+  isRecord as isSectionEfRecord,
+  isSectionEfReason,
+  isSectionEfShare,
+  materializeSectionEFAnswers,
+  matrixEntryForDisplay,
+  matrixOptions,
+  matrixRawEntry,
+  normalizeMatrix,
+  normalizeShares,
+  positiveId,
+  reasonError,
+  reasonOptions,
+  reasonSelection,
+  shareOptions,
+  shareTotal,
+} from '../lib/sectionEF';
+import {
   changeProductKind,
   clearProductNames,
   isProductFieldVisible,
@@ -494,14 +515,42 @@ function SearchableReferenceField({ options, value, onChange, disabled, manualVa
 }
 
 // ─── MULTI_CHOICE (checkboxes) ────────────────────────────────────────────────
-function MultiChoiceField({ options, value, onChange, showMonthToggle = false }: {
+function MultiChoiceField({ options, value, onChange, showMonthToggle = false, reasonQuestion, references = {} }: {
   options: QuestionOption[]; value: any; onChange: (v: any) => void;
   showMonthToggle?: boolean;
+  reasonQuestion?: SurveyQuestion;
+  references?: Record<string, QuestionOption[]>;
 }) {
+  const reasonValues = reasonQuestion ? reasonSelection(value) : null;
   const selected: number[] = Array.isArray(value) ? value : [];
-  const selectedIds = Array.isArray(value) ? selected : value?.option_ids ?? [];
+  const selectedIds: number[] = reasonQuestion
+    ? [...new Set((reasonValues ?? []).map(positiveId).filter((id): id is number => id !== null))]
+    : Array.isArray(value) ? selected : value?.option_ids ?? [];
   const otherText: Record<number, string> =
-    value && !Array.isArray(value) && typeof value === 'object' ? value.other_text ?? {} : {};
+    reasonQuestion
+      ? isSectionEfRecord(value) && isSectionEfRecord(value.other_text)
+        ? value.other_text as Record<number, string> : {}
+      : value && !Array.isArray(value) && typeof value === 'object' ? value.other_text ?? {} : {};
+  const displayedOptions = reasonQuestion ? reasonOptions(reasonQuestion, value, references) : options;
+  const reasonText = isSectionEfRecord(value) ? value.other_text : undefined;
+  const invalidReasonText = isSectionEfRecord(reasonText) && Object.entries(reasonText).some(([key, text]) => {
+    const id = positiveId(key);
+    const blank = text == null || (typeof text === 'string' && !text.trim());
+    return !blank && (typeof text !== 'string' || id === null || !selectedIds.includes(id));
+  });
+  const invalidReasonData = reasonQuestion && (
+    reasonValues === null ||
+    reasonValues.some((item) => positiveId(item) === null) ||
+    reasonValues.length !== selectedIds.length ||
+    (reasonText != null && !isSectionEfRecord(reasonText)) || invalidReasonText
+  );
+  const clearInvalidReasonData = () => {
+    const retainedText = Object.fromEntries(Object.entries(otherText).filter(([key, text]) => {
+      const id = positiveId(key);
+      return id !== null && selectedIds.includes(id) && typeof text === 'string' && text.trim();
+    }));
+    onChange(Object.keys(retainedText).length ? { option_ids: selectedIds, other_text: retainedText } : selectedIds);
+  };
 
   const toggle = (id: number, checked: boolean) => {
     const next = checked ? [...selectedIds, id] : selectedIds.filter((s: number) => s !== id);
@@ -510,13 +559,20 @@ function MultiChoiceField({ options, value, onChange, showMonthToggle = false }:
     onChange(Object.keys(nextOtherText).length ? { option_ids: next, other_text: nextOtherText } : next);
   };
 
-  const chosen = (id: number) => Array.isArray(value)
-    ? selected.includes(id)
-    : (value?.option_ids ?? []).includes(id);
+  const chosen = (id: number) => reasonQuestion ? selectedIds.includes(id) : Array.isArray(value)
+    ? selected.includes(id) : (value?.option_ids ?? []).includes(id);
   const allSelected = areAllOptionsSelected(options, selectedIds);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {invalidReasonData && (
+        <div className="alert alert-error">
+          This saved answer contains invalid reason data.{' '}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={clearInvalidReasonData}>
+            Clear invalid data
+          </button>
+        </div>
+      )}
       {showMonthToggle && (
         <button type="button" className="btn btn-outline btn-sm"
           aria-pressed={allSelected}
@@ -524,7 +580,7 @@ function MultiChoiceField({ options, value, onChange, showMonthToggle = false }:
           {allSelected ? 'Deselect all months' : 'Select all months'}
         </button>
       )}
-      {options.map((opt) => {
+      {displayedOptions.map((opt) => {
         const isChecked = chosen(opt.id);
         return (
           <div key={opt.id}>
@@ -536,11 +592,12 @@ function MultiChoiceField({ options, value, onChange, showMonthToggle = false }:
               borderRadius: 'var(--radius-sm)', fontSize: 13, transition: 'all 0.15s',
             }}>
               <input type="checkbox" checked={isChecked}
+                disabled={Boolean(reasonQuestion && opt.is_selectable === false && !isChecked)}
                 onChange={(e) => toggle(opt.id, e.target.checked)}
                 style={{ marginTop: 2, accentColor: 'var(--primary)', flexShrink: 0 }} />
               <span>{opt.label}</span>
             </label>
-            {isChecked && opt.requires_text && (
+            {isChecked && (opt.requires_text || (reasonQuestion && opt.code === 'OTHER')) && (
               <input className="form-input" style={{ marginTop: 6 }}
                 value={otherText[opt.id] ?? ''}
                 onChange={(event) => onChange({
@@ -552,6 +609,112 @@ function MultiChoiceField({ options, value, onChange, showMonthToggle = false }:
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function SectionEFShareField({ question, value, onChange, references }: {
+  question: SurveyQuestion;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  references: Record<string, QuestionOption[]>;
+}) {
+  const map = isSectionEfRecord(value) ? value : {};
+  const options = shareOptions(question, value, references);
+  const invalidKeys = invalidShareKeys(question, value, references);
+  const total = shareTotal(value);
+  const overLimit = total !== null && total > 100;
+  const remove = (key: string) => {
+    const next = { ...map };
+    delete next[key];
+    onChange(next);
+  };
+  const updatePercent = (id: number, raw: string) => {
+    const previous = map[String(id)];
+    const amount = raw === '' ? 0 : raw;
+    onChange({
+      ...map,
+      [id]: isSectionEfRecord(previous) ? { ...previous, percent: amount } : amount,
+    });
+  };
+
+  return (
+    <div>
+      {value != null && !isSectionEfRecord(value) && (
+        <div className="alert alert-error">
+          This saved share answer has an invalid format.{' '}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange({})}>
+            Clear invalid data
+          </button>
+        </div>
+      )}
+      {invalidKeys.map((key) => (
+        <div key={key} className="alert alert-error">
+          Unknown saved share category: {key}.{' '}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => remove(key)}>Remove</button>
+        </div>
+      ))}
+      {options.map((option) => {
+        const key = String(option.id);
+        const entry = map[key];
+        const raw = isSectionEfRecord(entry) ? entry.percent : entry;
+        const amount = typeof raw === 'number' || typeof raw === 'string' ? raw : raw == null ? 0 : '';
+        const text = isSectionEfRecord(entry) && typeof entry.other_text === 'string' ? entry.other_text : '';
+        const invalidData = (isSectionEfRecord(entry) && (
+          Object.keys(entry).some((field) => field !== 'percent' && field !== 'other_text') ||
+          (entry.other_text != null && typeof entry.other_text !== 'string')
+        )) || (raw != null && typeof raw !== 'number' && typeof raw !== 'string');
+        return (
+          <div key={option.id} style={{ marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ flex: 1, fontSize: 13 }}>{option.label}</span>
+              <input type="text" inputMode="decimal"
+                aria-label={`${option.label} percentage`}
+                value={amount}
+                onFocus={(event) => event.currentTarget.select()}
+                onChange={(event) => updatePercent(option.id, event.target.value)}
+                style={{
+                  width: 82, textAlign: 'right', padding: '6px 8px',
+                  border: `1.5px solid ${overLimit ? 'var(--danger)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-sm)', fontSize: 13, background: 'var(--surface2)',
+                }} />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>%</span>
+            </div>
+            {(option.requires_text || option.code === 'OTHER' || text) && (
+              <>
+                <input className="form-input" style={{ marginTop: 6 }} value={text}
+                  aria-label={`${option.label} description`}
+                  onChange={(event) => onChange({
+                    ...map,
+                    [option.id]: {
+                      ...(isSectionEfRecord(entry) ? entry : {}),
+                      percent: raw ?? 0,
+                      other_text: event.target.value,
+                    },
+                  })}
+                  placeholder="Please specify (optional)" />
+                {option.code === 'OTHER' && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                    Optionally describe the other {question.question_code === 'E_SOURCING_TYPE' ? 'source' : 'buyer type'}.
+                  </div>
+                )}
+              </>
+            )}
+            {(invalidData || option.is_selectable === false) && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => remove(key)}>
+                {option.is_selectable === false ? 'Remove previously recorded category' : 'Clear invalid saved category'}
+              </button>
+            )}
+          </div>
+        );
+      })}
+      <div style={{
+        fontSize: 11, fontWeight: 700, textAlign: 'right', marginTop: 4,
+        color: overLimit || total === null ? 'var(--danger)' : total === 100 ? 'var(--success)' : 'var(--text-muted)',
+      }}>
+        Total: {total === null ? 'Invalid' : `${formatPercentage(total)}% / 100%`}
+        {overLimit ? ' - exceeds 100%' : ''}
+      </div>
     </div>
   );
 }
@@ -624,12 +787,29 @@ function SharePercentField({ options, value, onChange }: {
 }
 
 // ─── MATRIX ───────────────────────────────────────────────────────────────────
-function MatrixField({ question, value, onChange }: {
-  question: SurveyQuestion; value: any; onChange: (v: any) => void;
+function MatrixField({ question, value, onChange, references }: {
+  question: SurveyQuestion; value: unknown; onChange: (v: unknown) => void;
+  references: Record<string, QuestionOption[]>;
 }) {
   const items = question.matrix_items ?? [];
+  const invalidKeys = invalidMatrixKeys(question, value);
+  const validation = normalizeMatrix(question, value, references);
+  const update = (item: SurveyMatrixItem, entry: Record<string, unknown> | null) => {
+    const next = isSectionEfRecord(value) ? { ...value } : {};
+    delete next[item.code];
+    delete next[String(item.id)];
+    if (entry && Object.values(entry).some((part) => part !== null && part !== undefined && part !== '')) {
+      next[String(item.id)] = entry;
+    }
+    onChange(next);
+  };
+  const removeKey = (key: string) => {
+    const next = isSectionEfRecord(value) ? { ...value } : {};
+    delete next[key];
+    onChange(next);
+  };
 
-  if (!items.length) {
+  if (!items.length && !invalidKeys.length && (value == null || isSectionEfRecord(value))) {
     return (
       <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', padding: 8 }}>
         No matrix rows are configured for this question.
@@ -639,8 +819,26 @@ function MatrixField({ question, value, onChange }: {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {value != null && !isSectionEfRecord(value) && (
+        <div className="alert alert-error">
+          This saved matrix has an invalid format.{' '}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange({})}>Clear invalid data</button>
+        </div>
+      )}
+      {invalidKeys.map((key) => (
+        <div key={key} className="alert alert-error">
+          Unknown or duplicate saved matrix row: {key}.{' '}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeKey(key)}>Remove</button>
+        </div>
+      ))}
       {items.map((item) => {
-        const entry = value?.[item.id] ?? value?.[item.code] ?? {};
+        const entry = matrixEntryForDisplay(question, item, value);
+        const options = matrixOptions(item, entry, references);
+        const selectedId = positiveId(entry.choice_value_id ?? entry.option_id);
+        const selectedOption = options.find((option) => option.id === selectedId);
+        const otherText = typeof entry.other_text === 'string' ? entry.other_text : '';
+        const rawEntry = matrixRawEntry(item, value);
+        const rowHasError = !validation.ok && validation.error.includes(item.label);
         return (
           <div key={item.id} style={{ padding: '10px 12px', background: 'var(--surface2)', borderRadius: 'var(--radius-sm)' }}>
             {item.group_label && (
@@ -650,30 +848,33 @@ function MatrixField({ question, value, onChange }: {
             )}
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 7 }}>{item.label}</div>
             {item.answer_type === 'RATING_1_5' ? (
-              <select className="form-select" value={entry.rating ?? ''}
-                onChange={(event) => onChange({
-                  ...value,
-                  [item.id]: { ...entry, rating: event.target.value ? Number(event.target.value) : null },
+              <select className="form-select" value={typeof entry.rating === 'number' || typeof entry.rating === 'string' ? entry.rating : ''}
+                onChange={(event) => update(item, {
+                  ...entry, rating: event.target.value ? Number(event.target.value) : null,
                 })}>
                 <option value="">— Select rating —</option>
                 {[1, 2, 3, 4, 5].map((rating) => <option key={rating} value={rating}>{rating}</option>)}
               </select>
             ) : (
               <ChoiceField
-                options={item.options}
-                value={entry.choice_value_id == null ? null : {
-                  option_id: entry.choice_value_id,
-                  other_text: entry.other_text ?? '',
-                }}
-                onChange={(selection) => onChange({
-                  ...value,
-                  [item.id]: selection == null
-                    ? {}
-                    : typeof selection === 'object'
-                      ? { choice_value_id: selection.option_id, other_text: selection.other_text }
-                      : { choice_value_id: selection, other_text: '' },
-                })}
+                options={options}
+                value={selectedId === null ? null : { option_id: selectedId, other_text: otherText }}
+                onChange={(selection) => update(item, selection == null
+                  ? item.allows_text && otherText ? { other_text: otherText } : null
+                  : typeof selection === 'object'
+                    ? { choice_value_id: selection.option_id, other_text: selection.other_text }
+                    : { choice_value_id: selection, other_text: item.allows_text ? otherText : '' })}
               />
+            )}
+            {!selectedOption?.requires_text && (item.allows_text || otherText) && (
+              <input className="form-input" style={{ marginTop: 8 }} value={otherText}
+                aria-label={`${item.label} description`} placeholder="Please specify"
+                onChange={(event) => update(item, { ...entry, other_text: event.target.value })} />
+            )}
+            {rowHasError && rawEntry !== undefined && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => update(item, null)}>
+                Clear invalid saved row
+              </button>
             )}
           </div>
         );
@@ -1279,13 +1480,16 @@ function QuestionField({ q, value, onChange, error, references, responseId, owne
       );
 
     case 'MULTI_CHOICE':
-      return <MultiChoiceField options={q.options} value={value} onChange={onChange} />;
+      return <MultiChoiceField options={q.options} value={value} onChange={onChange}
+        reasonQuestion={isSectionEfReason(q) ? q : undefined} references={references} />;
 
     case 'SHARE_PERCENT':
-      return <SharePercentField options={q.options} value={value} onChange={onChange} />;
+      return isSectionEfShare(q)
+        ? <SectionEFShareField question={q} value={value} onChange={onChange} references={references} />
+        : <SharePercentField options={q.options} value={value} onChange={onChange} />;
 
     case 'MATRIX':
-      return <MatrixField question={q} value={value} onChange={onChange} />;
+      return <MatrixField question={q} value={value} onChange={onChange} references={references} />;
 
     case 'REPEATING_GROUP':
       return <StructuredQuestionField question={q} value={value} onChange={onChange}
@@ -1502,6 +1706,18 @@ export default function SurveyPage() {
     const value = answers[q.question_id];
     const workforce = normalizeWorkforceAnswer(q, value, form.references ?? {});
     if (workforce) return workforce.ok ? null : workforce.error;
+    if (isSectionEfShare(q)) {
+      const share = normalizeShares(q, value, form.references ?? {});
+      return share.ok ? null : share.error;
+    }
+    if (SECTION_EF_MATRIX_DEFAULTS[q.question_code] && q.answer_type !== 'MATRIX') {
+      return 'This question is not configured as a matrix.';
+    }
+    if (q.answer_type === 'MATRIX') {
+      const matrix = normalizeMatrix(q, value, form.references ?? {});
+      return matrix.ok ? null : matrix.error;
+    }
+    if (isSectionEfReason(q)) return reasonError(q, value, form.references ?? {});
     return questionFormatError(q, value) ?? (q.question_code === 'C_PRODUCTS'
       ? productRowsError(
           value,
@@ -1517,6 +1733,7 @@ export default function SurveyPage() {
     const fields = q.fields ?? [];
     if (validationError(q)) return true;
     if (q.question_code === 'D_EMPLOYMENT' || q.question_code === 'D_SKILLS') return false;
+    if (isSectionEfShare(q) || SECTION_EF_MATRIX_DEFAULTS[q.question_code]) return false;
     if (q.question_code === 'A_UNIT_TYPE') {
       const option = q.options.find((candidate) => candidate.id === selectedOptionId(value));
       return !option || (option.requires_text && !selectedOtherText(value).trim());
@@ -1587,7 +1804,8 @@ export default function SurveyPage() {
   const buildResponse = (status: 'draft' | 'pending_sync'): OfflineResponse => {
     const gpsQ   = allQs.find((q) => q.answer_type === 'GPS' || q.question_code === 'A_LOCATION_GPS');
     const gpsVal = gpsQ ? answers[gpsQ.question_id] : null;
-    const responseAnswers = materializeWorkforceAnswers(allQs, answers, form.references ?? {});
+    const workforceAnswers = materializeWorkforceAnswers(allQs, answers, form.references ?? {});
+    const responseAnswers = materializeSectionEFAnswers(allQs, workforceAnswers, form.references ?? {});
 
     return {
       response_id:    responseId,

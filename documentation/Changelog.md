@@ -2,6 +2,23 @@
 
 All notable application changes are recorded here, grouped by the categories below.
 
+## 2026-11-01 — Workplan 2 Phase 6
+
+### Added
+
+- Added zero defaults and PDF totals for the four Section E/F share distributions, with two-decimal validation and a 100% maximum.
+- Added rerunnable migration 11 for the two `Not Formally Tracked` choices and required F matrix defaults, with owner verification queries and setup allowlisting. No migration was executed.
+- Added regression coverage for legacy drafts, conditional Other reasons, share totals, matrix choices/ratings, sync, and generated PDFs.
+
+### Changed
+
+- Bumped the offline form-cache revision to 17 and included historical share, reason, and matrix option labels. Invalid or unknown saved data is retained for explicit correction.
+- Other share descriptions are optional; Other disruption/demand-gap reasons require text when selected on a visible Yes branch. Unanswered competitor and digital matrix rows default to `Don't Know / NA` and `NA`, respectively.
+
+### Fixed
+
+- Matrix answers now retain supported legacy entry shapes and row text, validate choice/rating values, and display labels rather than internal IDs in PDFs. Other matrix questions do not receive new defaults.
+
 ## 2026-11-01 — Workplan 2 Phase 5
 
 ### Added

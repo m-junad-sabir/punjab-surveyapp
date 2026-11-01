@@ -14,6 +14,17 @@ import {
   productUnitValueForDisplay,
   productValueForDisplay,
 } from './sectionCProducts';
+import {
+  formatPercentage,
+  isSectionEfReason,
+  isSectionEfShare,
+  matrixOptions,
+  normalizeMatrix,
+  normalizeReason,
+  normalizeShares,
+  reasonOptions,
+  shareOptions,
+} from './sectionEF';
 import type {
   OfflineResponse,
   QuestionOption,
@@ -192,13 +203,40 @@ function getQuestionAnswers(
 
   if (fields.length > 0) return fieldLines(answer);
 
-  if (question.answer_type === 'MATRIX' && isRecord(answer)) {
+  if (isSectionEfShare(question)) {
+    const normalized = normalizeShares(question, answer, references);
+    if (!normalized.ok) return [{ label: 'Share data', value: normalized.error }];
+    return [
+      ...shareOptions(question, answer, references).map((option) => {
+        const entry = normalized.value.entries[String(option.id)];
+        const percent = typeof entry === 'number' ? entry : entry.percent;
+        const text = typeof entry === 'number' ? '' : entry.other_text;
+        return {
+          label: text ? `${option.label}: ${text}` : option.label,
+          value: `${formatPercentage(percent)}%`,
+        };
+      }),
+      { label: 'Total', value: `${formatPercentage(normalized.value.total)}% / 100%` },
+    ];
+  }
+
+  if (question.answer_type === 'MATRIX') {
     const items = question.matrix_items ?? [];
+    const normalized = normalizeMatrix(question, answer, references);
+    if (!normalized.ok) return [{ label: 'Matrix data', value: normalized.error }];
     if (items.length === 0) return [{ label: 'Response', value: displayValue(answer) }];
-    return items.map((item) => ({
-      label: item.group_label ? `${item.group_label} - ${item.label}` : item.label,
-      value: displayValue(answer[String(item.id)], item.options),
-    }));
+    return items.map((item) => {
+      const entry = normalized.value[String(item.id)] ?? {};
+      const options = matrixOptions(item, entry, references);
+      const selection = item.answer_type === 'RATING_1_5'
+        ? entry.rating
+        : entry.choice_value_id;
+      const value = displayValue(selection, item.answer_type === 'RATING_1_5' ? [] : options);
+      return {
+        label: item.group_label ? `${item.group_label} - ${item.label}` : item.label,
+        value: entry.other_text ? `${value}: ${entry.other_text}` : value,
+      };
+    });
   }
 
   if (question.answer_type === 'SHARE_PERCENT' && isRecord(answer)) {
@@ -215,7 +253,19 @@ function getQuestionAnswers(
     return [{ label: 'Evidence', value: `Captured ${captured}; see photo evidence page.` }];
   }
 
-  return [{ label: 'Answer', value: displayValue(answer, question.options) }];
+  if (isSectionEfReason(question)) {
+    const normalized = normalizeReason(question, answer, references);
+    if (!normalized.ok) return [{ label: 'Reason data', value: normalized.error }];
+    return [{
+      label: 'Answer',
+      value: displayValue(normalized.value, reasonOptions(question, normalized.value, references)),
+    }];
+  }
+
+  return [{
+    label: 'Answer',
+    value: displayValue(answer, question.options),
+  }];
 }
 
 function sectionTitle(code: string, title: string): string {

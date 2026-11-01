@@ -19,6 +19,7 @@ const typeorm_2 = require("typeorm");
 const survey_response_entity_1 = require("../../dal/entities/survey-response.entity");
 const duplicate_flag_entity_1 = require("../../dal/entities/duplicate-flag.entity");
 const photo_service_1 = require("./photo.service");
+const section_e_f_1 = require("./section-e-f");
 const survey_response_writer_1 = require("./survey-response-writer");
 function nameSimilarity(a, b) {
     const s1 = (a ?? '').toLowerCase().trim();
@@ -69,11 +70,17 @@ let SyncService = class SyncService {
                         };
                     }
                     const questionIds = [...new Set(resp.answers.map((answer) => answer.question_id))];
+                    const defaultedQuestionCodes = [
+                        'D_EMPLOYMENT',
+                        'D_SKILLS',
+                        ...section_e_f_1.SECTION_EF_SHARE_CODES,
+                        ...Object.keys(section_e_f_1.SECTION_EF_MATRIX_DEFAULTS),
+                    ];
                     const questions = await trx.query(`SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
                FROM survey_questions q
                JOIN survey_sections s ON s.id = q.section_id
               WHERE s.form_id = $2
-                AND (q.id = ANY($1::int[]) OR q.question_code IN ('D_EMPLOYMENT', 'D_SKILLS'))`, [questionIds, resp.form_id]);
+                AND (q.id = ANY($1::int[]) OR q.question_code = ANY($3::text[]))`, [questionIds, resp.form_id, defaultedQuestionCodes]);
                     if (questions.filter((question) => questionIds.includes(question.id)).length !== questionIds.length) {
                         throw new Error('The response contains a question that does not belong to its survey form.');
                     }
@@ -86,9 +93,8 @@ let SyncService = class SyncService {
                         answers.set(question.question_code, answer.answer_value);
                     }
                     for (const question of questions) {
-                        if ((question.question_code === 'D_EMPLOYMENT' || question.question_code === 'D_SKILLS') &&
-                            !answers.has(question.question_code)) {
-                            answers.set(question.question_code, []);
+                        if (defaultedQuestionCodes.includes(question.question_code) && !answers.has(question.question_code)) {
+                            answers.set(question.question_code, question.question_code === 'D_EMPLOYMENT' || question.question_code === 'D_SKILLS' ? [] : {});
                         }
                     }
                     const isPermanentlyClosed = await (0, survey_response_writer_1.clearHiddenSurveyAnswers)(trx, answers);
@@ -96,6 +102,7 @@ let SyncService = class SyncService {
                     await (0, survey_response_writer_1.validateSectionBAnswers)(trx, answers);
                     await (0, survey_response_writer_1.normalizeSectionCAnswers)(trx, answers);
                     await (0, survey_response_writer_1.normalizeSectionDAnswers)(trx, answers);
+                    await (0, section_e_f_1.normalizeSectionEFAnswers)(trx, answers, questions);
                     const gpsValue = answers.get('A_LOCATION_GPS');
                     const gpsRecord = gpsValue && typeof gpsValue === 'object'
                         ? gpsValue.location

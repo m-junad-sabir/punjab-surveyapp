@@ -42,17 +42,17 @@
 ### Repository baseline recorded
 
 - **Repository snapshot:** inspected at commit `e91d2e9` (`Fixes (#51) made workplan 2 after app testing`). The working tree also contains the Phase 1 implementation in this delivery; it is not a clean-commit snapshot.
-- **Form revisions:** the frontend cache revision is now `16` after the Section D questionnaire changes; the frontend accepts backend form versions `2` and later. The active database form version cannot be inferred safely from repository files and has not been queried.
+- **Form revisions:** the frontend cache revision is now `17` after the Section E/F questionnaire changes; the frontend accepts backend form versions `2` and later. The active database form version cannot be inferred safely from repository files and has not been queried.
 - **Form/data flow:** the backend loads active sections/questions/lookups and `QUESTION_INPUTS`; the frontend renders structured/repeating answers and stores drafts in IndexedDB; sync maps question codes into normalized survey tables and generic choice/share/matrix tables; the frontend generates the PDF from the saved response and form definition.
 - **PDF baseline:** unanswered scalar/field values render as `Not provided`; empty repeating groups render as `No entries recorded`; empty share categories render as `Not provided`. Phase 1 now omits questions hidden by the existing parent-company, operation-status, supply-disruption, demand-gap, and future-plan conditions. Section-specific zero/default and not-applicable behavior remains assigned to later phases.
 - **Test baseline:** backend Jest tests cover hidden-answer normalization, Section B validation, and closed-status persistence. The frontend has a Node test script for month selection, validation, conditional visibility, draft cleanup, and generated PDFs, as well as build and TypeScript-check commands.
-- **Migration/setup baseline:** `SETUP_DATABASE.bat` statically allowlists geography/classification/unit reference scripts and migrations 01–05 and 07–10; it omits migration 06 and legacy cleanup/reset scripts. Migrations 08–10 were added for Sections A–C; no migration or database setup command has been run by this implementation.
+- **Migration/setup baseline:** `SETUP_DATABASE.bat` statically allowlists geography/classification/unit reference scripts and migrations 01–05 and 07–11; it omits migration 06 and legacy cleanup/reset scripts. Migrations 08–11 were added for Sections A–C and E/F. The local `/plan` check printed the allowlist without connecting to a database; no SQL or database setup was executed.
 - **Schema evidence:** repository inspection documents describe a schema snapshot, not proof of any live environment's current migration state.
 - **Available list references:** the repository contains area and product-unit lists, L1, L2 main/secondary product and machine/spec lists, and the L3/L5 equipment briefs. The owner approved the checked-in L2 product lists, their mapping to the existing `UNIT_TYPE` codes, and the product-unit minimum list for Phase 4. Other list authority and live mappings remain to be confirmed.
 
 ### Remaining Phase 0 prerequisites
 
-- Confirm the active form version and applied migration state against each target database. This requires owner-approved access/verification in Neon branch, Neon main, and/or localhost; static files cannot establish live state. The attempted setup-plan command was declined, so it was not run.
+- Confirm the active form version and applied migration state against each target database. This requires owner-approved access/verification in Neon branch, Neon main, and/or localhost; static files and the no-connection setup-plan check cannot establish live state.
 - Confirm with the owner/client that the remaining checked-in L1, machinery L2, L3/L5, and other unit lists are authoritative, and verify mappings against each live database. The L2 **product** lists and the 15-unit product minimum have been approved for Phase 4; do not load unapproved lists.
 - Confirm the Section H quantity label and unit: the evaluation report requests `kW` for monthly energy consumption, but that is a power unit and may not describe monthly energy quantity. This decision is needed before Phase 8 implementation, not before unrelated phases.
 - Keep operational condition semantics tied to active lookup codes. In the checked-in seed, the stable closure code is `PERM_CLOSED` while its label is “Permanently Close”; the evaluation report says “Permanently closed.” Any label change should be approved and made consistently in the form reference data.
@@ -153,7 +153,7 @@
 - Drafts, sync, and PDFs use the same zero/default behavior. Sync also fills entirely omitted workforce questions from older queued clients, but only when those questions belong to the response's form. Legacy duplicate rows are combined without losing their counts; referenced inactive skill levels remain available and visible. Unknown levels and malformed or out-of-range counts are reported rather than silently discarded.
 - The form and PDF show category/skill, gender, and grand subtotals. Application validation rejects negative, fractional, and integer-overflow values, including totals that would overflow the database-generated employment total. The two questions are reported independently; their grand totals are not forced to match.
 - Repository schema and existing [migration 03](../database/migration_03_workforce_gender_other.sql) allow the exact gender value `Other`. No new database migration was necessary and no database script was run. Automated tests cover normalization, sync inserts and component sums, invalid inputs, legacy drafts, generated PDFs, and the checked-in constraints. A mocked mobile-size browser check covered default display, editing, validation, draft reload, and historical/unknown skill levels; it was not a live or disconnected-device test.
-- **Owner action before release:** verify workforce tables and the `Other` gender constraints in every target database, using the existing migration 03 verification queries. If alignment is needed, review and back up the target before applying migration 03. Verify the active skill-level references, deploy the API before the frontend, and refresh the revision-16 form online before offline use. Confirm live sync/database-derived totals, PDFs, and an actual offline-device draft round trip. Live migration state and verification remain outstanding.
+- **Owner action before release:** verify workforce tables and the `Other` gender constraints in every target database, using the existing migration 03 verification queries. If alignment is needed, review and back up the target before applying migration 03. Verify the active skill-level references, deploy the API before the frontend, and refresh the current revision-17 form online before offline use. Confirm live sync/database-derived totals, PDFs, and an actual offline-device draft round trip. Live migration state and verification remain outstanding.
 
 ## Phase 6 — Sections E and F: Supply chain and market shares/matrices
 
@@ -172,6 +172,16 @@
 4. For digital presence, default unanswered options to `NA` and display the persisted/default value in the PDF.
 
 **Exit checks:** Share totals are computed from persisted values; non-share percentages are not conflated with input sums; matrix answers persist and render row-by-row; requested defaults are explicit.
+
+### Implementation and outstanding verification
+
+- The owner chose values with up to two decimal places and a maximum total of 100% for each of the four distributions. Partial and all-zero totals are allowed. The form, drafts, sync, and PDF materialize omitted categories as zero; older queued responses also receive entirely omitted questions only when those questions belong to their form. The PDF prints each category and its total out of 100. Other descriptions for the sourcing and buyer shares are optional.
+- Other descriptions are required for disruption and demand-gap reasons only when Other is selected on the visible Yes branch. Hidden follow-ups are cleared. Invalid shares, missing reason text, and unknown or duplicate saved choices/rows are reported for correction; inactive historical choices and their labels are preserved.
+- Unanswered competitor-strength rows use `DK_NA` and unanswered digital-presence rows use `NA`. Matrix choice labels, ratings, and row text now persist and render correctly across matrix questions; unrelated matrices receive no new defaults. Historical code-keyed and scalar entries are normalized without silently dropping them.
+- Added rerunnable [migration 11](../database/migration_11_section_e_f_lookups.sql), which makes `Not Formally Tracked` available for both Section E bands and ensures the two F default codes are active. It preserves lookup IDs and does not backfill historical responses. The migration is explicitly allowlisted, and the offline form cache revision is `17`.
+- Local checks passed: 99 backend tests, 24 frontend tests, TypeScript checks, isolated builds, generated-PDF tests, and a mocked mobile-size browser check of validation, defaults, draft reload, and legacy correction. The browser check did not use a live API or a physically disconnected device.
+- **Owner action before release:** review migration 11, back up each target, apply it after migration 10, and inspect its verification queries. Confirm all four requested lookups and that every configured F matrix row has its active default (the checked-in seed defines six strength rows and five digital-presence rows). Deploy the API before the frontend, then refresh the revision-17 form online before offline use. Verify live sync/database share sums, matrix rows, PDFs, and an actual offline-device draft round trip. Live database state and verification remain outstanding; no database script or deployment was run.
+- Supply-disruption heading changes remain owner-managed; major-input unit expansion and HS list completion remain deferred.
 
 ## Phase 7 — Section G: Machinery, capacity, and innovation
 
@@ -271,7 +281,7 @@
 | 3 Section B | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 09 and live end-to-end/offline verification remain |
 | 4 Section C | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 10 and live end-to-end/offline verification remain |
 | 5 Section D | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed database checks and live/offline verification remain |
-| 6 Sections E and F | Not started |
+| 6 Sections E and F | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 11 and live/offline verification remain |
 | 7 Section G | Not started |
 | 8 Section H | Not started |
 | 9 Sections I and J | Not started |

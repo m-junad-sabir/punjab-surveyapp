@@ -5,6 +5,7 @@ import { SurveyForm }     from '../../dal/entities/survey-form.entity';
 import { SurveySection }  from '../../dal/entities/survey-section.entity';
 import { SurveyQuestion } from '../../dal/entities/survey-question.entity';
 import { QUESTION_INPUTS, SURVEY_REFERENCES } from './survey-questionnaire';
+import { SECTION_EF_SHARE_CODES } from './section-e-f';
 
 export interface LookupOption {
   id: number;
@@ -176,6 +177,35 @@ export class SurveyFormService {
            JOIN lookup_types lt ON lt.id = lv.type_id
           WHERE lt.code = 'SKILL_LEVEL'
           ORDER BY lv.sort_order, lv.id`,
+      );
+    }
+    const sectionEfLookupIds = questions
+      .filter((question) =>
+        SECTION_EF_SHARE_CODES.some((code) => code === question.question_code) ||
+        question.question_code === 'E_SUPPLY_DISRUPTION_REASON' ||
+        question.question_code === 'F_DEMAND_GAP_REASON',
+      )
+      .map((question) => question.id);
+    if (sectionEfLookupIds.length) {
+      referenceData.section_ef_options = await this.dataSource.query(
+        `SELECT q.id AS parent_id, lv.id, lv.code, lv.label, lv.requires_text,
+                lv.is_active AS is_selectable
+           FROM survey_questions q
+           JOIN lookup_values lv ON lv.type_id = q.lookup_type_id
+          WHERE q.id = ANY($1::int[])
+          ORDER BY q.id, lv.sort_order, lv.id`,
+        [sectionEfLookupIds],
+      );
+    }
+    if (matrixItems.length) {
+      referenceData.matrix_options = await this.dataSource.query(
+        `SELECT mi.id AS parent_id, lv.id, lv.code, lv.label, lv.requires_text,
+                lv.is_active AS is_selectable
+           FROM matrix_items mi
+           JOIN lookup_values lv ON lv.type_id = mi.scale_type_id
+          WHERE mi.id = ANY($1::int[])
+          ORDER BY mi.id, lv.sort_order, lv.id`,
+        [matrixItems.map((item) => item.id)],
       );
     }
     const qBySection = new Map<number, SurveyQuestion[]>();
