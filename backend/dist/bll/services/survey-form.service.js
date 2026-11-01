@@ -36,6 +36,9 @@ function questionNumberOrder(value) {
 function questionOrder(question, sectionCode) {
     if (sectionCode === 'B' && question.question_code === 'B_OPERATION_STATUS')
         return -1;
+    if (sectionCode === 'G' && question.question_code === 'G_INNOVATION_GATE') {
+        return questionNumberOrder(question.question_no) - 1;
+    }
     return questionNumberOrder(question.question_no);
 }
 let SurveyFormService = class SurveyFormService {
@@ -133,7 +136,7 @@ let SurveyFormService = class SurveyFormService {
           ORDER BY lv.sort_order, lv.id`);
         }
         const sectionEfLookupIds = questions
-            .filter((question) => section_e_f_1.SECTION_EF_SHARE_CODES.some((code) => code === question.question_code) ||
+            .filter((question) => section_e_f_1.DEFAULT_SHARE_CODES.some((code) => code === question.question_code) ||
             question.question_code === 'E_SUPPLY_DISRUPTION_REASON' ||
             question.question_code === 'F_DEMAND_GAP_REASON')
             .map((question) => question.id);

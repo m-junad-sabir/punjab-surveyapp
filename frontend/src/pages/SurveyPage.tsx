@@ -9,7 +9,7 @@ import { getDeviceId } from '../lib/deviceId';
 import { downloadSurveyPdf } from '../lib/surveyPdf';
 import { areAllOptionsSelected, toggleAllOptions } from '../lib/optionSelection';
 import { questionFormatError } from '../lib/surveyValidation';
-import { clearHiddenAnswers, isQuestionVisible } from '../lib/surveyVisibility';
+import { clearHiddenAnswers, isQuestionVisible, utilizationBandCode } from '../lib/surveyVisibility';
 import {
   EMPLOYMENT_CATEGORIES,
   MAX_WORKFORCE_COUNT,
@@ -30,9 +30,9 @@ import {
   formatPercentage,
   invalidMatrixKeys,
   invalidShareKeys,
+  isDefaultedShare,
   isRecord as isSectionEfRecord,
   isSectionEfReason,
-  isSectionEfShare,
   materializeSectionEFAnswers,
   matrixEntryForDisplay,
   matrixOptions,
@@ -51,6 +51,7 @@ import {
   clearProductNames,
   isProductFieldVisible,
   isProductNameComplete,
+  majorInputUnitsError,
   productKind,
   productOptionsForRow,
   productRowsError,
@@ -58,6 +59,21 @@ import {
   productUnitValueForDisplay,
   productValueForDisplay,
 } from '../lib/sectionCProducts';
+import {
+  changeSectionGField,
+  equipmentUnitOptions,
+  isSectionGFieldVisible,
+  isSectionGRawDecimalField,
+  isLegacyMachineryAgeWrapper,
+  legacyMachineryAgeRows,
+  legacySectionGFields,
+  machineOptions,
+  machineValueForDisplay,
+  sectionGRowsError,
+  sectionGSelectionId,
+  specificationOptions,
+  vesselKind,
+} from '../lib/sectionG';
 import type {
   OfflineResponse,
   SurveySection,
@@ -693,7 +709,7 @@ function SectionEFShareField({ question, value, onChange, references }: {
                     },
                   })}
                   placeholder="Please specify (optional)" />
-                {option.code === 'OTHER' && (
+                {option.code === 'OTHER' && ['E_SOURCING_TYPE', 'F_BUYER_TYPE'].includes(question.question_code) && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
                     Optionally describe the other {question.question_code === 'E_SOURCING_TYPE' ? 'source' : 'buyer type'}.
                   </div>
@@ -715,6 +731,44 @@ function SectionEFShareField({ question, value, onChange, references }: {
         Total: {total === null ? 'Invalid' : `${formatPercentage(total)}% / 100%`}
         {overLimit ? ' - exceeds 100%' : ''}
       </div>
+    </div>
+  );
+}
+
+function MachineryAgeField({ question, value, onChange, references }: {
+  question: SurveyQuestion;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  references: Record<string, QuestionOption[]>;
+}) {
+  const legacyRows = legacyMachineryAgeRows(value);
+  if (legacyRows) {
+    return (
+      <div className="alert alert-warning">
+        <div>This draft contains machine counts, not percentages. Review them and re-enter the shares below.</div>
+        {legacyRows.map((row, index) => {
+          const label = question.options.find((option) => option.id === sectionGSelectionId(row.age_bracket_id))?.label ??
+            `Saved age bracket ${String(row.age_bracket_id ?? index + 1)}`;
+          return <div key={index}>{label}: {String(row.machine_count ?? 'Not provided')} machines</div>;
+        })}
+        <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 8 }}
+          onClick={() => onChange({ shares: {}, legacy_counts: value })}>
+          Re-enter percentage shares
+        </button>
+      </div>
+    );
+  }
+  const wrapped = isLegacyMachineryAgeWrapper(value);
+  const shares = wrapped ? value.shares : Array.isArray(value) && value.length === 0 ? {} : value;
+  return (
+    <div>
+      {wrapped && (
+        <div className="alert alert-warning">
+          Previous machine counts are retained with this response; they are not treated as percentages.
+        </div>
+      )}
+      <SectionEFShareField question={question} value={shares} references={references}
+        onChange={(next) => onChange(wrapped ? { ...value, shares: next } : next)} />
     </div>
   );
 }
@@ -883,13 +937,14 @@ function MatrixField({ question, value, onChange, references }: {
   );
 }
 
-function InputFieldControl({ field, value, onChange, disabled, manualValue, onManualChange }: {
+function InputFieldControl({ field, value, onChange, disabled, manualValue, onManualChange, preserveNumericText }: {
   field: SurveyInputField;
   value: any;
   onChange: (value: any) => void;
   disabled?: boolean;
   manualValue?: string;
   onManualChange?: (value: string) => void;
+  preserveNumericText?: boolean;
 }) {
   switch (field.type) {
     case 'TEXT':
@@ -903,6 +958,11 @@ function InputFieldControl({ field, value, onChange, disabled, manualValue, onMa
       return <input className="form-input" type="email" autoComplete="email" value={value ?? ''}
         onChange={(event) => onChange(event.target.value)} placeholder="name@example.com" />;
     case 'NUMBER':
+      if (preserveNumericText) {
+        return <input className="form-input" type="text" inputMode="decimal" value={value ?? ''}
+          onChange={(event) => onChange(event.target.value === '' ? null : event.target.value)}
+          placeholder="Enter number" />;
+      }
       return <input className="form-input" type="number" value={value ?? ''}
         min={field.min} max={field.max} step={field.step}
         onChange={(event) => onChange(event.target.value === '' ? null : Number(event.target.value))}
@@ -987,6 +1047,14 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
           options = productOptionsForRow(options, industryTypeId, map.product_kind, map[field.key]);
         } else if (field.reference === 'product_units') {
           options = productUnitsForDisplay(options, map[field.key]);
+        } else if (field.reference === 'industry_machines') {
+          options = machineOptions(options, industryTypeId, map[field.key]);
+        } else if (field.reference === 'machine_specifications') {
+          const machines = references.industry_machines ??
+            fields.find((candidate) => candidate.reference === 'industry_machines')?.options ?? [];
+          options = specificationOptions(options, machines, industryTypeId, map.machine_name, map[field.key]);
+        } else if (questionCode === 'G_WEIGHTS_MEASURES' && field.key === 'equipment_unit_id') {
+          options = equipmentUnitOptions(options, map.equipment_type_id, map[field.key]);
         }
 
         const visibleField = { ...field, options };
@@ -996,6 +1064,7 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
           psic_group_id: ['psic_class_id', 'psic_class_text'],
         };
         if (!isProductFieldVisible(questionCode, map, field.key)) return null;
+        if (!isSectionGFieldVisible(questionCode, map, field.key)) return null;
         if (field.key === 'company_name' && map.has_parent_company === false) return null;
         if (field.key === 'reinvestment_area_other' && !map.reinvestment_area_id) return null;
 
@@ -1005,12 +1074,22 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
           controlValue = productValueForDisplay(controlValue, options);
         } else if (field.reference === 'product_units') {
           controlValue = productUnitValueForDisplay(controlValue);
+        } else if (field.reference === 'industry_machines' || field.reference === 'machine_specifications') {
+          controlValue = machineValueForDisplay(controlValue, options);
+        } else if (questionCode === 'G_BOILERS' && field.key === 'record_kind') {
+          const kind = vesselKind(controlValue);
+          controlValue = kind === 'BOILER' ? 1 : kind === 'VESSEL' ? 2 : null;
         } else if (questionCode === 'C_PRODUCTS' && field.key === 'product_kind') {
           controlValue = selectedKind === 'MAIN' ? 1 : selectedKind === 'SECONDARY' ? 2 : null;
         }
         const isMonths = field.type === 'MONTHS';
         const needsProductContext = field.reference === 'industry_products' &&
           (industryTypeId === null || selectedKind === null);
+        const needsMachineContext = field.reference === 'industry_machines' && industryTypeId === null;
+        const needsSpecificationContext = field.reference === 'machine_specifications' &&
+          (industryTypeId === null || map.machine_name == null || map.machine_name === '');
+        const needsEquipmentContext = questionCode === 'G_WEIGHTS_MEASURES' &&
+          field.key === 'equipment_unit_id' && sectionGSelectionId(map.equipment_type_id) === null;
 
         return (
           <div key={field.key} style={{ gridColumn: isMonths ? '1 / -1' : undefined }}>
@@ -1020,8 +1099,9 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
             <InputFieldControl
               field={visibleField}
               value={controlValue}
+              preserveNumericText={isSectionGRawDecimalField(questionCode, field.key)}
               disabled={
-                needsProductContext || (
+                needsProductContext || needsMachineContext || needsSpecificationContext || needsEquipmentContext || (
                   ['psic_groups', 'psic_classes'].includes(field.reference ?? '') &&
                   Boolean(parentKey[field.key]) &&
                   parentValue == null &&
@@ -1044,6 +1124,11 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
                   onChange(changeProductKind(map, next));
                   return;
                 }
+                if (questionCode === 'G_CRITICAL_MACHINES' || questionCode === 'G_BOILERS' ||
+                    questionCode === 'G_WEIGHTS_MEASURES') {
+                  onChange(changeSectionGField(questionCode, map, field.key, next));
+                  return;
+                }
                 const dependentSelectionFields: Record<string, string[]> = {
                   district_id: ['tehsil_id'],
                   psic_division_id: dependentFields.psic_division_id,
@@ -1062,6 +1147,13 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
             {needsProductContext && (
               <small style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
                 Select Type of Unit and product kind first.
+              </small>
+            )}
+            {(needsMachineContext || needsSpecificationContext || needsEquipmentContext) && (
+              <small style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
+                {needsEquipmentContext ? 'Select an equipment type first.'
+                  : needsMachineContext ? 'Select Type of Unit first.'
+                    : 'Select Type of Unit and machine name first.'}
               </small>
             )}
             {field.default_value !== undefined && (
@@ -1404,6 +1496,14 @@ function StructuredQuestionField({ question, value, onChange, references, indust
               Remove
             </button>
           </div>
+          {legacySectionGFields(question.question_code, row).length > 0 && (
+            <div className="alert alert-warning">
+              <div>Previous entry values are retained. Complete the new fields to submit this row.</div>
+              {legacySectionGFields(question.question_code, row).map((field) => (
+                <div key={field.label}>{field.label}: {field.value}</div>
+              ))}
+            </div>
+          )}
           <FieldGroup fields={fields} value={row} onChange={(updated) => updateRow(index, updated)} references={references}
             questionCode={question.question_code} industryTypeId={industryTypeId} />
         </div>
@@ -1484,7 +1584,9 @@ function QuestionField({ q, value, onChange, error, references, responseId, owne
         reasonQuestion={isSectionEfReason(q) ? q : undefined} references={references} />;
 
     case 'SHARE_PERCENT':
-      return isSectionEfShare(q)
+      return q.question_code === 'G_MACHINERY_AGE'
+        ? <MachineryAgeField question={q} value={value} onChange={onChange} references={references} />
+        : isDefaultedShare(q)
         ? <SectionEFShareField question={q} value={value} onChange={onChange} references={references} />
         : <SharePercentField options={q.options} value={value} onChange={onChange} />;
 
@@ -1706,9 +1808,26 @@ export default function SurveyPage() {
     const value = answers[q.question_id];
     const workforce = normalizeWorkforceAnswer(q, value, form.references ?? {});
     if (workforce) return workforce.ok ? null : workforce.error;
-    if (isSectionEfShare(q)) {
+    if (q.question_code === 'G_MACHINERY_AGE' && legacyMachineryAgeRows(value)) {
+      return 'Review the previous machine counts and re-enter percentage shares.';
+    }
+    if (isDefaultedShare(q)) {
       const share = normalizeShares(q, value, form.references ?? {});
       return share.ok ? null : share.error;
+    }
+    if (q.question_code === 'G_UTILIZATION_RATE') {
+      const rate = value && typeof value === 'object' ? value.utilization_rate_id : value;
+      const reason = answerForCode('G_UNDERUTILIZATION_REASON');
+      const hasReason = Array.isArray(reason) ? reason.length > 0
+        : isSectionEfRecord(reason) && Array.isArray(reason.option_ids) ? reason.option_ids.length > 0
+          : isSectionEfRecord(reason) ? Object.keys(reason).length > 0
+            : reason !== undefined && reason !== null && reason !== '';
+      const code = utilizationBandCode(allQs, answers);
+      if ((rate !== undefined && rate !== null && rate !== '') || hasReason) {
+        if (!code || !['U40_59', 'U60_74', 'U75_84', 'U85_95', 'ABOVE_95'].includes(code)) {
+          return 'Select a valid capacity utilization rate before saving its reason.';
+        }
+      }
     }
     if (SECTION_EF_MATRIX_DEFAULTS[q.question_code] && q.answer_type !== 'MATRIX') {
       return 'This question is not configured as a matrix.';
@@ -1718,6 +1837,16 @@ export default function SurveyPage() {
       return matrix.ok ? null : matrix.error;
     }
     if (isSectionEfReason(q)) return reasonError(q, value, form.references ?? {});
+    const sectionGError = sectionGRowsError(
+      q, value, selectedOptionId(answerForCode('A_UNIT_TYPE')), form.references ?? {},
+    );
+    if (sectionGError) return sectionGError;
+    if (q.question_code === 'E_MAJOR_INPUTS') {
+      return majorInputUnitsError(
+        value,
+        form.references?.product_units ?? q.fields?.find((field) => field.reference === 'product_units')?.options ?? [],
+      ) ?? questionFormatError(q, value);
+    }
     return questionFormatError(q, value) ?? (q.question_code === 'C_PRODUCTS'
       ? productRowsError(
           value,
@@ -1733,7 +1862,7 @@ export default function SurveyPage() {
     const fields = q.fields ?? [];
     if (validationError(q)) return true;
     if (q.question_code === 'D_EMPLOYMENT' || q.question_code === 'D_SKILLS') return false;
-    if (isSectionEfShare(q) || SECTION_EF_MATRIX_DEFAULTS[q.question_code]) return false;
+    if (isDefaultedShare(q) || SECTION_EF_MATRIX_DEFAULTS[q.question_code]) return false;
     if (q.question_code === 'A_UNIT_TYPE') {
       const option = q.options.find((candidate) => candidate.id === selectedOptionId(value));
       return !option || (option.requires_text && !selectedOtherText(value).trim());
@@ -1749,18 +1878,21 @@ export default function SurveyPage() {
     if (!fields.length) return false;
     if (q.repeatable) {
       return (Array.isArray(value) ? value : []).some((row) =>
-        fields.some((field) => field.required && isEmptyAnswer(row[field.key])),
+        fields.some((field) => field.required &&
+          isSectionGFieldVisible(q.question_code, row, field.key) && isEmptyAnswer(row[field.key])),
       );
     }
     return fields.some((field) => field.required && isEmptyAnswer(value?.[field.key]));
   };
 
   const requiredQuestionCount = (q: SurveyQuestion) => {
-    const requiredFields = (q.fields ?? []).filter((field) => field.required).length;
+    const requiredFields = (q.fields ?? []).filter((field) => field.required);
     if (q.repeatable) {
-      return (Array.isArray(answers[q.question_id]) ? answers[q.question_id].length : 0) * requiredFields;
+      return (Array.isArray(answers[q.question_id]) ? answers[q.question_id] : [])
+        .reduce((count: number, row: unknown) => count + requiredFields.filter((field) =>
+          isSectionGFieldVisible(q.question_code, row, field.key)).length, 0);
     }
-    return requiredFields || (q.is_required ? 1 : 0);
+    return requiredFields.length || (q.is_required ? 1 : 0);
   };
   const answeredQuestionCount = (q: SurveyQuestion) => {
     const value = answers[q.question_id];
@@ -1768,9 +1900,11 @@ export default function SurveyPage() {
     if (q.repeatable) {
       return (Array.isArray(value) ? value : []).reduce((count, row) => {
         const values = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
-        return count + requiredFields.filter((field) => q.question_code === 'C_PRODUCTS' && field.key === 'product_name'
-          ? isProductNameComplete(values[field.key])
-          : !isEmptyAnswer(values[field.key])).length;
+        return count + requiredFields.filter((field) =>
+          isSectionGFieldVisible(q.question_code, values, field.key) &&
+          (q.question_code === 'C_PRODUCTS' && field.key === 'product_name'
+            ? isProductNameComplete(values[field.key])
+            : !isEmptyAnswer(values[field.key]))).length;
       }, 0);
     }
     if (requiredFields.length) {
@@ -1820,7 +1954,9 @@ export default function SurveyPage() {
       answers: Object.entries(responseAnswers)
         .filter(([qid]) => {
           const question = allQs.find((candidate) => candidate.question_id === Number(qid));
-          return !question || showQuestion(question);
+          return !question || showQuestion(question) ||
+            (question.question_code === 'G_UNDERUTILIZATION_REASON' &&
+             utilizationBandCode(allQs, answers) === null);
         })
         .map(([qid, val]) => ({
           question_id:  parseInt(qid),

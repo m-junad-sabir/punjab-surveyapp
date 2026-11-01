@@ -5,10 +5,11 @@ import { SurveyResponse } from '../../dal/entities/survey-response.entity';
 import { DuplicateFlag }  from '../../dal/entities/duplicate-flag.entity';
 import { PhotoService } from './photo.service';
 import {
+  DEFAULT_SHARE_CODES,
   normalizeSectionEFAnswers,
   SECTION_EF_MATRIX_DEFAULTS,
-  SECTION_EF_SHARE_CODES,
 } from './section-e-f';
+import { normalizeSectionGAnswers } from './section-g';
 import {
   clearHiddenSurveyAnswers,
   createIndustrialUnit,
@@ -20,6 +21,7 @@ import {
   updateExistingUnitCapitalInvestment,
   validateSectionAAnswers,
   validateSectionBAnswers,
+  validateMajorInputUnits,
 } from './survey-response-writer';
 
 // ─── Levenshtein similarity ────────────────────────────────────────────────────
@@ -119,8 +121,10 @@ export class SyncService {
           const defaultedQuestionCodes = [
             'D_EMPLOYMENT',
             'D_SKILLS',
-            ...SECTION_EF_SHARE_CODES,
+            ...DEFAULT_SHARE_CODES,
             ...Object.keys(SECTION_EF_MATRIX_DEFAULTS),
+            'G_INNOVATION_GATE',
+            'G_INNOVATION',
           ];
           const questions: SubmittedQuestion[] = await trx.query(
             `SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
@@ -142,7 +146,9 @@ export class SyncService {
             answers.set(question.question_code, answer.answer_value);
           }
           for (const question of questions) {
-            if (defaultedQuestionCodes.includes(question.question_code) && !answers.has(question.question_code)) {
+            if (defaultedQuestionCodes.includes(question.question_code) &&
+                question.question_code !== 'G_INNOVATION_GATE' &&
+                !answers.has(question.question_code)) {
               answers.set(
                 question.question_code,
                 question.question_code === 'D_EMPLOYMENT' || question.question_code === 'D_SKILLS' ? [] : {},
@@ -153,7 +159,9 @@ export class SyncService {
           await validateSectionAAnswers(trx, answers);
           await validateSectionBAnswers(trx, answers);
           await normalizeSectionCAnswers(trx, answers);
+          await validateMajorInputUnits(trx, answers);
           await normalizeSectionDAnswers(trx, answers);
+          await normalizeSectionGAnswers(trx, answers, questions);
           await normalizeSectionEFAnswers(trx, answers, questions);
 
           const gpsValue = answers.get('A_LOCATION_GPS');

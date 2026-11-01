@@ -13,6 +13,10 @@ was confirmed working by the owner. Phase 5 was rolled back after login regressi
 Phase 6 autosave/leave protection is deferred. Save drafts explicitly. See the
 [workplan](workplan-to-solve-issues.md) for the remaining phases.
 
+For the later Workplan 2, the Section G implementation and the Section E major-input
+unit change require owner-managed database migration and live verification. See
+[Workplan 2](workplan-to-solve-issues-2.md).
+
 ## 1. Install the required software
 
 Install the following before starting:
@@ -99,7 +103,7 @@ SQL execution and stop on the first SQL error. No arguments show help only;
 `/plan` prints the exact sequence without connecting to PostgreSQL.
 
 Fresh setup enables required extensions, loads the schema/base seed,
-then reference seeds/updates and implemented migrations 01-05 and 07-11. Existing
+then reference seeds/updates and implemented migrations 01-05 and 07-12. Existing
 database migration requires an active form version 3 or newer. Back up before:
 
 ```powershell
@@ -142,6 +146,7 @@ psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_08_
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_09_section_b_operations.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_10_section_c_products.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_11_section_e_f_lookups.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_12_section_g_machinery.sql
 ```
 
 These examples use your psql PG environment; adjust it for the target server.
@@ -160,7 +165,7 @@ Run its verification queries separately: confirm 15 active product units and
 Review historical secondary-product and transformation-stage violations before
 validating any `NOT VALID` constraint; the migration does not rewrite those rows.
 Apply it before deploying the API that loads the Section C references. Reload
-the form online after deployment so the current revision 17 is cached before offline use.
+the form online after deployment so the current revision 18 is cached before offline use.
 Previously selected legacy units and free-text product names are retained.
 
 Review and back up each target before applying migration 11 after migration 10.
@@ -169,9 +174,29 @@ both Section E bands, `DK_NA` for strength and `NA` for digital presence. Check
 that each F matrix question is present and `matrix_rows` equals
 `rows_with_active_default` (six strength and five digital rows in the checked-in
 seed). The migration preserves lookup IDs and does not backfill historical
-responses. Deploy the API before the frontend, refresh the revision-17 form
+responses. Deploy the API before the frontend, refresh the revision-18 form
 online, then verify live sync, stored share totals, PDFs, and an offline-device
 draft round trip. Do not assume the migration has already been applied.
+
+Review and back up each target before applying migration 12 after the preceding
+migrations, including 07 and 10. Run its verification queries separately: check
+the 216 machine/specification pairs across 60 industry mappings, the active L3/L5
+lookups and unit conversions, the machinery-age question, and the active `No Plan`
+option for every innovation matrix row. Review historical rows before validating
+the new `NOT VALID` checks. The migration does not rewrite machine counts or
+backfill responses. Historical equipment rows are also left intact.
+
+Deploy the updated API before the frontend and download revision 18 online before
+working offline. The frontend reports an error instead of caching an older API
+form as revision 18. Old drafts containing machinery-age counts require the
+surveyor to re-enter percentages; the old counts remain attached separately.
+Previously saved equipment fields are retained when the rows are corrected, and
+old drafts must answer the new innovation Yes/No question. Raw L3/L5 values and
+units are kept alongside the approved conversions; Other units are marked for
+review and are not converted. Section E major inputs use the active product units;
+historical unit IDs remain visible, while unknown IDs must be corrected. Verify
+live sync, stored values/conversions, PDFs, and a real offline-device round trip.
+No database migration or deployment was run as part of this implementation.
 
 An older version-1 form needs the reviewed full-questionnaire migration, then
 the location-selection update to version 3, before these delivery migrations.

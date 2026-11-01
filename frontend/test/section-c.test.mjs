@@ -17,6 +17,7 @@ const {
   clearProductNames,
   isProductFieldVisible,
   isProductNameComplete,
+  majorInputUnitsError,
   productOptionsForRow,
   productRowsError,
   productUnitsForDisplay,
@@ -112,6 +113,16 @@ test('product and unit choices filter by industry and kind while preserving old 
   assert.equal(withLegacy.length, 16);
   assert.equal(withLegacy[15].is_selectable, false);
   assert.match(withLegacy[15].label, /Legacy ton.*previously selected/);
+});
+
+test('major input units use the same active catalog and retain or flag previous selections', () => {
+  assert.equal(productUnitsForDisplay(units, null).length, 15);
+  assert.equal(majorInputUnitsError([{ unit_id: 1 }, { unit_id: '99' }, { unit_id: null }], units), null);
+  const unknown = productUnitsForDisplay(units, 404).find((option) => option.id === 404);
+  assert.equal(unknown.is_selectable, false);
+  assert.match(unknown.label, /Unknown unit 404.*choose another/);
+  assert.match(majorInputUnitsError([{ unit_id: 404 }], units), /valid measurement unit/);
+  assert.match(majorInputUnitsError([{ unit_id: 'not-an-id' }], units), /valid measurement unit/);
 });
 
 test('Other text, legacy values, and invalid selections are validated consistently', () => {

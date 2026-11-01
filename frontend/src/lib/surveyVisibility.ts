@@ -1,5 +1,6 @@
 import type { SurveyQuestion } from '../types';
 import { clearSecondaryProductFields } from './sectionCProducts';
+import { sectionGSelectionId } from './sectionG';
 
 type AnswersByQuestion = Record<number, unknown>;
 
@@ -36,6 +37,19 @@ function selectedOptionCode(
   return question.options.find((option) => option.id === optionId)?.code ?? null;
 }
 
+export function utilizationBandCode(
+  questions: SurveyQuestion[],
+  answers: AnswersByQuestion,
+): string | null {
+  const question = questions.find((candidate) => candidate.question_code === 'G_UTILIZATION_RATE');
+  if (!question) return null;
+  const answer = answers[question.question_id];
+  const value = isRecord(answer) ? answer.utilization_rate_id : answer;
+  const id = sectionGSelectionId(value);
+  const options = question.fields?.find((field) => field.key === 'utilization_rate_id')?.options ?? question.options;
+  return options.find((option) => option.id === id)?.code ?? null;
+}
+
 export function isQuestionVisible(
   question: SurveyQuestion,
   questions: SurveyQuestion[],
@@ -56,6 +70,17 @@ export function isQuestionVisible(
       return booleanField(answerForCode('E_SUPPLY_DISRUPTION', questions, answers), 'had_supply_disruption') === true;
     case 'F_DEMAND_GAP_REASON':
       return booleanField(answerForCode('F_DEMAND_GAP', questions, answers), 'had_demand_gap') === true;
+    case 'G_UNDERUTILIZATION_REASON':
+      return ['U40_59', 'U60_74'].includes(utilizationBandCode(questions, answers) ?? '');
+    case 'G_INNOVATION': {
+      const gate = questions.find((candidate) => candidate.question_code === 'G_INNOVATION_GATE');
+      if (!gate) return true;
+      const answer = answers[gate.question_id];
+      if (answer === true) return true;
+      if (answer === false) return false;
+      const existing = answers[question.question_id];
+      return isRecord(existing) && Object.keys(existing).length > 0;
+    }
     default:
       if (question.question_code.startsWith('K_') && question.question_code !== 'K_FUTURE_PLAN') {
         return booleanField(answerForCode('K_FUTURE_PLAN', questions, answers), 'has_future_plan') === true;
@@ -72,6 +97,8 @@ export function clearHiddenAnswers(
 
   for (const question of questions) {
     if (isQuestionVisible(question, questions, nextAnswers)) continue;
+    if (question.question_code === 'G_UNDERUTILIZATION_REASON' &&
+        utilizationBandCode(questions, nextAnswers) === null) continue;
     if (!Object.prototype.hasOwnProperty.call(nextAnswers, question.question_id)) continue;
     if (nextAnswers === answers) nextAnswers = { ...answers };
     delete nextAnswers[question.question_id];

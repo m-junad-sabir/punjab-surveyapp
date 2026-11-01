@@ -178,7 +178,7 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
     repeatable: true,
     fields: [
       field('input_name', 'Major raw material / input', 'TEXT', undefined, true),
-      field('unit_id', 'Unit', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
+      field('unit_id', 'Unit', 'SINGLE_CHOICE', { reference: 'product_units' }),
       field('cost_share_pct', 'Share of input costs (%)', 'NUMBER'),
       field('hs_code_id', 'HS code (code or description)', 'SINGLE_CHOICE', { reference: 'hs_codes' }),
       field('transformation_stage_id', 'Transformation stage', 'SINGLE_CHOICE', { lookup_type: 'TRANSFORMATION_STAGE' }),
@@ -199,16 +199,9 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
   G_CRITICAL_MACHINES: {
     repeatable: true,
     fields: [
-      field('machine_name', 'Machine name', 'TEXT', undefined, true),
-      field('quantity', 'Quantity', 'NUMBER'),
-      field('specification', 'Specification', 'TEXT'),
-    ],
-  },
-  G_MACHINERY_AGE: {
-    repeatable: true,
-    fields: [
-      field('age_bracket_id', 'Machinery age bracket', 'SINGLE_CHOICE', { lookup_type: 'MACHINE_AGE' }, true),
-      field('machine_count', 'Number of machines', 'NUMBER'),
+      field('machine_name', 'Machine name', 'SINGLE_CHOICE', { reference: 'industry_machines' }, true),
+      field('quantity', 'Quantity', 'NUMBER', { min: 0, max: SECTION_D_MAX_COUNT, step: 1 }),
+      field('specification', 'Specification', 'SINGLE_CHOICE', { reference: 'machine_specifications' }),
     ],
   },
   G_BREAKDOWN_FREQUENCY: { fields: [field('breakdown_frequency_id', 'Machinery breakdown frequency', 'SINGLE_CHOICE', { lookup_type: 'BREAKDOWN_FREQUENCY' })] },
@@ -216,17 +209,24 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
   G_BOILERS: {
     repeatable: true,
     fields: [
-      field('vessel_type', 'Boiler / pressure vessel type', 'TEXT', undefined, true),
-      field('capacity_tph', 'Capacity (tonnes per hour)', 'NUMBER'),
-      field('heating_surface', 'Heating surface', 'TEXT'),
+      field('record_kind', 'Boiler or pressure vessel', 'SINGLE_CHOICE', { reference: 'g_vessel_kinds' }, true),
+      field('equipment_number', 'Boiler / vessel number', 'TEXT', undefined, true),
+      field('boiler_type_id', 'Type of boiler', 'SINGLE_CHOICE', { lookup_type: 'G_BOILER_TYPE' }, true),
+      field('vessel_category_id', 'Vessel category', 'SINGLE_CHOICE', { lookup_type: 'G_VESSEL_CATEGORY' }, true),
+      field('working_pressure_raw', 'Working pressure', 'NUMBER', { min: 0.001, step: 0.001 }, true),
+      field('pressure_unit_id', 'Working pressure unit', 'SINGLE_CHOICE', { lookup_type: 'G_PRESSURE_UNIT' }, true),
+      field('capacity_litres', 'Capacity (litres)', 'NUMBER', { min: 0.001, step: 0.001 }, true),
+      field('heating_surface_raw', 'Heating surface', 'NUMBER', { min: 0.001, step: 0.001 }, true),
+      field('heating_surface_unit_id', 'Heating surface unit', 'SINGLE_CHOICE', { lookup_type: 'G_HEATING_UNIT' }, true),
     ],
   },
   G_WEIGHTS_MEASURES: {
     repeatable: true,
     fields: [
-      field('equipment_type', 'Equipment type', 'TEXT', undefined, true),
-      field('quantity', 'Quantity', 'NUMBER'),
-      field('capacity', 'Capacity', 'TEXT'),
+      field('equipment_type_id', 'Equipment type', 'SINGLE_CHOICE', { lookup_type: 'G_EQUIPMENT_TYPE' }, true),
+      field('equipment_unit_id', 'Unit', 'SINGLE_CHOICE', { lookup_type: 'G_EQUIPMENT_UNIT' }, true),
+      field('capacity_value_raw', 'Capacity / denomination', 'NUMBER', { min: 0.001, step: 0.001 }, true),
+      field('number_of_instruments', 'Number of instruments', 'NUMBER', { min: 1, max: SECTION_D_MAX_COUNT, step: 1 }, true),
     ],
   },
   G_PRODUCTION_PLANNING: { fields: [field('production_planning_id', 'Production planning system', 'SINGLE_CHOICE', { lookup_type: 'PLANNING_SYSTEM' })] },
@@ -326,6 +326,29 @@ export const SURVEY_REFERENCES = {
                                  NULL::varchar, true, 0::smallint
                         ) options
                        ORDER BY parent_id NULLS FIRST, product_kind, sort_order, id`,
+  industry_machines: `SELECT id, code, label, requires_text, parent_id, is_selectable
+                        FROM (
+                          SELECT id, id::text AS code, machine_name AS label,
+                                 false AS requires_text, unit_type_id AS parent_id,
+                                 is_active AS is_selectable, sort_order
+                            FROM industry_machine_options
+                          UNION ALL
+                          SELECT 0, 'OTHER', 'Other (specify)', true, NULL::integer, true, 0::smallint
+                        ) options
+                       ORDER BY parent_id NULLS FIRST, sort_order, id`,
+  machine_specifications: `SELECT id, code, label, requires_text, parent_id, is_selectable
+                             FROM (
+                               SELECT id, id::text AS code, specification AS label,
+                                      false AS requires_text, id AS parent_id,
+                                      is_active AS is_selectable, sort_order
+                                 FROM industry_machine_options
+                               UNION ALL
+                               SELECT 0, 'OTHER', 'Other (specify)', true, NULL::integer, true, 0::smallint
+                             ) options
+                            ORDER BY parent_id NULLS FIRST, sort_order, id`,
+  g_vessel_kinds: `SELECT 1 AS id, 'BOILER' AS code, 'Boiler' AS label, false AS requires_text
+                   UNION ALL
+                   SELECT 2, 'VESSEL', 'Pressure vessel', false`,
   area_units: `SELECT m.id, m.code, m.name AS label, false AS requires_text
                  FROM measurement_units m
                 WHERE m.unit_kind = 'AREA'

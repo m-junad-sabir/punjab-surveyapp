@@ -8,6 +8,9 @@ export const SECTION_EF_SHARE_CODES = [
   'F_BUYER_LOCATION',
 ] as const;
 
+export const SECTION_G_SHARE_CODES = ['G_AUTOMATION_LEVEL', 'G_MACHINERY_AGE'] as const;
+export const DEFAULT_SHARE_CODES = [...SECTION_EF_SHARE_CODES, ...SECTION_G_SHARE_CODES];
+
 export const SECTION_EF_MATRIX_DEFAULTS: Readonly<Record<string, string>> = {
   F_STRENGTH_VS_COMPETITORS: 'DK_NA',
   F_DIGITAL_PRESENCE: 'NA',
@@ -276,7 +279,7 @@ export async function normalizeSectionEFAnswers(
   questions: SubmittedQuestion[],
 ): Promise<void> {
   const shareQuestions = questions.filter((question) =>
-    SECTION_EF_SHARE_CODES.some((code) => code === question.question_code) && answers.has(question.question_code),
+    DEFAULT_SHARE_CODES.some((code) => code === question.question_code) && answers.has(question.question_code),
   );
   const reasonQuestions = questions.filter((question) =>
     REASON_CODES.includes(question.question_code) && answers.has(question.question_code),

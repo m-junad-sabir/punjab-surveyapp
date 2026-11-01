@@ -39,6 +39,7 @@ const options = [
   { id: 32, type_id: 103, code: 'OTHER', label: 'Other buyer', requires_text: true, is_active: true },
   { id: 41, type_id: 104, code: 'DOMESTIC', label: 'Domestic', requires_text: false, is_active: true },
   { id: 42, type_id: 104, code: 'EXPORT', label: 'Export', requires_text: false, is_active: true },
+  { id: 91, type_id: 105, code: 'AUTO', label: 'Automatic', requires_text: false, is_active: true },
   { id: 501, type_id: 201, code: 'STRONGER', label: 'Stronger', requires_text: false, is_active: true },
   { id: 502, type_id: 201, code: 'DK_NA', label: "Don't Know / NA", requires_text: false, is_active: true },
   { id: 503, type_id: 201, code: 'OLD', label: 'Old strength', requires_text: false, is_active: false },
@@ -76,7 +77,7 @@ function lookupManager(available = options) {
 }
 
 describe('Section E/F normalization', () => {
-  it('fills only the four share questions and the two requested matrices', async () => {
+  it('fills the requested shares and two matrices without changing supplied automation values', async () => {
     const { manager } = lookupManager();
     const answers = new Map<string, unknown>([
       ...questions.slice(0, 6).map((question) => [question.question_code, {}] as [string, unknown]),
@@ -331,7 +332,7 @@ describe('Section E/F form and sync', () => {
     expect(result.results[0].status).toBe('synced');
     const shares = query.mock.calls.filter(([sql]) => sql.includes('INSERT INTO response_shares')).map(([, params]) => params);
     const matrices = query.mock.calls.filter(([sql]) => sql.includes('INSERT INTO response_matrix_answers')).map(([, params]) => params);
-    expect(shares).toHaveLength(8);
+    expect(shares).toHaveLength(9);
     expect(shares.filter((row) => row[1] === 1).map((row) => row[3])).toEqual([33.33, 66.67]);
     expect(shares.filter((row) => row[1] === 1).reduce((sum, row) => sum + Math.round(Number(row[3]) * 100), 0)).toBe(10_000);
     expect(shares).toContainEqual(['response-id', 1, 12, 66.67, 'local market']);

@@ -16,8 +16,8 @@ import {
 } from './sectionCProducts';
 import {
   formatPercentage,
+  isDefaultedShare,
   isSectionEfReason,
-  isSectionEfShare,
   matrixOptions,
   normalizeMatrix,
   normalizeReason,
@@ -25,6 +25,13 @@ import {
   reasonOptions,
   shareOptions,
 } from './sectionEF';
+import {
+  isLegacyMachineryAgeWrapper,
+  isSectionGFieldVisible,
+  legacySectionGFields,
+  machineValueForDisplay,
+  sectionGSelectionId,
+} from './sectionG';
 import type {
   OfflineResponse,
   QuestionOption,
@@ -165,7 +172,10 @@ function getQuestionAnswers(
   }
 
   const fieldLines = (row: unknown): AnswerLine[] => {
-    return fields.filter((field) => isProductFieldVisible(question.question_code, row, field.key)).map((field) => {
+    return fields.filter((field) =>
+      isProductFieldVisible(question.question_code, row, field.key) &&
+      isSectionGFieldVisible(question.question_code, row, field.key),
+    ).map((field) => {
       const value = isRecord(row) ? row[field.key] : undefined;
       const useDefault = (value === undefined || value === null || value === '') &&
         field.default_value !== undefined;
@@ -178,11 +188,14 @@ function getQuestionAnswers(
       let display = value;
       if (typeof value === 'string' && kind) {
         display = kind === 'MAIN' ? 1 : 2;
-      } else if (question.question_code === 'C_PRODUCTS' && field.reference === 'product_units') {
+      } else if (field.reference === 'product_units') {
         display = productUnitValueForDisplay(value);
       } else if (question.question_code === 'C_PRODUCTS' &&
           field.reference === 'industry_products' && typeof value !== 'string') {
         display = productValueForDisplay(value, options);
+      } else if (['industry_machines', 'machine_specifications'].includes(field.reference ?? '') &&
+          typeof value !== 'string') {
+        display = machineValueForDisplay(value, options);
       }
       return {
         label: field.label,
@@ -192,22 +205,54 @@ function getQuestionAnswers(
   };
 
   if (question.repeatable) {
-    if (!Array.isArray(answer) || answer.length === 0) {
-      return [{ label: 'Response', value: 'No entries recorded' }];
+    const applicableRows = Array.isArray(answer) ? answer.filter((row) =>
+      !isRecord(row) || Object.values(row).some((value) =>
+        value !== undefined && value !== null && value !== '',
+      ),
+    ) : [];
+    if (applicableRows.length === 0) {
+      const notApplicable = ['G_CRITICAL_MACHINES', 'G_BOILERS', 'G_WEIGHTS_MEASURES']
+        .includes(question.question_code);
+      return [{ label: 'Response', value: notApplicable ? 'Not Applicable' : 'No entries recorded' }];
     }
-    return answer.flatMap((row, index) => [
+    return applicableRows.flatMap((row, index) => [
       { label: `Entry ${index + 1}`, value: '' },
+      ...legacySectionGFields(question.question_code, row),
       ...fieldLines(row),
     ]);
   }
 
   if (fields.length > 0) return fieldLines(answer);
 
-  if (isSectionEfShare(question)) {
+  const legacyAgeLines = (value: unknown): AnswerLine[] => {
+    if (!Array.isArray(value)) return [];
+    return value.map((row, index) => {
+      if (!isRecord(row)) return { label: `Previous count ${index + 1}`, value: displayValue(row) };
+      const option = question.options.find((item) => item.id === sectionGSelectionId(row.age_bracket_id));
+      return {
+        label: `Previous count - ${option?.label ?? `age bracket ${String(row.age_bracket_id ?? index + 1)}`}`,
+        value: `${displayValue(row.machine_count)} machines`,
+      };
+    });
+  };
+  if (question.question_code === 'G_MACHINERY_AGE' && Array.isArray(answer) && answer.length > 0) {
+    return [
+      { label: 'Previous machinery-age data', value: 'Counts; percentage shares require re-entry' },
+      ...legacyAgeLines(answer),
+    ];
+  }
+
+  if (isDefaultedShare(question)) {
+    const shares = question.question_code === 'G_MACHINERY_AGE' && isLegacyMachineryAgeWrapper(answer)
+      ? answer.shares
+      : question.question_code === 'G_MACHINERY_AGE' && Array.isArray(answer) && answer.length === 0
+        ? {} : answer;
     const normalized = normalizeShares(question, answer, references);
     if (!normalized.ok) return [{ label: 'Share data', value: normalized.error }];
     return [
-      ...shareOptions(question, answer, references).map((option) => {
+      ...(question.question_code === 'G_MACHINERY_AGE' && isLegacyMachineryAgeWrapper(answer)
+        ? legacyAgeLines(answer.legacy_counts) : []),
+      ...shareOptions(question, shares, references).map((option) => {
         const entry = normalized.value.entries[String(option.id)];
         const percent = typeof entry === 'number' ? entry : entry.percent;
         const text = typeof entry === 'number' ? '' : entry.other_text;

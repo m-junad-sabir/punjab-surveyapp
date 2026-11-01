@@ -1,8 +1,11 @@
 import type { QuestionOption, SurveyMatrixItem, SurveyQuestion } from '../types';
+import { isLegacyMachineryAgeWrapper } from './sectionG';
 
 export const SECTION_EF_SHARE_CODES = [
   'E_SOURCING_TYPE', 'E_RAW_MATERIAL_ORIGIN', 'F_BUYER_TYPE', 'F_BUYER_LOCATION',
 ] as const;
+
+export const SECTION_G_SHARE_CODES = ['G_AUTOMATION_LEVEL', 'G_MACHINERY_AGE'] as const;
 
 export const SECTION_EF_MATRIX_DEFAULTS: Readonly<Record<string, string>> = {
   F_STRENGTH_VS_COMPETITORS: 'DK_NA',
@@ -18,6 +21,11 @@ export type MatrixEntry = { choice_value_id?: number; rating?: number; other_tex
 
 export function isSectionEfShare(question: SurveyQuestion): boolean {
   return SECTION_EF_SHARE_CODES.some((code) => code === question.question_code);
+}
+
+export function isDefaultedShare(question: SurveyQuestion): boolean {
+  return isSectionEfShare(question) ||
+    SECTION_G_SHARE_CODES.some((code) => code === question.question_code);
 }
 
 export function isSectionEfReason(question: SurveyQuestion): boolean {
@@ -114,6 +122,12 @@ export function normalizeShares(
   value: unknown,
   references: References,
 ): Result<{ entries: Record<string, ShareEntry>; total: number }> {
+  if (question.question_code === 'G_MACHINERY_AGE' && Array.isArray(value) && value.length === 0) {
+    value = {};
+  }
+  if (question.question_code === 'G_MACHINERY_AGE' && isLegacyMachineryAgeWrapper(value)) {
+    value = value.shares;
+  }
   if (question.answer_type !== 'SHARE_PERCENT') {
     return { ok: false, error: 'This question is not configured as a share question.' };
   }
@@ -372,9 +386,14 @@ export function materializeSectionEFAnswers(
   const result = { ...answers };
   for (const question of questions) {
     const value = answers[question.question_id];
-    if (isSectionEfShare(question)) {
+    if (isDefaultedShare(question)) {
       const normalized = normalizeShares(question, value, references);
-      if (normalized.ok) result[question.question_id] = normalized.value.entries;
+      if (normalized.ok) {
+        result[question.question_id] = question.question_code === 'G_MACHINERY_AGE' &&
+          isLegacyMachineryAgeWrapper(value)
+          ? { ...value, shares: normalized.value.entries }
+          : normalized.value.entries;
+      }
     } else if (isSectionEfReason(question) && Object.prototype.hasOwnProperty.call(answers, question.question_id)) {
       const normalized = normalizeReason(question, value, references);
       if (normalized.ok) result[question.question_id] = normalized.value;

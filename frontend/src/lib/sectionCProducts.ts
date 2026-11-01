@@ -119,13 +119,34 @@ export function productUnitValueForDisplay(value: unknown): unknown {
 
 export function productUnitsForDisplay(options: QuestionOption[], value: unknown): QuestionOption[] {
   const selectedId = optionId(value);
-  return options
+  const visible = options
     .filter((option) => option.is_selectable === true || option.id === selectedId)
     .map((option) => option.is_selectable === true ? option : {
       ...option,
       label: `${option.label} (previously selected)`,
       is_selectable: false,
     });
+  if (selectedId !== null && selectedId > 0 && !options.some((option) => option.id === selectedId)) {
+    visible.push({
+      id: selectedId, code: String(selectedId), label: `Unknown unit ${selectedId} (choose another)`,
+      requires_text: false, is_selectable: false,
+    });
+  }
+  return visible;
+}
+
+export function majorInputUnitsError(value: unknown, units: QuestionOption[]): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (!Array.isArray(value) || value.some((row) => !isRecord(row))) return 'Provide valid major input rows.';
+  for (const row of value) {
+    const unit = row.unit_id;
+    if (unit === undefined || unit === null || unit === '') continue;
+    const id = optionId(unit);
+    if (id === null || id < 1 || !units.some((option) => option.id === id)) {
+      return 'Choose a valid measurement unit for each major input.';
+    }
+  }
+  return null;
 }
 
 export function isProductNameComplete(value: unknown): boolean {

@@ -5,7 +5,7 @@ import { SurveyForm }     from '../../dal/entities/survey-form.entity';
 import { SurveySection }  from '../../dal/entities/survey-section.entity';
 import { SurveyQuestion } from '../../dal/entities/survey-question.entity';
 import { QUESTION_INPUTS, SURVEY_REFERENCES } from './survey-questionnaire';
-import { SECTION_EF_SHARE_CODES } from './section-e-f';
+import { DEFAULT_SHARE_CODES } from './section-e-f';
 
 export interface LookupOption {
   id: number;
@@ -43,6 +43,9 @@ function questionNumberOrder(value: string | null): number {
 
 function questionOrder(question: SurveyQuestion, sectionCode: string): number {
   if (sectionCode === 'B' && question.question_code === 'B_OPERATION_STATUS') return -1;
+  if (sectionCode === 'G' && question.question_code === 'G_INNOVATION_GATE') {
+    return questionNumberOrder(question.question_no) - 1;
+  }
   return questionNumberOrder(question.question_no);
 }
 
@@ -181,7 +184,7 @@ export class SurveyFormService {
     }
     const sectionEfLookupIds = questions
       .filter((question) =>
-        SECTION_EF_SHARE_CODES.some((code) => code === question.question_code) ||
+        DEFAULT_SHARE_CODES.some((code) => code === question.question_code) ||
         question.question_code === 'E_SUPPLY_DISRUPTION_REASON' ||
         question.question_code === 'F_DEMAND_GAP_REASON',
       )

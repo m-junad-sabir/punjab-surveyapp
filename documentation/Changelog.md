@@ -2,6 +2,27 @@
 
 All notable application changes are recorded here, grouped by the categories below.
 
+## 2026-11-01 — Workplan 2 Phase 7
+
+### Added
+
+- Added industry-specific critical-machine and specification dropdowns from the supplied L2 list, each with Other text, plus L3 weights/measures and L5 boiler/vessel forms and approved unit conversions.
+- Added a required innovation gate, `No Plan` matrix values, zero-defaulted automation and machinery-age percentage shares, and rerunnable migration 12 with owner verification queries.
+- Added regression coverage for catalogs, conditional behavior, validation, legacy drafts, sync, raw values, and generated PDFs.
+
+### Changed
+
+- Section E major-input units now use the approved product-unit dropdown. Existing measurement-unit IDs are preserved and unknown IDs require correction.
+- Bumped the offline form-cache revision to 18. The updated API and database metadata must be available before a new form is cached.
+- Historical machinery counts remain counts; old drafts require percentage re-entry and retain their original counts separately. L3/L5 raw values and units are stored alongside conversions; Other units are flagged for review.
+
+### Fixed
+
+- Low-utilization reasons are hidden and cleared at 75% or above. Empty machinery/equipment groups render as `Not Applicable` in the PDF.
+- Equipment decimal input is retained as entered instead of being rounded through JavaScript numbers.
+
+Migration 12 and live/offline deployment checks remain owner-managed; no SQL or deployment was performed.
+
 ## 2026-11-01 — Workplan 2 Phase 6
 
 ### Added

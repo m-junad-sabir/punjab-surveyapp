@@ -1,4 +1,5 @@
 import type { SurveyInputField, SurveyQuestion } from '../types';
+import { isSectionGFieldVisible } from './sectionG';
 
 function fieldFormatError(field: SurveyInputField, value: unknown): string | null {
   if (value === undefined || value === null || value === '') return null;
@@ -35,6 +36,7 @@ export function questionFormatError(question: SurveyQuestion, value: unknown): s
   const rows = question.repeatable ? (Array.isArray(value) ? value : []) : [value];
   for (const row of rows) {
     for (const field of question.fields ?? []) {
+      if (!isSectionGFieldVisible(question.question_code, row, field.key)) continue;
       const error = fieldFormatError(field, fieldValue(row, field.key));
       if (error) return error;
     }

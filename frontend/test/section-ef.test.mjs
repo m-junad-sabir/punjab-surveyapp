@@ -99,10 +99,10 @@ const references = {
   ],
 };
 
-test('only the four E/F distributions and two F matrices materialize when omitted', () => {
-  const unrelated = question(7, 'G_AUTOMATION_LEVEL', 'SHARE_PERCENT', [option(91, 'AUTO', 'Automatic')]);
+test('requested E/F and G distributions and the two F matrices materialize when omitted', () => {
+  const automation = question(7, 'G_AUTOMATION_LEVEL', 'SHARE_PERCENT', [option(91, 'AUTO', 'Automatic')]);
   const original = { 7: null };
-  const result = materializeSectionEFAnswers([source, origin, buyers, location, strength, digital, unrelated, rating], original, references);
+  const result = materializeSectionEFAnswers([source, origin, buyers, location, strength, digital, automation, rating], original, references);
   assert.deepEqual(original, { 7: null });
   assert.deepEqual(result[1], { 11: 0, 12: 0 });
   assert.deepEqual(result[2], { 21: 0, 22: 0 });
@@ -110,7 +110,7 @@ test('only the four E/F distributions and two F matrices materialize when omitte
   assert.deepEqual(result[4], { 41: 0, 42: 0 });
   assert.deepEqual(result[5], { 1001: { choice_value_id: 502 }, 1002: { choice_value_id: 502 } });
   assert.deepEqual(result[6], { 1101: { choice_value_id: 602 }, 1102: { choice_value_id: 602 } });
-  assert.equal(result[7], null);
+  assert.deepEqual(result[7], { 91: 0 });
   assert.equal(Object.hasOwn(result, 8), false);
   assert.equal(matrixEntryForDisplay(strength, strength.matrix_items[0], {}).choice_value_id, 502);
   assert.equal(matrixEntryForDisplay(digital, digital.matrix_items[0], {}).choice_value_id, 602);

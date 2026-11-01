@@ -42,18 +42,18 @@
 ### Repository baseline recorded
 
 - **Repository snapshot:** inspected at commit `e91d2e9` (`Fixes (#51) made workplan 2 after app testing`). The working tree also contains the Phase 1 implementation in this delivery; it is not a clean-commit snapshot.
-- **Form revisions:** the frontend cache revision is now `17` after the Section E/F questionnaire changes; the frontend accepts backend form versions `2` and later. The active database form version cannot be inferred safely from repository files and has not been queried.
+- **Form revisions:** the frontend cache revision is now `18` after the Section G and major-input questionnaire changes; the frontend accepts backend form versions `2` and later. The active database form version cannot be inferred safely from repository files and has not been queried.
 - **Form/data flow:** the backend loads active sections/questions/lookups and `QUESTION_INPUTS`; the frontend renders structured/repeating answers and stores drafts in IndexedDB; sync maps question codes into normalized survey tables and generic choice/share/matrix tables; the frontend generates the PDF from the saved response and form definition.
 - **PDF baseline:** unanswered scalar/field values render as `Not provided`; empty repeating groups render as `No entries recorded`; empty share categories render as `Not provided`. Phase 1 now omits questions hidden by the existing parent-company, operation-status, supply-disruption, demand-gap, and future-plan conditions. Section-specific zero/default and not-applicable behavior remains assigned to later phases.
 - **Test baseline:** backend Jest tests cover hidden-answer normalization, Section B validation, and closed-status persistence. The frontend has a Node test script for month selection, validation, conditional visibility, draft cleanup, and generated PDFs, as well as build and TypeScript-check commands.
-- **Migration/setup baseline:** `SETUP_DATABASE.bat` statically allowlists geography/classification/unit reference scripts and migrations 01–05 and 07–11; it omits migration 06 and legacy cleanup/reset scripts. Migrations 08–11 were added for Sections A–C and E/F. The local `/plan` check printed the allowlist without connecting to a database; no SQL or database setup was executed.
+- **Migration/setup baseline:** `SETUP_DATABASE.bat` statically allowlists geography/classification/unit reference scripts and migrations 01–05 and 07–12; it omits migration 06 and legacy cleanup/reset scripts. Migrations 08–12 were added for Sections A–G. The local `/plan` check printed the allowlist without connecting to a database; no SQL or database setup was executed.
 - **Schema evidence:** repository inspection documents describe a schema snapshot, not proof of any live environment's current migration state.
-- **Available list references:** the repository contains area and product-unit lists, L1, L2 main/secondary product and machine/spec lists, and the L3/L5 equipment briefs. The owner approved the checked-in L2 product lists, their mapping to the existing `UNIT_TYPE` codes, and the product-unit minimum list for Phase 4. Other list authority and live mappings remain to be confirmed.
+- **Available list references:** the repository contains area and product-unit lists, L1, L2 main/secondary product and machine/spec lists, and the L3/L5 equipment briefs. The owner approved the checked-in L2 product lists, the 15-unit product minimum, and the L2 machinery and L3/L5 equipment lists for the implemented phases. Other list authority and all live mappings remain to be confirmed.
 
 ### Remaining Phase 0 prerequisites
 
 - Confirm the active form version and applied migration state against each target database. This requires owner-approved access/verification in Neon branch, Neon main, and/or localhost; static files and the no-connection setup-plan check cannot establish live state.
-- Confirm with the owner/client that the remaining checked-in L1, machinery L2, L3/L5, and other unit lists are authoritative, and verify mappings against each live database. The L2 **product** lists and the 15-unit product minimum have been approved for Phase 4; do not load unapproved lists.
+- Confirm with the owner/client that the remaining checked-in L1 and other unit lists are authoritative, and verify the approved product, machinery, and equipment mappings against each live database. Do not load unapproved lists.
 - Confirm the Section H quantity label and unit: the evaluation report requests `kW` for monthly energy consumption, but that is a power unit and may not describe monthly energy quantity. This decision is needed before Phase 8 implementation, not before unrelated phases.
 - Keep operational condition semantics tied to active lookup codes. In the checked-in seed, the stable closure code is `PERM_CLOSED` while its label is “Permanently Close”; the evaluation report says “Permanently closed.” Any label change should be approved and made consistently in the form reference data.
 - The default/sentinel behavior for each later section remains governed by its requirements below; do not generalize Section D/E/F/G zero defaults to all blank values.
@@ -162,7 +162,7 @@
 1. For sourcing type and raw-material origin shares, persist omitted categories as zero as required and show each category plus the total out of 100 in the PDF.
 2. Add concise helper text for “Other (specify)” in sourcing type.
 3. Add `Not Formally Tracked` to the on-time delivery reliability and product acceptance lookup values, ensuring the API/PDF can resolve the label.
-4. **Deferred:** Supply-disruption heading changes are owner-managed. Major-input unit expansion and HS list completion are marked “will do later”; do not include speculative values or claim completion.
+4. **Deferred:** Supply-disruption heading changes are owner-managed and HS list completion remains deferred. The owner subsequently requested that major inputs reuse the approved product-unit dropdown; no additional units were invented.
 
 ### Section F
 
@@ -181,7 +181,7 @@
 - Added rerunnable [migration 11](../database/migration_11_section_e_f_lookups.sql), which makes `Not Formally Tracked` available for both Section E bands and ensures the two F default codes are active. It preserves lookup IDs and does not backfill historical responses. The migration is explicitly allowlisted, and the offline form cache revision is `17`.
 - Local checks passed: 99 backend tests, 24 frontend tests, TypeScript checks, isolated builds, generated-PDF tests, and a mocked mobile-size browser check of validation, defaults, draft reload, and legacy correction. The browser check did not use a live API or a physically disconnected device.
 - **Owner action before release:** review migration 11, back up each target, apply it after migration 10, and inspect its verification queries. Confirm all four requested lookups and that every configured F matrix row has its active default (the checked-in seed defines six strength rows and five digital-presence rows). Deploy the API before the frontend, then refresh the revision-17 form online before offline use. Verify live sync/database share sums, matrix rows, PDFs, and an actual offline-device draft round trip. Live database state and verification remain outstanding; no database script or deployment was run.
-- Supply-disruption heading changes remain owner-managed; major-input unit expansion and HS list completion remain deferred.
+- Supply-disruption heading changes remain owner-managed and HS list completion remains deferred. By subsequent owner request, Section E(ix) now uses the same active product-unit catalog as Section C; historical unit IDs remain visible and valid, while unknown IDs require correction.
 
 ## Phase 7 — Section G: Machinery, capacity, and innovation
 
@@ -197,6 +197,18 @@
 10. Keep Plant Processing Capacity help-text changes owner-managed as marked in the report.
 
 **Exit checks:** Validate each equipment row, unit compatibility, Other text, age percentage values, the 75% threshold boundary, innovation branches, PDF output, and existing-data migration behavior.
+
+### Implementation and outstanding verification
+
+- The supplied L2 list contains 216 machine/specification pairs mapped to 60 existing industry codes. Both dropdowns depend on Section A's Type of Unit and support `Other (specify)`; changing a machine clears an incompatible specification. Historical free text is retained. The form cache and PDF include the reference labels.
+- Automation and machinery-age shares allow up to two decimals and totals from 0% to 100%, including partial and all-zero totals. Missing categories default to zero. Historical database machine counts are not converted or rewritten. Old drafts show their counts and require explicit percentage re-entry; the original draft counts are retained separately with the synchronized response.
+- The low-utilization reason is shown only for the existing 40–59% and 60–74% bands and is cleared at 75% or above. No new band below 40% was added. A saved reason without a valid band requires correction rather than being silently lost.
+- L5 boiler/vessel and L3 weights/measures rows use the supplied type-specific fields, compatible units, required Other descriptions, and positive values with at most three decimals. The approved conversions store raw numeric values and units alongside converted values and factors; Other units are flagged for review instead of being assigned a guessed factor. Corrected old equipment fields are retained in `legacy_data`.
+- The required innovation gate hides the matrix on No; sync records the defined `No Plan` value for every matrix row. Yes displays the matrix. Existing drafts must answer the new gate; hidden details are not printed in the PDF.
+- Added rerunnable [migration 12](../database/migration_12_section_g_machinery.sql), explicitly allowlisted in setup, with catalog/lookups, preservation-oriented columns and `NOT VALID` checks. It does not backfill historical responses. The frontend uses cache revision 18 and refuses to cache a questionnaire missing the updated API/migration metadata.
+- Local checks passed: 116 related backend tests, 33 frontend tests, TypeScript checks, isolated builds, and generated-PDF tests. A mocked mobile-size browser check covered dropdown filtering, Other fields, draft reload, share limits, the 75% boundary, innovation, and cached form access with the API unavailable. It did not use a live API or a physically disconnected device.
+- **Owner action before release:** review migration 12 and its verification queries; back up each target, apply it after the prerequisite migrations, verify the 216/60 catalog mapping and active lookups, and inspect historical constraint violations before validating any `NOT VALID` constraint. Deploy the updated API before the frontend, then refresh revision 18 online. Verify live database writes/conversions, PDF output, and a real offline-device draft/sync round trip. No SQL, historical backfill, or deployment was performed during implementation.
+- Plant Processing Capacity helper text remains owner-managed.
 
 ## Phase 8 — Section H: Energy, water, waste, and green practices
 
@@ -275,14 +287,14 @@
 
 | Phase | Status |
 |---|---|
-| 0 Baseline, decisions, shared infrastructure | In progress — L2 product lists and product units approved; live database/form-state verification and approval of other lists and mappings remain |
+| 0 Baseline, decisions, shared infrastructure | In progress — product and machinery/equipment lists approved for implemented phases; live database/form-state verification and approval of remaining lists and mappings remain |
 | 1 Shared conditional-answer and PDF behavior | Complete for the existing parent-company, operation-status, disruption, demand-gap, and future-plan branches; subsequent section-specific gates remain in their corresponding phases |
 | 2 Section A | In progress — implementation underway; owner confirmed interviewee biodata as i(a), optional rows that must be complete when entered, dedicated response-linked storage, labeled local area-unit variants, and updating only capital investment on existing units when supplied; validation and migration review remain |
 | 3 Section B | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 09 and live end-to-end/offline verification remain |
 | 4 Section C | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 10 and live end-to-end/offline verification remain |
 | 5 Section D | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed database checks and live/offline verification remain |
 | 6 Sections E and F | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 11 and live/offline verification remain |
-| 7 Section G | Not started |
+| 7 Section G | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 12 and live/offline verification remain |
 | 8 Section H | Not started |
 | 9 Sections I and J | Not started |
 | 10 Section K | Not started |

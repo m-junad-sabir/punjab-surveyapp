@@ -20,6 +20,7 @@ const survey_response_entity_1 = require("../../dal/entities/survey-response.ent
 const duplicate_flag_entity_1 = require("../../dal/entities/duplicate-flag.entity");
 const photo_service_1 = require("./photo.service");
 const section_e_f_1 = require("./section-e-f");
+const section_g_1 = require("./section-g");
 const survey_response_writer_1 = require("./survey-response-writer");
 function nameSimilarity(a, b) {
     const s1 = (a ?? '').toLowerCase().trim();
@@ -73,8 +74,10 @@ let SyncService = class SyncService {
                     const defaultedQuestionCodes = [
                         'D_EMPLOYMENT',
                         'D_SKILLS',
-                        ...section_e_f_1.SECTION_EF_SHARE_CODES,
+                        ...section_e_f_1.DEFAULT_SHARE_CODES,
                         ...Object.keys(section_e_f_1.SECTION_EF_MATRIX_DEFAULTS),
+                        'G_INNOVATION_GATE',
+                        'G_INNOVATION',
                     ];
                     const questions = await trx.query(`SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
                FROM survey_questions q
@@ -93,7 +96,9 @@ let SyncService = class SyncService {
                         answers.set(question.question_code, answer.answer_value);
                     }
                     for (const question of questions) {
-                        if (defaultedQuestionCodes.includes(question.question_code) && !answers.has(question.question_code)) {
+                        if (defaultedQuestionCodes.includes(question.question_code) &&
+                            question.question_code !== 'G_INNOVATION_GATE' &&
+                            !answers.has(question.question_code)) {
                             answers.set(question.question_code, question.question_code === 'D_EMPLOYMENT' || question.question_code === 'D_SKILLS' ? [] : {});
                         }
                     }
@@ -101,7 +106,9 @@ let SyncService = class SyncService {
                     await (0, survey_response_writer_1.validateSectionAAnswers)(trx, answers);
                     await (0, survey_response_writer_1.validateSectionBAnswers)(trx, answers);
                     await (0, survey_response_writer_1.normalizeSectionCAnswers)(trx, answers);
+                    await (0, survey_response_writer_1.validateMajorInputUnits)(trx, answers);
                     await (0, survey_response_writer_1.normalizeSectionDAnswers)(trx, answers);
+                    await (0, section_g_1.normalizeSectionGAnswers)(trx, answers, questions);
                     await (0, section_e_f_1.normalizeSectionEFAnswers)(trx, answers, questions);
                     const gpsValue = answers.get('A_LOCATION_GPS');
                     const gpsRecord = gpsValue && typeof gpsValue === 'object'

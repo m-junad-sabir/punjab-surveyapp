@@ -473,14 +473,37 @@ export async function normalizeSectionCAnswers(
   }
 
   if (unitIds.size) {
-    const units = await manager.query(
-      'SELECT id FROM measurement_units WHERE id = ANY($1::int[])',
-      [[...unitIds]],
-    ) as Array<{ id: number }>;
-    if (units.length !== unitIds.size) throw new Error('Choose a valid product measurement unit.');
+    await validateMeasurementUnitIds(manager, unitIds, 'Choose a valid product measurement unit.');
   }
 
   answers.set('C_PRODUCTS', normalized);
+}
+
+async function validateMeasurementUnitIds(manager: EntityManager, ids: Set<number>, error: string): Promise<void> {
+  const units = await manager.query(
+    'SELECT id FROM measurement_units WHERE id = ANY($1::int[])',
+    [[...ids]],
+  ) as Array<{ id: number }>;
+  if (units.length !== ids.size) throw new Error(error);
+}
+
+export async function validateMajorInputUnits(manager: EntityManager, answers: SurveyAnswers): Promise<void> {
+  const value = answers.get('E_MAJOR_INPUTS');
+  if (value === undefined || value === null || value === '') return;
+  if (!Array.isArray(value)) throw new Error('Provide valid major input rows.');
+  const ids = new Set<number>();
+  const error = 'Choose a valid measurement unit for each major input.';
+  for (const row of value) {
+    if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+      throw new Error('Provide valid major input rows.');
+    }
+    const unit = (row as Record<string, unknown>).unit_id;
+    if (unit === undefined || unit === null || unit === '') continue;
+    const id = selectionId(unit);
+    if (id === null || !Number.isSafeInteger(id) || id < 1) throw new Error(error);
+    ids.add(id);
+  }
+  if (ids.size) await validateMeasurementUnitIds(manager, ids, error);
 }
 
 interface ClassificationValue {
@@ -1012,8 +1035,9 @@ export async function saveNormalizedSurveyAnswers(
     `INSERT INTO sec_g_technology
        (response_id, plant_processing_capacity, utilization_rate_id, integration_level_id,
         machine_source_id, spare_parts_source_id, breakdown_frequency_id, maintenance_approach_id,
-        production_planning_id, inventory_system_id, rnd_expenditure_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        production_planning_id, inventory_system_id, rnd_expenditure_id, has_innovation_plan,
+        machinery_age_legacy_counts)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)`,
     [
       responseId,
       field(answers, 'G_PLANT_CAPACITY', 'plant_processing_capacity') ?? null,
@@ -1026,6 +1050,10 @@ export async function saveNormalizedSurveyAnswers(
       answerOptionId(answers, 'G_PRODUCTION_PLANNING', 'production_planning_id'),
       answerOptionId(answers, 'G_INVENTORY_SYSTEM', 'inventory_system_id'),
       answerOptionId(answers, 'G_RND_EXPENDITURE', 'rnd_expenditure_id'),
+      typeof answers.get('G_INNOVATION_GATE') === 'boolean' ? answers.get('G_INNOVATION_GATE') : null,
+      answers.has('G_MACHINERY_AGE_LEGACY_COUNTS')
+        ? JSON.stringify(answers.get('G_MACHINERY_AGE_LEGACY_COUNTS'))
+        : null,
     ],
   );
 
@@ -1035,44 +1063,68 @@ export async function saveNormalizedSurveyAnswers(
       throw new Error('Enter a machine name for each critical-machine row.');
     }
     await manager.query(
-      `INSERT INTO critical_machines (response_id, machine_name, quantity, specification)
-       VALUES ($1, $2, $3, $4)`,
-      [responseId, machine.machine_name.trim(), number(machine.quantity), machine.specification ?? null],
+      `INSERT INTO critical_machines (response_id, machine_name, quantity, specification, machine_option_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [responseId, machine.machine_name.trim(), number(machine.quantity), machine.specification ?? null,
+        number(machine.machine_option_id)],
     );
   }
 
-  for (const age of rows(answers, 'G_MACHINERY_AGE')) {
-    if (isBlank(age)) continue;
-    const ageBracketId = selectionId(age.age_bracket_id);
-    if (ageBracketId === null) throw new Error('Choose a machinery age bracket for each age-profile row.');
+  for (const [option, entry] of Object.entries(record(answers.get('G_MACHINERY_AGE')))) {
+    const ageBracketId = number(option);
+    const share = number(record(entry).percent ?? entry);
+    if (ageBracketId === null || share === null) throw new Error('Machinery-age shares were not validated.');
     await manager.query(
-      `INSERT INTO machinery_age_profile (response_id, age_bracket_id, machine_count)
-       VALUES ($1, $2, $3)`,
-      [responseId, ageBracketId, number(age.machine_count) ?? 0],
+      `INSERT INTO machinery_age_profile (response_id, age_bracket_id, machine_count, share_pct)
+       VALUES ($1, $2, NULL, $3)`,
+      [responseId, ageBracketId, share],
     );
   }
 
   for (const vessel of rows(answers, 'G_BOILERS')) {
-    if (isBlank(vessel)) continue;
-    if (typeof vessel.vessel_type !== 'string' || !vessel.vessel_type.trim()) {
-      throw new Error('Enter a type for each boiler or pressure-vessel row.');
+    if (typeof vessel.vessel_type !== 'string' || !vessel.vessel_type.trim() ||
+        (vessel.record_kind !== 'BOILER' && vessel.record_kind !== 'VESSEL')) {
+      throw new Error('Boiler and pressure-vessel rows were not validated.');
     }
     await manager.query(
-      `INSERT INTO boilers_pressure_vessels (response_id, vessel_type, capacity_tph, heating_surface)
-       VALUES ($1, $2, $3, $4)`,
-      [responseId, vessel.vessel_type.trim(), number(vessel.capacity_tph), vessel.heating_surface ?? null],
+      `INSERT INTO boilers_pressure_vessels
+         (response_id, vessel_type, record_kind, equipment_number, type_id, type_other_text,
+          working_pressure_raw, pressure_unit_id, pressure_unit_other_text, capacity_litres,
+          heating_surface_raw, heating_surface_unit_id, heating_surface_unit_other_text,
+          pressure_conversion_factor, working_pressure_bar, heating_conversion_factor,
+          heating_surface_m2, legacy_data, conversion_requires_review)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+               $14, $7::numeric * $14::numeric, $15, $11::numeric * $15::numeric, $16::jsonb, $17)`,
+      [
+        responseId, vessel.vessel_type.trim(), vessel.record_kind, vessel.equipment_number,
+        vessel.type_id, vessel.type_other_text, vessel.working_pressure_raw,
+        vessel.pressure_unit_id, vessel.pressure_unit_other_text, vessel.capacity_litres,
+        vessel.heating_surface_raw, vessel.heating_surface_unit_id, vessel.heating_surface_unit_other_text,
+        vessel.pressure_factor, vessel.heating_factor,
+        vessel.legacy_data ? JSON.stringify(vessel.legacy_data) : null,
+        vessel.pressure_factor === null || (vessel.record_kind === 'BOILER' && vessel.heating_factor === null),
+      ],
     );
   }
 
   for (const equipment of rows(answers, 'G_WEIGHTS_MEASURES')) {
-    if (isBlank(equipment)) continue;
-    if (typeof equipment.equipment_type !== 'string' || !equipment.equipment_type.trim()) {
-      throw new Error('Enter an equipment type for each weights-and-measures row.');
+    if (typeof equipment.equipment_type !== 'string' || !equipment.equipment_type.trim() ||
+        equipment.equipment_type_id === undefined) {
+      throw new Error('Weights-and-measures rows were not validated.');
     }
     await manager.query(
-      `INSERT INTO weights_measures_equipment (response_id, equipment_type, quantity, capacity)
-       VALUES ($1, $2, $3, $4)`,
-      [responseId, equipment.equipment_type.trim(), number(equipment.quantity), equipment.capacity ?? null],
+      `INSERT INTO weights_measures_equipment
+         (response_id, equipment_type, quantity, equipment_type_id, equipment_other_text,
+          capacity_value_raw, capacity_unit_id, capacity_unit_other_text, capacity_value_converted,
+          capacity_unit_converted, conversion_factor_used, legacy_data, conversion_requires_review)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $6::numeric * $9::numeric, $10, $9, $11::jsonb, $12)`,
+      [
+        responseId, equipment.equipment_type.trim(), equipment.number_of_instruments,
+        equipment.equipment_type_id, equipment.equipment_other_text, equipment.capacity_value_raw,
+        equipment.equipment_unit_id, equipment.equipment_unit_other_text, equipment.conversion_factor,
+        equipment.converted_unit, equipment.legacy_data ? JSON.stringify(equipment.legacy_data) : null,
+        equipment.conversion_factor === null,
+      ],
     );
   }
 
