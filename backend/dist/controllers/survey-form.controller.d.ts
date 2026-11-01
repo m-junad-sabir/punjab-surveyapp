@@ -29,6 +29,10 @@ export declare class SurveyFormController {
                     lookup_type?: string;
                     reference?: string;
                     required?: boolean;
+                    min?: number;
+                    max?: number;
+                    step?: number;
+                    default_value?: number;
                 }[];
                 repeatable: boolean;
                 matrix_items: {

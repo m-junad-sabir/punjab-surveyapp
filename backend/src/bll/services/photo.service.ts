@@ -15,6 +15,7 @@ const PHOTO_TYPES = new Set([
 ]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_PHOTO_BYTES = 3 * 1024 * 1024;
+const MAX_PHOTO_ACCURACY_M = 250;
 
 interface PhotoUploadMetadata {
   photo_id: string;
@@ -70,11 +71,13 @@ export class PhotoService {
     const longitude = Number(metadata.longitude);
     const accuracy = Number(metadata.accuracy_m);
     const capturedAt = new Date(metadata.captured_at);
-    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+    if (![metadata.latitude, metadata.longitude, metadata.accuracy_m, metadata.captured_at]
+          .every((value) => typeof value === 'string' && value.trim().length > 0) ||
+        !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
         !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
-        !Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100 ||
+        !Number.isFinite(accuracy) || accuracy < 0 || accuracy > MAX_PHOTO_ACCURACY_M ||
         Number.isNaN(capturedAt.getTime())) {
-      throw new BadRequestException('Valid capture coordinates, accuracy, and timestamp are required.');
+      throw new BadRequestException(`Valid capture coordinates, accuracy between 0 and ${MAX_PHOTO_ACCURACY_M} m, and timestamp are required.`);
     }
 
     const sha256 = createHash('sha256').update(file.buffer).digest('hex');

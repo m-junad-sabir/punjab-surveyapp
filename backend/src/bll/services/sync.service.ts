@@ -5,10 +5,24 @@ import { SurveyResponse } from '../../dal/entities/survey-response.entity';
 import { DuplicateFlag }  from '../../dal/entities/duplicate-flag.entity';
 import { PhotoService } from './photo.service';
 import {
+  DEFAULT_SHARE_CODES,
+  normalizeSectionEFAnswers,
+  SECTION_EF_MATRIX_DEFAULTS,
+} from './section-e-f';
+import { normalizeSectionGAnswers } from './section-g';
+import { normalizeSectionHAnswers } from './section-h';
+import {
+  clearHiddenSurveyAnswers,
   createIndustrialUnit,
+  normalizeSectionCAnswers,
+  normalizeSectionDAnswers,
   saveNormalizedSurveyAnswers,
   SubmittedQuestion,
   SurveyAnswers,
+  updateExistingUnitCapitalInvestment,
+  validateSectionAAnswers,
+  validateSectionBAnswers,
+  validateMajorInputUnits,
 } from './survey-response-writer';
 
 // ─── Levenshtein similarity ────────────────────────────────────────────────────
@@ -105,16 +119,29 @@ export class SyncService {
           }
 
           const questionIds = [...new Set(resp.answers.map((answer) => answer.question_id))];
-          const questions: SubmittedQuestion[] = questionIds.length
-            ? await trx.query(
-                `SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
-                   FROM survey_questions q
-                   JOIN survey_sections s ON s.id = q.section_id
-                  WHERE q.id = ANY($1::int[]) AND s.form_id = $2`,
-                [questionIds, resp.form_id],
-              )
-            : [];
-          if (questions.length !== questionIds.length) {
+          const defaultedQuestionCodes = [
+            'D_EMPLOYMENT',
+            'D_SKILLS',
+            ...DEFAULT_SHARE_CODES,
+            ...Object.keys(SECTION_EF_MATRIX_DEFAULTS),
+            'G_INNOVATION_GATE',
+            'G_INNOVATION',
+            'H_ENERGY_CONSUMPTION',
+            'H_WATER_WASTE_GATE',
+            'H_WATER_WASTE_DISPOSAL',
+            'H_SOLID_WASTE_GATE',
+            'H_GREEN_PRACTICES_GATE',
+            'H_GREEN_PRACTICES',
+          ];
+          const questions: SubmittedQuestion[] = await trx.query(
+            `SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
+               FROM survey_questions q
+               JOIN survey_sections s ON s.id = q.section_id
+              WHERE s.form_id = $2
+                AND (q.id = ANY($1::int[]) OR q.question_code = ANY($3::text[]))`,
+            [questionIds, resp.form_id, defaultedQuestionCodes],
+          );
+          if (questions.filter((question) => questionIds.includes(question.id)).length !== questionIds.length) {
             throw new Error('The response contains a question that does not belong to its survey form.');
           }
 
@@ -125,6 +152,26 @@ export class SyncService {
             if (!question) throw new Error(`Question ${answer.question_id} is not part of this form.`);
             answers.set(question.question_code, answer.answer_value);
           }
+          for (const question of questions) {
+            if (defaultedQuestionCodes.includes(question.question_code) &&
+                !['G_INNOVATION_GATE', 'H_WATER_WASTE_GATE', 'H_SOLID_WASTE_GATE',
+                  'H_GREEN_PRACTICES_GATE'].includes(question.question_code) &&
+                !answers.has(question.question_code)) {
+              answers.set(
+                question.question_code,
+                question.question_code === 'D_EMPLOYMENT' || question.question_code === 'D_SKILLS' ? [] : {},
+              );
+            }
+          }
+          const isPermanentlyClosed = await clearHiddenSurveyAnswers(trx, answers);
+          await validateSectionAAnswers(trx, answers);
+          await validateSectionBAnswers(trx, answers);
+          await normalizeSectionCAnswers(trx, answers);
+          await validateMajorInputUnits(trx, answers);
+          await normalizeSectionDAnswers(trx, answers);
+          await normalizeSectionGAnswers(trx, answers, questions);
+          await normalizeSectionHAnswers(trx, answers, questions);
+          await normalizeSectionEFAnswers(trx, answers, questions);
 
           const gpsValue = answers.get('A_LOCATION_GPS');
           const gpsRecord = gpsValue && typeof gpsValue === 'object'
@@ -200,6 +247,9 @@ export class SyncService {
             },
             !questions.some((question) => question.question_code === 'A_LOCATION'),
           );
+          if (resp.unit_id) {
+            await updateExistingUnitCapitalInvestment(trx, linkedUnitId, answers);
+          }
 
           // ── Save survey response ───────────────────────────────────────────
           const surveyResp = trx.create(SurveyResponse, {
@@ -219,7 +269,13 @@ export class SyncService {
           });
           await trx.save(SurveyResponse, surveyResp);
 
-          await saveNormalizedSurveyAnswers(trx, resp.response_id, answers, questions);
+          await saveNormalizedSurveyAnswers(
+            trx,
+            resp.response_id,
+            answers,
+            questions,
+            isPermanentlyClosed,
+          );
           await this.photoService.attachRequiredPhotos(
             trx,
             resp.form_id,

@@ -122,6 +122,14 @@ CREATE TABLE measurement_units (
   unit_kind varchar(20) NOT NULL CHECK (unit_kind IN ('AREA','QUANTITY','ENERGY','POWER','OTHER'))
 );
 
+CREATE TABLE product_measurement_units (
+  unit_id integer PRIMARY KEY REFERENCES measurement_units(id),
+  display_label text NOT NULL,
+  sort_order smallint NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  product_only boolean NOT NULL DEFAULT false
+);
+
 
 -- ===== M4: Questionnaire & Dropdown Lists =====
 -- One row per drop-down list (e.g. OWNERSHIP_TYPE).
@@ -143,6 +151,16 @@ CREATE TABLE lookup_values (
   sort_order smallint DEFAULT 0 NOT NULL,
   is_active boolean DEFAULT true NOT NULL,
   UNIQUE (type_id, code)
+);
+
+CREATE TABLE industry_product_options (
+  id serial PRIMARY KEY CHECK (id > 0),
+  unit_type_id integer NOT NULL REFERENCES lookup_values(id),
+  product_kind varchar(10) NOT NULL CHECK (product_kind IN ('MAIN','SECONDARY')),
+  product_name text NOT NULL,
+  sort_order smallint NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  UNIQUE (unit_type_id, product_kind, product_name)
 );
 
 -- Allowed-choice filters: which child choices appear after a parent choice (waste type -> disposal methods, collaborator -> purposes).
@@ -254,6 +272,10 @@ CREATE TABLE industrial_units (
   has_parent_company boolean,
   total_area_value numeric(14,2),
   total_area_unit_id integer REFERENCES measurement_units(id),
+  total_capital_investment numeric(18,2)
+    CONSTRAINT industrial_units_capital_investment_nonnegative_check
+    CHECK (total_capital_investment IS NULL OR total_capital_investment >= 0),
+  capital_investment_unit_id integer REFERENCES lookup_values(id),
   industrial_estate_id integer REFERENCES industrial_estates(id),
   industrial_estate_text text,
   industrial_cluster_id integer REFERENCES industrial_clusters(id),
@@ -307,6 +329,15 @@ CREATE TABLE survey_responses (
   app_version varchar(20)
 );
 
+-- A-i(a): people interviewed during this survey visit.
+CREATE TABLE response_interviewees (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  designation text NOT NULL,
+  contact_number varchar(11) NOT NULL CHECK (contact_number ~ '^[0-9]{11}$')
+);
+
 -- Photos or files taken during a survey.
 CREATE TABLE survey_attachments (
   id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
@@ -353,6 +384,9 @@ CREATE TABLE sec_b_operations (
   daily_shift_id integer REFERENCES lookup_values(id),
   daily_hours numeric(4,1),
   working_days_per_week smallint DEFAULT 6 CHECK (working_days_per_week BETWEEN 1 AND 7),
+  working_months_per_year smallint
+    CONSTRAINT sec_b_operations_working_months_per_year_check
+    CHECK (working_months_per_year BETWEEN 1 AND 12),
   weekly_hours numeric(5,1) GENERATED ALWAYS AS (daily_hours * working_days_per_week) STORED,
   monthly_hours numeric(6,1) GENERATED ALWAYS AS (ROUND(daily_hours * working_days_per_week * 52 / 12, 1)) STORED
 );
@@ -374,14 +408,20 @@ CREATE TABLE products (
   hs_code_id integer REFERENCES hs_codes(id),
   hs_code_text text,
   sort_order smallint DEFAULT 0,
-  CHECK (product_kind = 'MAIN' OR (revenue_share_pct IS NULL AND hs_code_id IS NULL AND hs_code_text IS NULL))
+  CONSTRAINT products_id_kind_unique UNIQUE (id, product_kind),
+  CONSTRAINT products_secondary_main_fields_check
+    CHECK (product_kind = 'MAIN' OR (revenue_share_pct IS NULL AND hs_code_id IS NULL AND hs_code_text IS NULL))
 );
 
 -- C-v: one or more stages (T1-T6) per main product.
 CREATE TABLE product_transformation_stages (
   product_id bigint NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   stage_id integer NOT NULL REFERENCES lookup_values(id),
-  PRIMARY KEY (product_id, stage_id)
+  main_product_kind varchar(10) NOT NULL DEFAULT 'MAIN',
+  PRIMARY KEY (product_id, stage_id),
+  CONSTRAINT product_stages_main_kind_check CHECK (main_product_kind = 'MAIN'),
+  CONSTRAINT product_stages_main_product_fk FOREIGN KEY (product_id, main_product_kind)
+    REFERENCES products(id, product_kind) ON DELETE CASCADE
 );
 
 -- D-i: employees by type and gender.
@@ -500,7 +540,10 @@ CREATE TABLE weights_measures_equipment (
 CREATE TABLE sec_h_environment (
   response_id uuid NOT NULL PRIMARY KEY REFERENCES survey_responses(id) ON DELETE CASCADE,
   captive_capacity_kw numeric(12,2),
-  export_capacity_kw numeric(12,2)
+  export_capacity_kw numeric(12,2),
+  has_water_waste_management boolean,
+  has_solid_waste_generation boolean,
+  has_green_practices boolean
 );
 
 -- H-i: monthly use and share of each fuel/energy source.
@@ -513,6 +556,13 @@ CREATE TABLE energy_consumption (
   unit_id integer REFERENCES measurement_units(id),
   share_pct numeric(5,2) CHECK (share_pct BETWEEN 0 AND 100),
   UNIQUE (response_id, energy_source_id)
+);
+
+-- Unit choices are constrained by the selected monthly energy source.
+CREATE TABLE energy_source_units (
+  energy_source_id integer NOT NULL REFERENCES lookup_values(id),
+  unit_id integer NOT NULL REFERENCES measurement_units(id),
+  PRIMARY KEY (energy_source_id, unit_id)
 );
 
 -- H-ii: own power generation by source.
@@ -762,6 +812,7 @@ CREATE INDEX idx_industrial_units_zone_type_id ON industrial_units (zone_type_id
 CREATE INDEX idx_industrial_units_ownership_type_id ON industrial_units (ownership_type_id);
 CREATE INDEX idx_industrial_units_legal_structure_id ON industrial_units (legal_structure_id);
 CREATE INDEX idx_industrial_units_total_area_unit_id ON industrial_units (total_area_unit_id);
+CREATE INDEX idx_industrial_units_capital_investment_unit_id ON industrial_units (capital_investment_unit_id);
 CREATE INDEX idx_industrial_units_industrial_estate_id ON industrial_units (industrial_estate_id);
 CREATE INDEX idx_industrial_units_industrial_cluster_id ON industrial_units (industrial_cluster_id);
 CREATE INDEX idx_industrial_units_created_by ON industrial_units (created_by);
@@ -769,6 +820,7 @@ CREATE INDEX idx_unit_associated_establishments_unit_id ON unit_associated_estab
 CREATE INDEX idx_unit_associated_establishments_major_activity_psic_class_id ON unit_associated_establishments (major_activity_psic_class_id);
 CREATE INDEX idx_survey_responses_form_id ON survey_responses (form_id);
 CREATE INDEX idx_survey_responses_unit_id ON survey_responses (unit_id);
+CREATE INDEX idx_response_interviewees_response_id ON response_interviewees (response_id);
 CREATE INDEX idx_survey_responses_surveyor_id ON survey_responses (surveyor_id);
 CREATE INDEX idx_survey_responses_confirmed_by ON survey_responses (confirmed_by);
 CREATE INDEX idx_survey_attachments_response_id ON survey_attachments (response_id);
@@ -785,6 +837,7 @@ CREATE INDEX idx_products_annual_production_unit_id ON products (annual_producti
 CREATE INDEX idx_products_unit_of_measurement_id ON products (unit_of_measurement_id);
 CREATE INDEX idx_products_hs_code_id ON products (hs_code_id);
 CREATE INDEX idx_product_transformation_stages_stage_id ON product_transformation_stages (stage_id);
+CREATE INDEX idx_industry_product_options_lookup ON industry_product_options (unit_type_id, product_kind, sort_order);
 CREATE INDEX idx_workforce_employment_response_id ON workforce_employment (response_id);
 CREATE INDEX idx_workforce_skills_response_id ON workforce_skills (response_id);
 CREATE INDEX idx_workforce_skills_skill_level_id ON workforce_skills (skill_level_id);

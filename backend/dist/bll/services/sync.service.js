@@ -19,6 +19,9 @@ const typeorm_2 = require("typeorm");
 const survey_response_entity_1 = require("../../dal/entities/survey-response.entity");
 const duplicate_flag_entity_1 = require("../../dal/entities/duplicate-flag.entity");
 const photo_service_1 = require("./photo.service");
+const section_e_f_1 = require("./section-e-f");
+const section_g_1 = require("./section-g");
+const section_h_1 = require("./section-h");
 const survey_response_writer_1 = require("./survey-response-writer");
 function nameSimilarity(a, b) {
     const s1 = (a ?? '').toLowerCase().trim();
@@ -69,13 +72,26 @@ let SyncService = class SyncService {
                         };
                     }
                     const questionIds = [...new Set(resp.answers.map((answer) => answer.question_id))];
-                    const questions = questionIds.length
-                        ? await trx.query(`SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
-                   FROM survey_questions q
-                   JOIN survey_sections s ON s.id = q.section_id
-                  WHERE q.id = ANY($1::int[]) AND s.form_id = $2`, [questionIds, resp.form_id])
-                        : [];
-                    if (questions.length !== questionIds.length) {
+                    const defaultedQuestionCodes = [
+                        'D_EMPLOYMENT',
+                        'D_SKILLS',
+                        ...section_e_f_1.DEFAULT_SHARE_CODES,
+                        ...Object.keys(section_e_f_1.SECTION_EF_MATRIX_DEFAULTS),
+                        'G_INNOVATION_GATE',
+                        'G_INNOVATION',
+                        'H_ENERGY_CONSUMPTION',
+                        'H_WATER_WASTE_GATE',
+                        'H_WATER_WASTE_DISPOSAL',
+                        'H_SOLID_WASTE_GATE',
+                        'H_GREEN_PRACTICES_GATE',
+                        'H_GREEN_PRACTICES',
+                    ];
+                    const questions = await trx.query(`SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
+               FROM survey_questions q
+               JOIN survey_sections s ON s.id = q.section_id
+              WHERE s.form_id = $2
+                AND (q.id = ANY($1::int[]) OR q.question_code = ANY($3::text[]))`, [questionIds, resp.form_id, defaultedQuestionCodes]);
+                    if (questions.filter((question) => questionIds.includes(question.id)).length !== questionIds.length) {
                         throw new Error('The response contains a question that does not belong to its survey form.');
                     }
                     const questionById = new Map(questions.map((question) => [question.id, question]));
@@ -86,6 +102,23 @@ let SyncService = class SyncService {
                             throw new Error(`Question ${answer.question_id} is not part of this form.`);
                         answers.set(question.question_code, answer.answer_value);
                     }
+                    for (const question of questions) {
+                        if (defaultedQuestionCodes.includes(question.question_code) &&
+                            !['G_INNOVATION_GATE', 'H_WATER_WASTE_GATE', 'H_SOLID_WASTE_GATE',
+                                'H_GREEN_PRACTICES_GATE'].includes(question.question_code) &&
+                            !answers.has(question.question_code)) {
+                            answers.set(question.question_code, question.question_code === 'D_EMPLOYMENT' || question.question_code === 'D_SKILLS' ? [] : {});
+                        }
+                    }
+                    const isPermanentlyClosed = await (0, survey_response_writer_1.clearHiddenSurveyAnswers)(trx, answers);
+                    await (0, survey_response_writer_1.validateSectionAAnswers)(trx, answers);
+                    await (0, survey_response_writer_1.validateSectionBAnswers)(trx, answers);
+                    await (0, survey_response_writer_1.normalizeSectionCAnswers)(trx, answers);
+                    await (0, survey_response_writer_1.validateMajorInputUnits)(trx, answers);
+                    await (0, survey_response_writer_1.normalizeSectionDAnswers)(trx, answers);
+                    await (0, section_g_1.normalizeSectionGAnswers)(trx, answers, questions);
+                    await (0, section_h_1.normalizeSectionHAnswers)(trx, answers, questions);
+                    await (0, section_e_f_1.normalizeSectionEFAnswers)(trx, answers, questions);
                     const gpsValue = answers.get('A_LOCATION_GPS');
                     const gpsRecord = gpsValue && typeof gpsValue === 'object'
                         ? gpsValue.location
@@ -141,6 +174,9 @@ let SyncService = class SyncService {
                         lng: gpsLng,
                         accuracy: gpsAccuracy,
                     }, !questions.some((question) => question.question_code === 'A_LOCATION'));
+                    if (resp.unit_id) {
+                        await (0, survey_response_writer_1.updateExistingUnitCapitalInvestment)(trx, linkedUnitId, answers);
+                    }
                     const surveyResp = trx.create(survey_response_entity_1.SurveyResponse, {
                         id: resp.response_id,
                         form_id: resp.form_id,
@@ -157,7 +193,7 @@ let SyncService = class SyncService {
                         synced_at: new Date(),
                     });
                     await trx.save(survey_response_entity_1.SurveyResponse, surveyResp);
-                    await (0, survey_response_writer_1.saveNormalizedSurveyAnswers)(trx, resp.response_id, answers, questions);
+                    await (0, survey_response_writer_1.saveNormalizedSurveyAnswers)(trx, resp.response_id, answers, questions, isPermanentlyClosed);
                     await this.photoService.attachRequiredPhotos(trx, resp.form_id, resp.response_id, user_id, answers);
                     if (isDuplicate && matchedUnitId) {
                         await trx.save(duplicate_flag_entity_1.DuplicateFlag, trx.create(duplicate_flag_entity_1.DuplicateFlag, {

@@ -1,5 +1,42 @@
 import { jsPDF } from 'jspdf';
 import { getPhoto } from './db';
+import { isQuestionVisible } from './surveyVisibility';
+import {
+  EMPLOYMENT_CATEGORIES,
+  WORKFORCE_GENDERS,
+  normalizeEmployment,
+  normalizeSkills,
+  workforceSkillOptions,
+} from './sectionDWorkforce';
+import {
+  isProductFieldVisible,
+  productKind,
+  productUnitValueForDisplay,
+  productValueForDisplay,
+} from './sectionCProducts';
+import {
+  formatPercentage,
+  isDefaultedShare,
+  isSectionEfReason,
+  matrixOptions,
+  normalizeMatrix,
+  normalizeReason,
+  normalizeShares,
+  reasonOptions,
+  shareOptions,
+} from './sectionEF';
+import {
+  isLegacyMachineryAgeWrapper,
+  isSectionGFieldVisible,
+  legacySectionGFields,
+  machineValueForDisplay,
+  sectionGSelectionId,
+} from './sectionG';
+import {
+  isSectionHFieldVisible,
+  sectionHSelectionId,
+  totalGenerationCapacity,
+} from './sectionH';
 import type {
   OfflineResponse,
   QuestionOption,
@@ -76,38 +113,266 @@ function displayValue(
   return String(value);
 }
 
-function getQuestionAnswers(question: SurveyQuestion, answer: unknown): AnswerLine[] {
+function getQuestionAnswers(
+  question: SurveyQuestion,
+  answer: unknown,
+  references: Record<string, QuestionOption[]>,
+  allAnswers: Record<number, unknown>,
+  allQuestions: SurveyQuestion[],
+): AnswerLine[] {
   const fields = question.fields ?? [];
 
-  const fieldLines = (row: unknown): AnswerLine[] => {
-    if (!isRecord(row)) {
-      return fields.map((field) => ({ label: field.label, value: 'Not provided' }));
+  if (question.question_code === 'H_ENERGY_CONSUMPTION') {
+    const sourceRows = Array.isArray(answer) ? answer.filter(isRecord) : [];
+    const bySource = new Map<number, Record<string, unknown>>();
+    for (const row of sourceRows) {
+      const sourceId = sectionHSelectionId(row.energy_source_id);
+      if (sourceId !== null) bySource.set(sourceId, row);
     }
-    return fields.map((field) => ({
-      label: field.label,
-      value: displayValue(row[field.key], field.options),
-    }));
+    const totalShare = [...bySource.values()].reduce((total, row) => {
+      const share = row.share_pct == null || row.share_pct === '' ? 0 : Number(row.share_pct);
+      return total + (Number.isFinite(share) ? share : 0);
+    }, 0);
+    const lines: AnswerLine[] = [];
+    for (const source of question.options) {
+      if (source.is_selectable === false) continue;
+      const row = bySource.get(source.id);
+      const quantity = row?.quantity_per_month;
+      const unitId = sectionHSelectionId(row?.unit_id);
+      const unit = (references.energy_source_units ?? []).find((option) =>
+        option.id === unitId && option.parent_id === source.id,
+      );
+      const share = row?.share_pct == null || row.share_pct === ''
+        ? 0
+        : Number(row.share_pct);
+      const otherText = typeof row?.other_text === 'string' ? row.other_text.trim() : '';
+      const sourceLabel = otherText ? `${source.label}: ${otherText}` : source.label;
+      lines.push({
+        label: `${sourceLabel} - Quantity per month`,
+        value: quantity === null || quantity === undefined || quantity === ''
+          ? 'Not provided'
+          : `${String(quantity)}${unit ? ` ${unit.label}` : ''}`,
+      });
+      lines.push({
+        label: `${sourceLabel} - Energy use share`,
+        value: `${Number.isFinite(share) ? share.toFixed(2) : '0.00'}%`,
+      });
+    }
+    for (const [sourceId, row] of bySource) {
+      if (question.options.some((source) => source.id === sourceId)) continue;
+      lines.push({
+        label: `Previously selected energy source (${sourceId})`,
+        value: `${row.share_pct == null ? '0.00' : Number(row.share_pct).toFixed(2)}%`,
+      });
+    }
+    lines.push({ label: 'Total energy use share', value: `${totalShare.toFixed(2)}%` });
+    return lines;
+  }
+
+  if (question.question_code === 'H_CAPTIVE_EXPORT_CAPACITY') {
+    const generationQuestion = allQuestions.find((candidate) =>
+      candidate.question_code === 'H_ENERGY_GENERATION',
+    );
+    const generatedCapacity = totalGenerationCapacity(
+      generationQuestion ? allAnswers[generationQuestion.question_id] : [],
+    );
+    return [
+      { label: 'Total captive capacity (kW)', value: `${generatedCapacity}` },
+      {
+        label: 'Export capacity (kW)',
+        value: displayValue(isRecord(answer) ? answer.export_capacity_kw : undefined),
+      },
+    ];
+  }
+
+  if (question.question_code === 'D_EMPLOYMENT') {
+    const normalized = normalizeEmployment(answer);
+    if (!normalized.ok) return [{ label: 'Workforce data', value: normalized.error }];
+    const rows = normalized.value;
+    return [
+      ...EMPLOYMENT_CATEGORIES.flatMap((category) => [
+        ...WORKFORCE_GENDERS.map((gender) => ({
+          label: `${category.label} - ${gender.label}`,
+          value: String(rows.find((row) => row.gender === gender.id)![category.key]),
+        })),
+        {
+          label: `${category.label} total`,
+          value: String(rows.reduce((total, row) => total + row[category.key], 0)),
+        },
+      ]),
+      ...WORKFORCE_GENDERS.map((gender) => {
+        const row = rows.find((item) => item.gender === gender.id)!;
+        return {
+          label: `${gender.label} employee subtotal`,
+          value: String(EMPLOYMENT_CATEGORIES.reduce((total, category) => total + row[category.key], 0)),
+        };
+      }),
+      {
+        label: 'All employees',
+        value: String(rows.reduce((total, row) =>
+          total + EMPLOYMENT_CATEGORIES.reduce((sum, category) => sum + row[category.key], 0), 0)),
+      },
+    ];
+  }
+
+  if (question.question_code === 'D_SKILLS') {
+    const normalized = normalizeSkills(question, answer, references);
+    if (!normalized.ok) return [{ label: 'Workforce data', value: normalized.error }];
+    const rows = normalized.value;
+    const options = workforceSkillOptions(question, answer, references);
+    return [
+      ...options.flatMap((option) => [
+        ...WORKFORCE_GENDERS.map((gender) => ({
+          label: `${option.label} - ${gender.label}`,
+          value: String(rows.find((row) => row.skill_level_id === option.id && row.gender === gender.id)!.headcount),
+        })),
+        {
+          label: `${option.label} total`,
+          value: String(rows.filter((row) => row.skill_level_id === option.id)
+            .reduce((total, row) => total + row.headcount, 0)),
+        },
+      ]),
+      ...WORKFORCE_GENDERS.map((gender) => ({
+        label: `${gender.label} employee subtotal`,
+        value: String(rows.filter((row) => row.gender === gender.id)
+          .reduce((total, row) => total + row.headcount, 0)),
+      })),
+      { label: 'All employees', value: String(rows.reduce((total, row) => total + row.headcount, 0)) },
+    ];
+  }
+
+  const fieldLines = (row: unknown): AnswerLine[] => {
+    return fields.filter((field) =>
+      isProductFieldVisible(question.question_code, row, field.key) &&
+      isSectionGFieldVisible(question.question_code, row, field.key) &&
+      isSectionHFieldVisible(question.question_code, row, field.key, question.fields),
+    ).map((field) => {
+      const value = isRecord(row) ? row[field.key] : undefined;
+      const useDefault = (value === undefined || value === null || value === '') &&
+        field.default_value !== undefined;
+      const options = question.question_code === 'C_PRODUCTS' && field.reference === 'hs_codes'
+        ? references.hs_codes ?? field.options
+        : field.options;
+      const kind = question.question_code === 'C_PRODUCTS' && field.key === 'product_kind'
+        ? productKind(value)
+        : null;
+      let display = value;
+      if (question.question_code === 'H_SOLID_WASTE' && field.key === 'disposal_method_ids' &&
+          isRecord(row) && typeof row.other_text === 'string' && row.other_text.trim()) {
+        const selected = Array.isArray(value)
+          ? value
+          : isRecord(value) && Array.isArray(value.option_ids) ? value.option_ids : [];
+        const other = options.find((option) => option.code === 'OTHER');
+        if (other && selected.some((id) => Number(id) === other.id)) {
+          const existingText = isRecord(value) && isRecord(value.other_text)
+            ? value.other_text[String(other.id)]
+            : undefined;
+          display = {
+            option_ids: selected,
+            other_text: {
+              [other.id]: typeof existingText === 'string' && existingText.trim()
+                ? existingText
+                : row.other_text,
+            },
+          };
+        }
+      }
+      if (typeof value === 'string' && kind) {
+        display = kind === 'MAIN' ? 1 : 2;
+      } else if (field.reference === 'product_units') {
+        display = productUnitValueForDisplay(value);
+      } else if (question.question_code === 'C_PRODUCTS' &&
+          field.reference === 'industry_products' && typeof value !== 'string') {
+        display = productValueForDisplay(value, options);
+      } else if (['industry_machines', 'machine_specifications'].includes(field.reference ?? '') &&
+          typeof value !== 'string') {
+        display = machineValueForDisplay(value, options);
+      }
+      return {
+        label: field.label,
+        value: useDefault ? `${field.default_value} (default)` : displayValue(display, options),
+      };
+    });
   };
 
   if (question.repeatable) {
-    if (!Array.isArray(answer) || answer.length === 0) {
-      return [{ label: 'Response', value: 'No entries recorded' }];
+    const applicableRows = Array.isArray(answer) ? answer.filter((row) =>
+      !isRecord(row) || Object.values(row).some((value) =>
+        value !== undefined && value !== null && value !== '',
+      ),
+    ) : [];
+    if (applicableRows.length === 0) {
+      const notApplicable = ['G_CRITICAL_MACHINES', 'G_BOILERS', 'G_WEIGHTS_MEASURES']
+        .includes(question.question_code);
+      return [{ label: 'Response', value: notApplicable ? 'Not Applicable' : 'No entries recorded' }];
     }
-    return answer.flatMap((row, index) => [
+    return applicableRows.flatMap((row, index) => [
       { label: `Entry ${index + 1}`, value: '' },
+      ...legacySectionGFields(question.question_code, row),
       ...fieldLines(row),
     ]);
   }
 
   if (fields.length > 0) return fieldLines(answer);
 
-  if (question.answer_type === 'MATRIX' && isRecord(answer)) {
+  const legacyAgeLines = (value: unknown): AnswerLine[] => {
+    if (!Array.isArray(value)) return [];
+    return value.map((row, index) => {
+      if (!isRecord(row)) return { label: `Previous count ${index + 1}`, value: displayValue(row) };
+      const option = question.options.find((item) => item.id === sectionGSelectionId(row.age_bracket_id));
+      return {
+        label: `Previous count - ${option?.label ?? `age bracket ${String(row.age_bracket_id ?? index + 1)}`}`,
+        value: `${displayValue(row.machine_count)} machines`,
+      };
+    });
+  };
+  if (question.question_code === 'G_MACHINERY_AGE' && Array.isArray(answer) && answer.length > 0) {
+    return [
+      { label: 'Previous machinery-age data', value: 'Counts; percentage shares require re-entry' },
+      ...legacyAgeLines(answer),
+    ];
+  }
+
+  if (isDefaultedShare(question)) {
+    const shares = question.question_code === 'G_MACHINERY_AGE' && isLegacyMachineryAgeWrapper(answer)
+      ? answer.shares
+      : question.question_code === 'G_MACHINERY_AGE' && Array.isArray(answer) && answer.length === 0
+        ? {} : answer;
+    const normalized = normalizeShares(question, answer, references);
+    if (!normalized.ok) return [{ label: 'Share data', value: normalized.error }];
+    return [
+      ...(question.question_code === 'G_MACHINERY_AGE' && isLegacyMachineryAgeWrapper(answer)
+        ? legacyAgeLines(answer.legacy_counts) : []),
+      ...shareOptions(question, shares, references).map((option) => {
+        const entry = normalized.value.entries[String(option.id)];
+        const percent = typeof entry === 'number' ? entry : entry.percent;
+        const text = typeof entry === 'number' ? '' : entry.other_text;
+        return {
+          label: text ? `${option.label}: ${text}` : option.label,
+          value: `${formatPercentage(percent)}%`,
+        };
+      }),
+      { label: 'Total', value: `${formatPercentage(normalized.value.total)}% / 100%` },
+    ];
+  }
+
+  if (question.answer_type === 'MATRIX') {
     const items = question.matrix_items ?? [];
+    const normalized = normalizeMatrix(question, answer, references);
+    if (!normalized.ok) return [{ label: 'Matrix data', value: normalized.error }];
     if (items.length === 0) return [{ label: 'Response', value: displayValue(answer) }];
-    return items.map((item) => ({
-      label: item.group_label ? `${item.group_label} - ${item.label}` : item.label,
-      value: displayValue(answer[String(item.id)], item.options),
-    }));
+    return items.map((item) => {
+      const entry = normalized.value[String(item.id)] ?? {};
+      const options = matrixOptions(item, entry, references);
+      const selection = item.answer_type === 'RATING_1_5'
+        ? entry.rating
+        : entry.choice_value_id;
+      const value = displayValue(selection, item.answer_type === 'RATING_1_5' ? [] : options);
+      return {
+        label: item.group_label ? `${item.group_label} - ${item.label}` : item.label,
+        value: entry.other_text ? `${value}: ${entry.other_text}` : value,
+      };
+    });
   }
 
   if (question.answer_type === 'SHARE_PERCENT' && isRecord(answer)) {
@@ -124,7 +389,19 @@ function getQuestionAnswers(question: SurveyQuestion, answer: unknown): AnswerLi
     return [{ label: 'Evidence', value: `Captured ${captured}; see photo evidence page.` }];
   }
 
-  return [{ label: 'Answer', value: displayValue(answer, question.options) }];
+  if (isSectionEfReason(question)) {
+    const normalized = normalizeReason(question, answer, references);
+    if (!normalized.ok) return [{ label: 'Reason data', value: normalized.error }];
+    return [{
+      label: 'Answer',
+      value: displayValue(normalized.value, reasonOptions(question, normalized.value, references)),
+    }];
+  }
+
+  return [{
+    label: 'Answer',
+    value: displayValue(answer, question.options),
+  }];
 }
 
 function sectionTitle(code: string, title: string): string {
@@ -294,7 +571,12 @@ export async function downloadSurveyPdf(response: OfflineResponse, form?: Survey
     y += 15;
   };
 
-  const drawQuestion = (question: SurveyQuestion, answer: unknown) => {
+  const drawQuestion = (
+    question: SurveyQuestion,
+    answer: unknown,
+    allAnswers: Record<number, unknown>,
+    allQuestions: SurveyQuestion[],
+  ) => {
     ensureSpace(14);
     const title = questionTitle(question);
     const titleLines = pdf.splitTextToSize(title, contentW - 8) as string[];
@@ -304,7 +586,9 @@ export async function downloadSurveyPdf(response: OfflineResponse, form?: Survey
     pdf.text(titleLines, margin + 4, y + 5);
     y += Math.max(9, titleLines.length * 4.1 + 3);
 
-    const lines = getQuestionAnswers(question, answer);
+    const lines = getQuestionAnswers(
+      question, answer, form?.references ?? {}, allAnswers, allQuestions,
+    );
     for (const line of lines) {
       const isEntry = line.value === '' && line.label.startsWith('Entry ');
       if (isEntry) {
@@ -350,11 +634,14 @@ export async function downloadSurveyPdf(response: OfflineResponse, form?: Survey
 
   if (form?.sections.length) {
     const knownQuestionIds = new Set<number>();
+    const questions = form.sections.flatMap((section) => section.questions);
+    const answersRecord = Object.fromEntries(answersByQuestion);
     for (const section of form.sections) {
       drawSection(section.section_code, sectionTitle(section.section_code, section.title));
       for (const question of section.questions) {
         knownQuestionIds.add(question.question_id);
-        drawQuestion(question, answersByQuestion.get(question.question_id));
+        if (!isQuestionVisible(question, questions, answersRecord)) continue;
+        drawQuestion(question, answersByQuestion.get(question.question_id), answersRecord, questions);
       }
     }
 

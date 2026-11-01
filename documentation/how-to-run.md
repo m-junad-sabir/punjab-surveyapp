@@ -13,6 +13,10 @@ was confirmed working by the owner. Phase 5 was rolled back after login regressi
 Phase 6 autosave/leave protection is deferred. Save drafts explicitly. See the
 [workplan](workplan-to-solve-issues.md) for the remaining phases.
 
+For Workplan 2, the Section E major-input unit change and Section G/H implementations
+require owner-managed database migration and live verification. See
+[Workplan 2](workplan-to-solve-issues-2.md).
+
 ## 1. Install the required software
 
 Install the following before starting:
@@ -98,8 +102,8 @@ the existing database and never reruns the base schema/seed. Both confirm before
 SQL execution and stop on the first SQL error. No arguments show help only;
 `/plan` prints the exact sequence without connecting to PostgreSQL.
 
-Fresh setup enables required extensions, loads the unchanged schema/base seed,
-then reference seeds/updates and implemented migrations 01-05 and 07. Existing
+Fresh setup enables required extensions, loads the schema/base seed,
+then reference seeds/updates and implemented migrations 01-05 and 07-14. Existing
 database migration requires an active form version 3 or newer. Back up before:
 
 ```powershell
@@ -138,13 +142,63 @@ psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_03_
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_04_duplicate_flags_details.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_05_photo_evidence.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_07_type_of_unit.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_08_section_a_additions.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_09_section_b_operations.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_10_section_c_products.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_11_section_e_f_lookups.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_12_section_g_machinery.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_13_section_h_energy_and_gates.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_14_photo_accuracy_250m.sql
 ```
 
 These examples use your psql PG environment; adjust it for the target server.
 Review migration 02's role report; it does not automatically correct users.
 Migration 07 requires all mapped PSIC classes, including 9609, and aborts if
 references are missing. The allowlisted setup modes also run the common units,
-zone-type, ownership/legal-structure, and workforce-label updates.
+zone-type, ownership/legal-structure, and workforce-label updates. Review and
+back up each target before applying migration 09. Run the verification queries
+at the end of that migration; if the working-days constraint is `NOT VALID`,
+review any historical violations before validating it. Apply the migration
+before deploying code that reads or writes `working_months_per_year`.
+
+Review and back up each target before applying migration 10 after migration 07.
+Run its verification queries separately: confirm 15 active product units and
+101 main/236 secondary catalog entries mapped to the intended industry codes.
+Review historical secondary-product and transformation-stage violations before
+validating any `NOT VALID` constraint; the migration does not rewrite those rows.
+Apply it before deploying the API that loads the Section C references. Reload
+the form online after deployment so the current revision 18 is cached before offline use.
+Previously selected legacy units and free-text product names are retained.
+
+Review and back up each target before applying migration 11 after migration 10.
+Its verification queries must show active `NOT_FORMALLY_TRACKED` options for
+both Section E bands, `DK_NA` for strength and `NA` for digital presence. Check
+that each F matrix question is present and `matrix_rows` equals
+`rows_with_active_default` (six strength and five digital rows in the checked-in
+seed). The migration preserves lookup IDs and does not backfill historical
+responses. Deploy the API before the frontend, refresh the revision-18 form
+online, then verify live sync, stored share totals, PDFs, and an offline-device
+draft round trip. Do not assume the migration has already been applied.
+
+Review and back up each target before applying migration 12 after the preceding
+migrations, including 07 and 10. Run its verification queries separately: check
+the 216 machine/specification pairs across 60 industry mappings, the active L3/L5
+lookups and unit conversions, the machinery-age question, and the active `No Plan`
+option for every innovation matrix row. Review historical rows before validating
+the new `NOT VALID` checks. The migration does not rewrite machine counts or
+backfill responses. Historical equipment rows are also left intact.
+
+Deploy the updated API before the frontend and download revision 18 online before
+working offline. The frontend reports an error instead of caching an older API
+form as revision 18. Old drafts containing machinery-age counts require the
+surveyor to re-enter percentages; the old counts remain attached separately.
+Previously saved equipment fields are retained when the rows are corrected, and
+old drafts must answer the new innovation Yes/No question. Raw L3/L5 values and
+units are kept alongside the approved conversions; Other units are marked for
+review and are not converted. Section E major inputs use the active product units;
+historical unit IDs remain visible, while unknown IDs must be corrected. Verify
+live sync, stored values/conversions, PDFs, and a real offline-device round trip.
+No database migration or deployment was run as part of this implementation.
 
 An older version-1 form needs the reviewed full-questionnaire migration, then
 the location-selection update to version 3, before these delivery migrations.
@@ -238,8 +292,16 @@ classification references and migration 07 before testing this workflow.
 Section L, immediately before submit, requires interview-session and entrance/
 signboard photos. Allow camera/location permissions over HTTPS or localhost.
 The current rear-camera constraint may reject laptop webcams. On a phone,
-accuracy up to 50 m passes; 50-100 m asks for confirmation; over 100 m blocks
+accuracy up to 50 m passes; over 50 m through 250 m asks for confirmation; over 250 m blocks
 capture. Files are watermarked JPEGs stored locally as Blobs and uploaded first.
+Apply migration 14 before deploying the 250 m policy. Its `NOT VALID` checks
+enforce new writes while retaining historical rows; review violations before
+validating the constraints.
+
+Survey sections open at the top on Next, Previous, section-button navigation,
+and browser Back/Forward. Section Done requires all visible questions to have
+answers; Partial indicates incomplete coverage or invalid required fields.
+The separate required-field progress bar and optional submission rules are unchanged.
 
 Local storage uses `backend/uploads` when started from the backend folder. For
 Render, use private R2 storage with `STORAGE_DRIVER=s3`, `S3_REGION=auto`,
@@ -303,7 +365,7 @@ Run `database\seed_classification_codes.sql` against the same database named by 
 
 If `DATABASE_URL` is set, inspect that target instead. For PSIC, apply migration
 07 and select an industry first; only its mapped classes are offered. Reload
-online to fetch form cache revision 12. Do not manually choose group/division.
+online to fetch form cache revision 14. Do not manually choose group/division.
 
 ### Photo Evidence is missing
 
@@ -346,4 +408,3 @@ No scripts in this update have been executed against your database by the assist
 Free Render/Neon services may need time to wake up. A successful survey sync is
 not sufficient evidence that image storage works: verify attachment metadata,
 private retrieval, the reviewer view and PDF on an actual phone before delivery.
-
