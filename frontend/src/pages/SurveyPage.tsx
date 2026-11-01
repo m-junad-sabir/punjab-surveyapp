@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { useSurvey } from '../context/SurveyContext';
@@ -9,6 +9,9 @@ import { getDeviceId } from '../lib/deviceId';
 import { downloadSurveyPdf } from '../lib/surveyPdf';
 import { areAllOptionsSelected, toggleAllOptions } from '../lib/optionSelection';
 import { questionFormatError } from '../lib/surveyValidation';
+import { photoMetadataError, PHOTO_ACCURACY_WARNING_M } from '../lib/photoCapture';
+import { scrollSurveyToTop, surveySectionIndex, surveySectionStatus } from '../lib/surveyNavigation';
+import type { SectionStatus } from '../lib/surveyNavigation';
 import { clearHiddenAnswers, isQuestionVisible, utilizationBandCode } from '../lib/surveyVisibility';
 import {
   changeSectionHField,
@@ -218,8 +221,11 @@ function PhotoField({ photoType, responseId, ownerId, unitName, value, onChange 
         });
       });
       const { latitude, longitude, accuracy } = position.coords;
-      if (accuracy > 100) throw new Error(`GPS accuracy is ±${Math.round(accuracy)} m; improve the location fix to 100 m or better.`);
-      if (accuracy > 50 && !window.confirm(`GPS accuracy is ±${Math.round(accuracy)} m. Capture this photo anyway?`)) return;
+      const capturedAt = new Date(position.timestamp).toISOString();
+      const metadataError = photoMetadataError({ latitude, longitude, accuracy_m: accuracy, captured_at: capturedAt });
+      if (metadataError) throw new Error(metadataError);
+      if (accuracy > PHOTO_ACCURACY_WARNING_M &&
+          !window.confirm(`GPS accuracy is ±${Math.round(accuracy)} m. Capture this photo anyway?`)) return;
 
       const video = videoRef.current;
       if (!video?.videoWidth || !video.videoHeight) throw new Error('Camera is not ready yet.');
@@ -231,7 +237,6 @@ function PhotoField({ photoType, responseId, ownerId, unitName, value, onChange 
       if (!context) throw new Error('Unable to process the camera image.');
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      const capturedAt = new Date(position.timestamp).toISOString();
       const watermarkHeight = Math.max(54, Math.round(canvas.height * 0.12));
       context.fillStyle = 'rgba(0, 0, 0, 0.68)';
       context.fillRect(0, canvas.height - watermarkHeight, canvas.width, watermarkHeight);
@@ -1167,7 +1172,7 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
                   return;
                 }
                 if (questionCode === 'H_SOLID_WASTE' && field.key === 'disposal_method_ids') {
-                  const updated = { ...map, [field.key]: next };
+                  const updated: Record<string, unknown> = { ...map, [field.key]: next };
                   delete updated.other_text;
                   onChange(updated);
                   return;
@@ -1687,18 +1692,24 @@ function QuestionField({
 
 // ─── Section scroll strip ─────────────────────────────────────────────────────
 function SectionStrip({
-  sections, current, answers, onClick,
+  sections, current, statusForSection, onClick,
 }: {
   sections:  SurveySection[];
   current:   number;
-  answers:   Record<number, any>;
+  statusForSection: (section: SurveySection) => SectionStatus;
   onClick:   (i: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const el = scrollRef.current?.children[current] as HTMLElement | undefined;
-    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    const container = scrollRef.current;
+    const el = container?.children[current] as HTMLElement | undefined;
+    if (container && el) {
+      container.scrollTo({
+        left: el.offsetLeft - (container.clientWidth - el.offsetWidth) / 2,
+        behavior: 'smooth',
+      });
+    }
   }, [current]);
 
   return (
@@ -1715,13 +1726,9 @@ function SectionStrip({
         scrollbarWidth: 'thin', scrollbarColor: 'var(--border) transparent',
       } as React.CSSProperties}>
         {sections.map((sec, i) => {
-          const mandatory = sec.questions.filter((q) => q.is_required);
-          const answered  = mandatory.filter((q) => {
-            const v = answers[q.question_id];
-            return v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && !v.length);
-          });
-          const complete  = mandatory.length === 0 || answered.length === mandatory.length;
-          const partial   = answered.length > 0 && !complete;
+          const status = statusForSection(sec);
+          const complete = status === 'done';
+          const partial = status === 'partial';
           const isActive  = i === current;
 
           let bg     = 'var(--surface)';
@@ -1733,6 +1740,8 @@ function SectionStrip({
 
           return (
             <button key={sec.section_id} onClick={() => onClick(i)} title={sec.title}
+              aria-current={isActive ? 'step' : undefined}
+              aria-label={`Section ${sec.section_code}: ${isActive ? 'current' : status}`}
               style={{ flexShrink: 0, display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
                 width: 56, height: 52, borderRadius: 10,
@@ -1764,8 +1773,11 @@ export default function SurveyPage() {
   const { form, fetchForm, formLoading, formError, isOnline } = useSurvey();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [currentSection, setCurrentSection] = useState(0);
+  const currentSection = surveySectionIndex(form?.sections ?? [], searchParams.get('section'));
   const [answers,  setAnswers]  = useState<Record<number, any>>({});
   const [errors,   setErrors]   = useState<Record<number, string>>({});
   const [saving,   setSaving]   = useState(false);
@@ -1775,6 +1787,14 @@ export default function SurveyPage() {
   const [responseId] = useState(() => id || uuidv4());
   const [startedAt]  = useState(() => new Date().toISOString());
   const topRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    scrollSurveyToTop(topRef.current);
+  }, [currentSection, form, existingResponseLoaded, location.key]);
+
+  useEffect(() => {
+    if (navigationType === 'POP') setErrors({});
+  }, [location.key, navigationType]);
 
   // Load draft if editing
   useEffect(() => {
@@ -2053,25 +2073,27 @@ export default function SurveyPage() {
     }
   };
 
-  const scrollTop = () => topRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollTop = () => scrollSurveyToTop(topRef.current);
+  const setCurrentSection = (index: number) => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('section', form.sections[index].section_code);
+    setSearchParams(nextParams);
+  };
 
   const goNext = () => {
     if (!validateSection()) { scrollTop(); return; }
-    setCurrentSection((s) => s + 1);
+    setCurrentSection(Math.min(currentSection + 1, form.sections.length - 1));
     setErrors({});
-    scrollTop();
   };
 
   const goPrev = () => {
-    setCurrentSection((s) => Math.max(0, s - 1));
+    setCurrentSection(Math.max(0, currentSection - 1));
     setErrors({});
-    scrollTop();
   };
 
   const jumpTo = (i: number) => {
     setCurrentSection(i);
     setErrors({});
-    scrollTop();
   };
 
   const submitSurvey = async () => {
@@ -2090,7 +2112,6 @@ export default function SurveyPage() {
             validationError(q) ?? 'Complete the required fields.',
           ]),
       ));
-      scrollTop();
       return;
     }
     setSaving(true);
@@ -2157,7 +2178,7 @@ export default function SurveyPage() {
         <div style={{ marginBottom: 8 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Overall completion
+              Required field completion
             </span>
             <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>
               {answeredMandatory}/{totalMandatory} required · {progress}%
@@ -2170,7 +2191,9 @@ export default function SurveyPage() {
         </div>
 
         {/* Section strip */}
-        <SectionStrip sections={form.sections} current={currentSection} answers={answers} onClick={jumpTo} />
+        <SectionStrip sections={form.sections} current={currentSection}
+          statusForSection={(candidate) => surveySectionStatus(candidate, allQs, answers, questionIsIncomplete)}
+          onClick={jumpTo} />
 
         {/* Active section label */}
         <div style={{ padding: '0 4px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>

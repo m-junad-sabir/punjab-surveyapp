@@ -2,6 +2,28 @@
 
 All notable application changes are recorded here, grouped by the categories below.
 
+## 2026-11-02 — Workplan 2 Phases 11 and 12
+
+### Added
+
+- Added migration 14 for the owner-approved 250 m accuracy limit on both required Section L photos, preserving historical rows with `NOT VALID` checks and owner verification queries.
+- Added boundary tests for photo capture/upload metadata and tests for section coverage, conditional visibility, draft reload, and scroll-container targeting.
+
+### Changed
+
+- Section L accepts accuracy through 250 m, retaining confirmation above 50 m and all existing camera, JPEG, size, and ownership restrictions.
+- Section Done requires an answer to every visible question and valid required fields, as selected by the owner. Empty sections show Pending; partial/invalid sections remain Partial; current status remains distinct. Optional submission requirements are unchanged.
+- Renamed the existing progress bar to Required field completion to distinguish it from all-question section status.
+
+### Fixed
+
+- Section navigation resets the actual page scroll container after rendering. Section-strip scrolling only moves horizontally, and selected sections survive browser Back/Forward through URL state.
+- Added an explicit type to the existing solid-waste field update so frontend type-checking passes without changing its behavior.
+
+Phases 9 and 10 are temporarily deferred for client delivery. Migration 14 and live-device/offline verification remain owner-managed; no SQL or deployment was performed.
+
+Validation passed: 167 backend tests, 46 frontend tests, frontend TypeScript checks, both production builds, and mocked desktop/mobile-sized browser checks for navigation, status, both 250 m photos, draft reload, optional submission, and PDF metadata.
+
 ## 2026-11-01 — Workplan 2 Phase 8
 
 ### Added

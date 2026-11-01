@@ -255,11 +255,18 @@
 
 ## Phase 11 — Section L: Photo GPS accuracy
 
-1. Raise the GPS accuracy radius to 250 m only after confirming this is the intended policy for both required photos.
+1. Raise the GPS accuracy radius to 250 m. The owner confirmed this applies to both required photos, retaining confirmation above 50 m and camera-only capture.
 2. Update the camera-capture UI, backend validation, persistence constraints, API DTOs, and PDF/metadata checks together. Reconcile the existing database limit of 100 m and earlier photo-capture policy before migration.
 3. Keep location acquisition and camera-only capture requirements intact; do not relax unrelated photo ownership, MIME, size, or location-coordinate checks.
 
 **Exit checks:** Test accuracy below, at, and above 250 m, missing location, both photo types, offline capture/sync, and enforcement by API and database.
+
+### Implementation and outstanding verification
+
+- Camera capture and draft validation use the 250 m limit; the API enforces the same boundary and requires nonblank location/timestamp metadata. JPEG, 3 MB, UUID, photo-type, and account-ownership rules are unchanged.
+- Migration 14 replaces the upload accuracy check and adds an accuracy check for geotagged attachments. Both are `NOT VALID` to preserve historical rows while enforcing new writes. Fresh setup runs migration 05 followed by the approved upgrades, including migration 14.
+- Local validation passed: 167 backend tests, 46 frontend tests, frontend TypeScript checks, and both production builds. A mocked browser camera/GPS check rejected 251 m, captured both photos at 250 m, retained their Blobs through draft reload, and verified both PDF accuracy captions. API/storage persistence was tested with mocks; no live database or physical-device check was performed.
+- **Owner action before release:** back up and apply migration 14, inspect its verification queries and historical violations, then verify real-device camera capture, offline reload, upload/sync, and PDF metadata. No SQL or deployment is performed by this implementation.
 
 ## Phase 12 — Survey navigation and section status UI
 
@@ -269,6 +276,13 @@
 4. **Deferred:** Removing question codes from all questions is explicitly marked “will do later”; leave it out of this delivery unless separately approved.
 
 **Exit checks:** Test section navigation on desktop and mobile-sized viewports; empty, partial, completed, and conditionally complete sections show the correct status.
+
+### Implementation and completion policy
+
+- The owner selected **an answer to every visible question for Done**. Empty sections remain Pending; partly answered or invalid sections are Partial. Matrix coverage includes each row; explicit zero and No count as answers. Hidden questions do not block completion. This status rule does not make optional questions mandatory for saving or submission.
+- Next, Previous, and section buttons store the selected section in the URL. Browser Back/Forward restores it. Vertical scrolling resets the actual page container after the section renders; horizontal section-strip scrolling no longer moves the page vertically.
+- Desktop and mobile-sized browser checks passed for Next, Previous, section buttons, same-section clicks, Back/Forward, Pending/Partial/Done/current states, gate changes, cached draft reload with the API unavailable, and unchanged optional submission behavior. The progress bar is labeled Required field completion to distinguish it from all-question section coverage.
+- Question codes remain visible as explicitly deferred. Phases 9 and 10 are temporarily skipped for this delivery; their existing behavior is unchanged.
 
 ## Phase 13 — Full regression, migration readiness, and release
 
@@ -303,8 +317,8 @@
 | 6 Sections E and F | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 11 and live/offline verification remain |
 | 7 Section G | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 12 and live/offline verification remain |
 | 8 Section H | Implementation and automated tests complete; owner-managed migration 13 and live/offline verification remain |
-| 9 Sections I and J | Not started |
-| 10 Section K | Not started |
-| 11 Section L | Not started |
-| 12 Navigation and section status UI | Not started |
+| 9 Sections I and J | Temporarily deferred by the owner for client delivery |
+| 10 Section K | Temporarily deferred by the owner for client delivery |
+| 11 Section L | Implementation, automated tests, and mocked browser checks complete; owner-managed migration 14 and live-device verification remain |
+| 12 Navigation and section status UI | Implementation, automated tests, and desktop/mobile-sized browser checks complete |
 | 13 Regression, migration readiness, and release | Not started |

@@ -58,6 +58,7 @@ For manual upgrades, run these against each target database in order using
 10. [Migration 11: Section E/F lookups](database/migration_11_section_e_f_lookups.sql)
 11. [Migration 12: Section G machinery](database/migration_12_section_g_machinery.sql)
 12. [Migration 13: Section H energy and gates](database/migration_13_section_h_energy_and_gates.sql)
+13. [Migration 14: photo GPS accuracy up to 250 m](database/migration_14_photo_accuracy_250m.sql)
 
 Load classification references before migration 07; it fails if a mapped
 class is missing. Apply SQL before deploying its code, then reopen online to
@@ -222,8 +223,9 @@ Section L requires an interview-session photo and an enumerator-at-entrance/
 signboard photo. Both use the rear camera with no gallery picker. Camera access
 requires HTTPS or localhost and browser permission; a laptop webcam may not
 satisfy the required rear-facing camera constraint. Test the workflow on a phone.
-GPS accuracy up to 50 m is accepted; 50-100 m asks for confirmation; worse than
-100 m or denied location blocks capture. Images are watermarked, JPEG-compressed,
+GPS accuracy up to 50 m is accepted; over 50 m through 250 m asks for confirmation;
+over 250 m or denied location blocks capture. Apply migration 14 before deploying
+the updated API/frontend. Images are watermarked, JPEG-compressed,
 saved offline as Blobs, and uploaded before the survey JSON. The server accepts
 at most 3 MB per photo. JPEG/GPS validation does not prove capture authenticity;
 browser location metadata can be spoofed.

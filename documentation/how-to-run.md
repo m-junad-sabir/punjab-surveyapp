@@ -103,7 +103,7 @@ SQL execution and stop on the first SQL error. No arguments show help only;
 `/plan` prints the exact sequence without connecting to PostgreSQL.
 
 Fresh setup enables required extensions, loads the schema/base seed,
-then reference seeds/updates and implemented migrations 01-05 and 07-13. Existing
+then reference seeds/updates and implemented migrations 01-05 and 07-14. Existing
 database migration requires an active form version 3 or newer. Back up before:
 
 ```powershell
@@ -148,6 +148,7 @@ psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_10_
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_11_section_e_f_lookups.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_12_section_g_machinery.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_13_section_h_energy_and_gates.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_14_photo_accuracy_250m.sql
 ```
 
 These examples use your psql PG environment; adjust it for the target server.
@@ -291,8 +292,16 @@ classification references and migration 07 before testing this workflow.
 Section L, immediately before submit, requires interview-session and entrance/
 signboard photos. Allow camera/location permissions over HTTPS or localhost.
 The current rear-camera constraint may reject laptop webcams. On a phone,
-accuracy up to 50 m passes; 50-100 m asks for confirmation; over 100 m blocks
+accuracy up to 50 m passes; over 50 m through 250 m asks for confirmation; over 250 m blocks
 capture. Files are watermarked JPEGs stored locally as Blobs and uploaded first.
+Apply migration 14 before deploying the 250 m policy. Its `NOT VALID` checks
+enforce new writes while retaining historical rows; review violations before
+validating the constraints.
+
+Survey sections open at the top on Next, Previous, section-button navigation,
+and browser Back/Forward. Section Done requires all visible questions to have
+answers; Partial indicates incomplete coverage or invalid required fields.
+The separate required-field progress bar and optional submission rules are unchanged.
 
 Local storage uses `backend/uploads` when started from the backend folder. For
 Render, use private R2 storage with `STORAGE_DRIVER=s3`, `S3_REGION=auto`,

@@ -1,5 +1,6 @@
 import type { SurveyInputField, SurveyQuestion } from '../types';
 import { isSectionGFieldVisible } from './sectionG';
+import { photoMetadataError } from './photoCapture';
 
 function fieldFormatError(field: SurveyInputField, value: unknown): string | null {
   if (value === undefined || value === null || value === '') return null;
@@ -33,6 +34,9 @@ function fieldValue(row: unknown, key: string): unknown {
 }
 
 export function questionFormatError(question: SurveyQuestion, value: unknown): string | null {
+  if (question.answer_type === 'PHOTO' && value !== undefined && value !== null) {
+    return photoMetadataError(value);
+  }
   const rows = question.repeatable ? (Array.isArray(value) ? value : []) : [value];
   for (const row of rows) {
     for (const field of question.fields ?? []) {
