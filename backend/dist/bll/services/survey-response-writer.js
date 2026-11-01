@@ -1,5 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.clearHiddenSurveyAnswers = clearHiddenSurveyAnswers;
+exports.validateSectionAAnswers = validateSectionAAnswers;
+exports.updateExistingUnitCapitalInvestment = updateExistingUnitCapitalInvestment;
 exports.createIndustrialUnit = createIndustrialUnit;
 exports.saveNormalizedSurveyAnswers = saveNormalizedSurveyAnswers;
 function record(value) {
@@ -26,6 +29,112 @@ function field(answers, code, key) {
 function rows(answers, code) {
     const value = answers.get(code);
     return Array.isArray(value) ? value.map(record) : [];
+}
+async function clearHiddenSurveyAnswers(manager, answers) {
+    const parentCompany = field(answers, 'A_PARENT_COMPANY', 'has_parent_company') === true;
+    if (!parentCompany) {
+        answers.delete('A_PARENT_COMPANY_DETAILS');
+        answers.delete('A_ASSOCIATED_ESTABLISHMENTS');
+    }
+    const operationStatusId = selectionId(answers.get('B_OPERATION_STATUS'));
+    const operationStatusRows = operationStatusId === null
+        ? []
+        : await manager.query(`SELECT lv.code
+         FROM lookup_values lv
+         JOIN lookup_types lt ON lt.id = lv.type_id
+        WHERE lv.id = $1 AND lv.is_active = true AND lt.code = 'OPERATION_STATUS'`, [operationStatusId]);
+    if (operationStatusId !== null && !operationStatusRows[0]) {
+        throw new Error('The selected operation status is not present in the active reference list.');
+    }
+    const operationStatus = operationStatusRows[0]?.code ?? null;
+    if (operationStatus !== 'PERM_CLOSED') {
+        answers.delete('B_CLOSURE_REASON');
+    }
+    if (operationStatus === null || operationStatus === 'PERM_CLOSED') {
+        answers.delete('B_OPERATION_MONTHS');
+        answers.delete('B_OPERATIONAL_HOURS');
+    }
+    if (field(answers, 'E_SUPPLY_DISRUPTION', 'had_supply_disruption') !== true) {
+        answers.delete('E_SUPPLY_DISRUPTION_REASON');
+    }
+    if (field(answers, 'F_DEMAND_GAP', 'had_demand_gap') !== true) {
+        answers.delete('F_DEMAND_GAP_REASON');
+    }
+    if (field(answers, 'K_FUTURE_PLAN', 'has_future_plan') !== true) {
+        for (const questionCode of answers.keys()) {
+            if (questionCode.startsWith('K_') && questionCode !== 'K_FUTURE_PLAN') {
+                answers.delete(questionCode);
+            }
+        }
+    }
+    return operationStatus === 'PERM_CLOSED';
+}
+function validatePhone(value, label) {
+    if (value === undefined || value === null || value === '')
+        return;
+    if (typeof value !== 'string' || !/^\d{11}$/.test(value)) {
+        throw new Error(`${label} must contain exactly 11 digits.`);
+    }
+}
+function validateEmail(value, label) {
+    if (value === undefined || value === null || value === '')
+        return;
+    if (typeof value !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
+        throw new Error(`${label} must be a valid email address.`);
+    }
+}
+async function validateSectionAAnswers(manager, answers) {
+    const contact = record(answers.get('A_CONTACT'));
+    validatePhone(contact.contact_phone, 'Establishment mobile number');
+    validateEmail(contact.contact_email, 'Establishment email');
+    if (field(answers, 'A_PARENT_COMPANY', 'has_parent_company') === true) {
+        const parent = record(answers.get('A_PARENT_COMPANY_DETAILS'));
+        validatePhone(parent.phone, 'Parent company phone');
+        validatePhone(parent.cell, 'Parent company cell number');
+        validateEmail(parent.email, 'Parent company email');
+    }
+    const investment = record(answers.get('A_TOTAL_CAPITAL_INVESTMENT'));
+    const investmentAmount = investment.total_capital_investment;
+    const investmentUnitId = selectionId(investment.capital_investment_unit_id);
+    const amount = number(investmentAmount);
+    const hasAmount = investmentAmount !== undefined && investmentAmount !== null && investmentAmount !== '';
+    const hasUnit = investmentUnitId !== null;
+    if (hasAmount !== hasUnit) {
+        throw new Error('Enter both the total capital investment amount and its currency unit.');
+    }
+    if (hasAmount && (amount === null || amount < 0)) {
+        throw new Error('Total capital investment must be a non-negative number.');
+    }
+    if (hasUnit) {
+        const units = await manager.query(`SELECT lv.id
+         FROM lookup_values lv
+         JOIN lookup_types lt ON lt.id = lv.type_id
+        WHERE lv.id = $1 AND lv.is_active = true AND lt.code = 'CAPITAL_INVESTMENT_UNIT'`, [investmentUnitId]);
+        if (!units[0])
+            throw new Error('Choose a valid capital investment currency unit.');
+    }
+    for (const interviewee of rows(answers, 'A_INTERVIEWEES')) {
+        if (isBlank(interviewee))
+            continue;
+        if (typeof interviewee.name !== 'string' || !interviewee.name.trim() ||
+            typeof interviewee.designation !== 'string' || !interviewee.designation.trim()) {
+            throw new Error('Each interviewee entry must include a name and designation.');
+        }
+        validatePhone(interviewee.contact_number, 'Interviewee contact number');
+        if (typeof interviewee.contact_number !== 'string' || !interviewee.contact_number) {
+            throw new Error('Each interviewee entry must include a contact number.');
+        }
+    }
+    for (const establishment of rows(answers, 'A_ASSOCIATED_ESTABLISHMENTS')) {
+        if (isBlank(establishment))
+            continue;
+        const classId = selectionId(establishment.major_activity_psic_class_id);
+        if (classId === null)
+            continue;
+        const classes = await manager.query('SELECT id FROM psic_classes WHERE id = $1', [classId]);
+        if (!classes[0])
+            throw new Error('Choose a valid PSIC class for the associated establishment.');
+    }
 }
 function selectionIds(value) {
     const list = Array.isArray(value) ? value : record(value).option_ids;
@@ -96,6 +205,20 @@ async function resolveHsCode(manager, value) {
     if (!selected)
         throw new Error('The selected HS code is not present in the reference list.');
     return { id: selected.id, text: `${selected.code} - ${selected.description}` };
+}
+async function updateExistingUnitCapitalInvestment(manager, unitId, answers) {
+    const investment = record(answers.get('A_TOTAL_CAPITAL_INVESTMENT'));
+    const amount = investment.total_capital_investment;
+    const unitIdValue = selectionId(investment.capital_investment_unit_id);
+    if (amount === undefined || amount === null || amount === '' || unitIdValue === null)
+        return;
+    const updated = await manager.query(`UPDATE industrial_units
+        SET total_capital_investment = $2,
+            capital_investment_unit_id = $3
+      WHERE id = $1
+      RETURNING id`, [unitId, number(amount), unitIdValue]);
+    if (!updated[0])
+        throw new Error('The existing establishment could not be updated with its capital investment.');
 }
 async function createIndustrialUnit(manager, userId, answers, unitName, gps, legacyLocationFallback) {
     const location = record(answers.get('A_LOCATION'));
@@ -175,6 +298,7 @@ async function createIndustrialUnit(manager, userId, answers, unitName, gps, leg
     }
     const selectedPsic = await resolvePsicSelection(manager, psic);
     const area = record(answers.get('A_ESTABLISHMENT_AREA'));
+    const investment = record(answers.get('A_TOTAL_CAPITAL_INVESTMENT'));
     const ownership = field(answers, 'A_OWNERSHIP', 'ownership_type_id');
     const legalStructure = field(answers, 'A_LEGAL_STRUCTURE', 'legal_structure_id');
     const zoneType = field(answers, 'A_ZONE_TYPE', 'zone_type_id');
@@ -192,14 +316,15 @@ async function createIndustrialUnit(manager, userId, answers, unitName, gps, leg
        legal_structure_id, legal_structure_other_text,
        has_parent_company, total_area_value, total_area_unit_id,
        industrial_estate_id, industrial_estate_text,
-       industrial_cluster_id, industrial_cluster_text, approval_status, created_by
+       industrial_cluster_id, industrial_cluster_text, approval_status, created_by,
+       total_capital_investment, capital_investment_unit_id
      ) VALUES (
        $1, $2,
        CASE WHEN $3::numeric IS NULL OR $4::numeric IS NULL THEN NULL
             ELSE ST_SetSRID(ST_MakePoint($4, $3), 4326) END,
        $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
        $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-       $31, $32, $33, $34, $35, $36, $37, 'PENDING', $38
+       $31, $32, $33, $34, $35, $36, $37, 'PENDING', $38, $39, $40
      ) RETURNING id`, [
         unitName.trim(),
         number(field(answers, 'A_ESTABLISHMENT_YEAR', 'establishment_year')),
@@ -239,6 +364,8 @@ async function createIndustrialUnit(manager, userId, answers, unitName, gps, leg
         null,
         area.industrial_cluster_text ?? null,
         userId,
+        number(investment.total_capital_investment),
+        selectionId(investment.capital_investment_unit_id),
     ]);
     const unitId = inserted[0]?.id;
     if (!unitId)
@@ -268,25 +395,43 @@ async function createIndustrialUnit(manager, userId, answers, unitName, gps, leg
         if (typeof establishment.name !== 'string' || !establishment.name.trim()) {
             throw new Error('Enter a name for each associated establishment row.');
         }
+        const majorActivityClassId = selectionId(establishment.major_activity_psic_class_id);
         await manager.query(`INSERT INTO unit_associated_establishments
          (unit_id, name, address, major_activity_psic_class_id, major_activity_text)
-       VALUES ($1, $2, $3, NULL, $4)`, [
+       VALUES ($1, $2, $3, $4, $5)`, [
             unitId,
             establishment.name.trim(),
             establishment.address ?? null,
+            majorActivityClassId,
             establishment.major_activity_text ?? null,
         ]);
     }
     return unitId;
 }
-async function saveNormalizedSurveyAnswers(manager, responseId, answers, questions) {
+async function saveNormalizedSurveyAnswers(manager, responseId, answers, questions, isPermanentlyClosed = false) {
+    for (const interviewee of rows(answers, 'A_INTERVIEWEES')) {
+        if (isBlank(interviewee))
+            continue;
+        if (typeof interviewee.name !== 'string' || !interviewee.name.trim() ||
+            typeof interviewee.designation !== 'string' || !interviewee.designation.trim() ||
+            typeof interviewee.contact_number !== 'string' || !interviewee.contact_number) {
+            throw new Error('Each interviewee entry must include a name, designation, and contact number.');
+        }
+        await manager.query(`INSERT INTO response_interviewees (response_id, name, designation, contact_number)
+       VALUES ($1, $2, $3, $4)`, [
+            responseId,
+            interviewee.name.trim(),
+            interviewee.designation.trim(),
+            interviewee.contact_number,
+        ]);
+    }
     const operatingMonths = selectionIds(field(answers, 'B_OPERATION_MONTHS', 'operating_months'));
     const operationStatus = selectionId(answers.get('B_OPERATION_STATUS'));
     const dailyHours = number(field(answers, 'B_OPERATIONAL_HOURS', 'daily_hours'));
     const daysPerWeek = number(field(answers, 'B_OPERATIONAL_HOURS', 'working_days_per_week'));
     await manager.query(`INSERT INTO sec_b_operations
        (response_id, operating_months, operation_status_id, closure_reason, daily_shift_id, daily_hours, working_days_per_week)
-     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 6))`, [
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
         responseId,
         operatingMonths.length ? operatingMonths : null,
         operationStatus,
@@ -295,7 +440,7 @@ async function saveNormalizedSurveyAnswers(manager, responseId, answers, questio
             ? null
             : selectionId(field(answers, 'B_OPERATIONAL_HOURS', 'daily_shift_id')),
         dailyHours,
-        daysPerWeek,
+        isPermanentlyClosed ? null : daysPerWeek ?? 6,
     ]);
     for (const product of rows(answers, 'C_PRODUCTS')) {
         if (isBlank(product))

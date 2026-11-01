@@ -2,6 +2,7 @@
 
 > Source: `Indexes & Composite Indexes (2).csv`
 > Companion to: `Master_Inspection_Schema.md` and `Unique_Check_Constraints.md`
+> This is a historical database snapshot and does not include the indexes added by Workplan 2 migration 08; that migration has not been applied to a live database by this implementation.
 > Conventions:
 > - `pkey` = primary-key backing index (UNIQUE btree).
 > - `*_key` = UNIQUE constraint backing index.

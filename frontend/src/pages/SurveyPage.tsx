@@ -654,6 +654,13 @@ function InputFieldControl({ field, value, onChange, disabled, manualValue, onMa
     case 'TEXT':
       return <input className="form-input" value={value ?? ''}
         onChange={(event) => onChange(event.target.value)} placeholder="Enter text…" />;
+    case 'PHONE':
+      return <input className="form-input" type="tel" inputMode="numeric" maxLength={11}
+        pattern="[0-9]{11}" value={value ?? ''}
+        onChange={(event) => onChange(event.target.value)} placeholder="11-digit mobile number" />;
+    case 'EMAIL':
+      return <input className="form-input" type="email" autoComplete="email" value={value ?? ''}
+        onChange={(event) => onChange(event.target.value)} placeholder="name@example.com" />;
     case 'NUMBER':
       return <input className="form-input" type="number" value={value ?? ''}
         onChange={(event) => onChange(event.target.value === '' ? null : Number(event.target.value))}
@@ -668,7 +675,7 @@ function InputFieldControl({ field, value, onChange, disabled, manualValue, onMa
         </select>
       );
     case 'SINGLE_CHOICE':
-      if (['psic_divisions', 'psic_groups', 'psic_classes', 'hs_codes'].includes(field.reference ?? '')) {
+      if (['psic_divisions', 'psic_groups', 'psic_classes', 'associated_psic_classes', 'hs_codes'].includes(field.reference ?? '')) {
         return (
           <SearchableReferenceField
             options={field.options}
@@ -756,6 +763,7 @@ function FieldGroup({ fields, value, onChange, references }: {
               value={controlValue}
               disabled={
                 ['psic_groups', 'psic_classes'].includes(field.reference ?? '') &&
+                Boolean(parentKey[field.key]) &&
                 parentValue == null &&
                 !map[parentTextKey ?? '']
               }
@@ -1267,6 +1275,20 @@ function isEmptyAnswer(value: any): boolean {
     (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
 }
 
+function hasFieldFormatError(field: SurveyInputField, value: unknown): boolean {
+  if (value === undefined || value === null || value === '') return false;
+  if (field.type === 'PHONE') return typeof value !== 'string' || !/^\d{11}$/.test(value);
+  if (field.type === 'EMAIL') {
+    return typeof value !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  }
+  return false;
+}
+
+function fieldValue(row: unknown, key: string): unknown {
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) return undefined;
+  return (row as Record<string, unknown>)[key];
+}
+
 // ─── Main SurveyPage ──────────────────────────────────────────────────────────
 export default function SurveyPage() {
   const { id }   = useParams<{ id: string }>();
@@ -1381,6 +1403,14 @@ export default function SurveyPage() {
 
   const questionIsIncomplete = (q: SurveyQuestion): boolean => {
     const value = answers[q.question_id];
+    const fields = q.fields ?? [];
+    const formatError = (row: unknown) =>
+      fields.some((field) => hasFieldFormatError(field, fieldValue(row, field.key)));
+    if (q.repeatable) {
+      if ((Array.isArray(value) ? value : []).some(formatError)) return true;
+    } else if (formatError(value)) {
+      return true;
+    }
     if (q.question_code === 'A_UNIT_TYPE') {
       const option = q.options.find((candidate) => candidate.id === selectedOptionId(value));
       return !option || (option.requires_text && !selectedOtherText(value).trim());
@@ -1393,7 +1423,6 @@ export default function SurveyPage() {
     }
     if (q.answer_type === 'PHOTO') return q.is_required && !value?.photo_id;
     if (q.is_required && isEmptyAnswer(value)) return true;
-    const fields = q.fields ?? [];
     if (!fields.length) return false;
     if (q.repeatable) {
       return (Array.isArray(value) ? value : []).some((row) =>
@@ -1433,7 +1462,18 @@ export default function SurveyPage() {
     const errs: Record<number, string> = {};
     for (const q of section.questions) {
       if (!showQuestion(q)) continue;
-      if (questionIsIncomplete(q)) errs[q.question_id] = 'Complete the required fields.';
+      const value = answers[q.question_id];
+      const fields = q.fields ?? [];
+      const formatError = (row: unknown) =>
+        fields.some((field) => hasFieldFormatError(field, fieldValue(row, field.key)));
+      const invalidFormat = q.repeatable
+        ? (Array.isArray(value) ? value : []).some(formatError)
+        : formatError(value);
+      if (invalidFormat) {
+        errs[q.question_id] = 'Enter an 11-digit phone number and a valid email address.';
+      } else if (questionIsIncomplete(q)) {
+        errs[q.question_id] = 'Complete the required fields.';
+      }
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;

@@ -2,6 +2,7 @@
 
 > Source: `Unique & Check Constraints (2).csv`
 > Companion to: `Master_Inspection_Schema.md`
+> This is a historical database snapshot and does not include constraints added by Workplan 2 migration 08; that migration has not been applied to a live database by this implementation.
 > Conventions:
 > - `UNIQUE` constraints are listed by columns (single or composite).
 > - `CHECK` constraints include the full `check_clause`.

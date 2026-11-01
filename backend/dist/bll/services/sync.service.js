@@ -86,6 +86,8 @@ let SyncService = class SyncService {
                             throw new Error(`Question ${answer.question_id} is not part of this form.`);
                         answers.set(question.question_code, answer.answer_value);
                     }
+                    const isPermanentlyClosed = await (0, survey_response_writer_1.clearHiddenSurveyAnswers)(trx, answers);
+                    await (0, survey_response_writer_1.validateSectionAAnswers)(trx, answers);
                     const gpsValue = answers.get('A_LOCATION_GPS');
                     const gpsRecord = gpsValue && typeof gpsValue === 'object'
                         ? gpsValue.location
@@ -141,6 +143,9 @@ let SyncService = class SyncService {
                         lng: gpsLng,
                         accuracy: gpsAccuracy,
                     }, !questions.some((question) => question.question_code === 'A_LOCATION'));
+                    if (resp.unit_id) {
+                        await (0, survey_response_writer_1.updateExistingUnitCapitalInvestment)(trx, linkedUnitId, answers);
+                    }
                     const surveyResp = trx.create(survey_response_entity_1.SurveyResponse, {
                         id: resp.response_id,
                         form_id: resp.form_id,
@@ -157,7 +162,7 @@ let SyncService = class SyncService {
                         synced_at: new Date(),
                     });
                     await trx.save(survey_response_entity_1.SurveyResponse, surveyResp);
-                    await (0, survey_response_writer_1.saveNormalizedSurveyAnswers)(trx, resp.response_id, answers, questions);
+                    await (0, survey_response_writer_1.saveNormalizedSurveyAnswers)(trx, resp.response_id, answers, questions, isPermanentlyClosed);
                     await this.photoService.attachRequiredPhotos(trx, resp.form_id, resp.response_id, user_id, answers);
                     if (isDuplicate && matchedUnitId) {
                         await trx.save(duplicate_flag_entity_1.DuplicateFlag, trx.create(duplicate_flag_entity_1.DuplicateFlag, {

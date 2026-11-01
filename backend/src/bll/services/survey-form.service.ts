@@ -30,6 +30,14 @@ const ROMAN_NUMERALS: Record<string, number> = {
   ix: 9, x: 10, xi: 11, xii: 12, xiii: 13, xiv: 14, xv: 15, xvi: 16,
 };
 
+function questionNumberOrder(value: string | null): number {
+  const match = value?.match(/^([ivxlcdm]+)(?:\(([a-z])\))?$/i);
+  if (!match) return 0;
+  const romanOrder = ROMAN_NUMERALS[match[1].toLowerCase()] ?? 0;
+  const subQuestionOrder = match[2] ? match[2].toLowerCase().charCodeAt(0) - 96 : 0;
+  return romanOrder * 100 + subQuestionOrder;
+}
+
 @Injectable()
 export class SurveyFormService {
   constructor(
@@ -173,8 +181,7 @@ export class SurveyFormService {
         sort_order:   sec.sort_order,
         questions: [...(qBySection.get(sec.id) ?? [])]
           .sort((a, b) =>
-            (ROMAN_NUMERALS[a.question_no?.toLowerCase() ?? ''] ?? 0) -
-            (ROMAN_NUMERALS[b.question_no?.toLowerCase() ?? ''] ?? 0),
+            questionNumberOrder(a.question_no) - questionNumberOrder(b.question_no),
           )
           .map((q) => ({
           question_id:    q.id,

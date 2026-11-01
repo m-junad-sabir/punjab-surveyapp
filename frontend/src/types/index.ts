@@ -77,7 +77,7 @@ export type AnswerType =
 export interface SurveyInputField {
   key:          string;
   label:        string;
-  type:         'TEXT' | 'NUMBER' | 'YES_NO' | 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'SHARE_PERCENT' | 'GPS' | 'MONTHS';
+  type:         'TEXT' | 'PHONE' | 'EMAIL' | 'NUMBER' | 'YES_NO' | 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'SHARE_PERCENT' | 'GPS' | 'MONTHS';
   lookup_type?: string;
   reference?:   string;
   required?:    boolean;

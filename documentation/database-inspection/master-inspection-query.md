@@ -3,6 +3,7 @@
 > Source: `Master Inspection Query New (2).csv`
 > Format: one section per table; columns listed in ordinal order.
 > Conventions: `PK` = primary key, `FK` = foreign key, `ID` = generated identity, `NN` = NOT NULL, `NULL` = nullable.
+> This is a historical database snapshot. Workplan 2 migration 08 adds Section A fields and `response_interviewees`; it has not been applied to a live database by this implementation.
 
 ## Table Index
 

@@ -3,7 +3,140 @@ import {
   clearHiddenSurveyAnswers,
   createIndustrialUnit,
   saveNormalizedSurveyAnswers,
+  updateExistingUnitCapitalInvestment,
+  validateSectionAAnswers,
 } from './survey-response-writer';
+
+describe('Section A validation and interviewees', () => {
+  it('accepts empty optional interviewee and capital investment answers', async () => {
+    const query = jest.fn(async (_sql: string, _parameters?: unknown[]) => []);
+    await expect(
+      validateSectionAAnswers({ query } as unknown as EntityManager, new Map()),
+    ).resolves.toBeUndefined();
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid establishment and parent-company phone/email values', async () => {
+    const query = jest.fn(async (_sql: string, _parameters?: unknown[]) => []);
+    await expect(validateSectionAAnswers(
+      { query } as unknown as EntityManager,
+      new Map([
+        ['A_CONTACT', { contact_phone: '0300123456', contact_email: 'invalid' }],
+        ['A_PARENT_COMPANY', { has_parent_company: true }],
+        ['A_PARENT_COMPANY_DETAILS', { phone: '123', cell: '03001234567', email: 'bad@' }],
+      ]),
+    )).rejects.toThrow('Establishment mobile number must contain exactly 11 digits.');
+  });
+
+  it('rejects malformed email values independently of phone validation', async () => {
+    const query = jest.fn(async (_sql: string, _parameters?: unknown[]) => []);
+    await expect(validateSectionAAnswers(
+      { query } as unknown as EntityManager,
+      new Map([['A_CONTACT', { contact_email: 'not-an-email' }]]),
+    )).rejects.toThrow('Establishment email must be a valid email address.');
+  });
+
+  it('requires capital investment amount and currency to be provided together', async () => {
+    const query = jest.fn(async (_sql: string, _parameters?: unknown[]) => []);
+    await expect(validateSectionAAnswers(
+      { query } as unknown as EntityManager,
+      new Map([['A_TOTAL_CAPITAL_INVESTMENT', { total_capital_investment: 3 }]]),
+    )).rejects.toThrow('Enter both the total capital investment amount and its currency unit.');
+  });
+
+  it('validates capital investment currency and associated-establishment PSIC references', async () => {
+    const query = jest.fn(async (sql: string) => {
+      if (sql.includes('CAPITAL_INVESTMENT_UNIT')) return [{ id: 8 }];
+      if (sql.includes('FROM psic_classes')) return [{ id: 22 }];
+      return [];
+    });
+    await expect(validateSectionAAnswers(
+      { query } as unknown as EntityManager,
+      new Map([
+        ['A_TOTAL_CAPITAL_INVESTMENT', {
+          total_capital_investment: 3,
+          capital_investment_unit_id: 8,
+        }],
+        ['A_ASSOCIATED_ESTABLISHMENTS', [{
+          name: 'Branch',
+          major_activity_psic_class_id: 22,
+        }]],
+      ]),
+    )).resolves.toBeUndefined();
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects unknown currency and PSIC reference ids', async () => {
+    const query = jest.fn(async () => []);
+    await expect(validateSectionAAnswers(
+      { query } as unknown as EntityManager,
+      new Map([['A_TOTAL_CAPITAL_INVESTMENT', {
+        total_capital_investment: 3,
+        capital_investment_unit_id: 999,
+      }]]),
+    )).rejects.toThrow('Choose a valid capital investment currency unit.');
+    await expect(validateSectionAAnswers(
+      { query } as unknown as EntityManager,
+      new Map([['A_ASSOCIATED_ESTABLISHMENTS', [{
+        name: 'Branch',
+        major_activity_psic_class_id: 999,
+      }]]]),
+    )).rejects.toThrow('Choose a valid PSIC class for the associated establishment.');
+  });
+
+  it('updates only capital investment on a linked existing unit when supplied', async () => {
+    const query = jest.fn(async () => [{ id: 'unit-id' }]);
+    await updateExistingUnitCapitalInvestment(
+      { query } as unknown as EntityManager,
+      'unit-id',
+      new Map([['A_TOTAL_CAPITAL_INVESTMENT', {
+        total_capital_investment: 5.5,
+        capital_investment_unit_id: 8,
+      }]]),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE industrial_units'),
+      ['unit-id', 5.5, 8],
+    );
+  });
+
+  it('preserves linked-unit investment when the optional answer is blank', async () => {
+    const query = jest.fn(async () => []);
+    await updateExistingUnitCapitalInvestment(
+      { query } as unknown as EntityManager,
+      'unit-id',
+      new Map(),
+    );
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('rejects partial interviewee rows and validates a complete contact number', async () => {
+    const query = jest.fn(async (_sql: string, _parameters?: unknown[]) => []);
+    await expect(validateSectionAAnswers(
+      { query } as unknown as EntityManager,
+      new Map([['A_INTERVIEWEES', [{ name: 'Person', designation: 'Manager', contact_number: '123' }]]]),
+    )).rejects.toThrow('Interviewee contact number must contain exactly 11 digits.');
+  });
+
+  it('persists each completed interviewee row against its survey response', async () => {
+    const query = jest.fn(async (_sql: string, _parameters?: unknown[]) => []);
+    await saveNormalizedSurveyAnswers(
+      { query } as unknown as EntityManager,
+      'response-id',
+      new Map([['A_INTERVIEWEES', [{
+        name: 'Person',
+        designation: 'Manager',
+        contact_number: '03001234567',
+      }]]]),
+      [],
+    );
+
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO response_interviewees'),
+      ['response-id', 'Person', 'Manager', '03001234567'],
+    );
+  });
+});
 
 describe('conditional survey answers', () => {
   it('removes stale answers from branches excluded by their controlling responses', async () => {

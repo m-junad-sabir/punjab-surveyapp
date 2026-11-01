@@ -24,6 +24,14 @@ const ROMAN_NUMERALS = {
     i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8,
     ix: 9, x: 10, xi: 11, xii: 12, xiii: 13, xiv: 14, xv: 15, xvi: 16,
 };
+function questionNumberOrder(value) {
+    const match = value?.match(/^([ivxlcdm]+)(?:\(([a-z])\))?$/i);
+    if (!match)
+        return 0;
+    const romanOrder = ROMAN_NUMERALS[match[1].toLowerCase()] ?? 0;
+    const subQuestionOrder = match[2] ? match[2].toLowerCase().charCodeAt(0) - 96 : 0;
+    return romanOrder * 100 + subQuestionOrder;
+}
 let SurveyFormService = class SurveyFormService {
     constructor(formRepo, sectionRepo, questionRepo, dataSource) {
         this.formRepo = formRepo;
@@ -128,8 +136,7 @@ let SurveyFormService = class SurveyFormService {
                 title: sec.title,
                 sort_order: sec.sort_order,
                 questions: [...(qBySection.get(sec.id) ?? [])]
-                    .sort((a, b) => (ROMAN_NUMERALS[a.question_no?.toLowerCase() ?? ''] ?? 0) -
-                    (ROMAN_NUMERALS[b.question_no?.toLowerCase() ?? ''] ?? 0))
+                    .sort((a, b) => questionNumberOrder(a.question_no) - questionNumberOrder(b.question_no))
                     .map((q) => ({
                     question_id: q.id,
                     question_code: q.question_code,

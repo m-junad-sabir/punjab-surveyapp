@@ -10,6 +10,8 @@ import {
   saveNormalizedSurveyAnswers,
   SubmittedQuestion,
   SurveyAnswers,
+  updateExistingUnitCapitalInvestment,
+  validateSectionAAnswers,
 } from './survey-response-writer';
 
 // ─── Levenshtein similarity ────────────────────────────────────────────────────
@@ -127,6 +129,7 @@ export class SyncService {
             answers.set(question.question_code, answer.answer_value);
           }
           const isPermanentlyClosed = await clearHiddenSurveyAnswers(trx, answers);
+          await validateSectionAAnswers(trx, answers);
 
           const gpsValue = answers.get('A_LOCATION_GPS');
           const gpsRecord = gpsValue && typeof gpsValue === 'object'
@@ -202,6 +205,9 @@ export class SyncService {
             },
             !questions.some((question) => question.question_code === 'A_LOCATION'),
           );
+          if (resp.unit_id) {
+            await updateExistingUnitCapitalInvestment(trx, linkedUnitId, answers);
+          }
 
           // ── Save survey response ───────────────────────────────────────────
           const surveyResp = trx.create(SurveyResponse, {

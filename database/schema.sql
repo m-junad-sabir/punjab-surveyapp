@@ -254,6 +254,10 @@ CREATE TABLE industrial_units (
   has_parent_company boolean,
   total_area_value numeric(14,2),
   total_area_unit_id integer REFERENCES measurement_units(id),
+  total_capital_investment numeric(18,2)
+    CONSTRAINT industrial_units_capital_investment_nonnegative_check
+    CHECK (total_capital_investment IS NULL OR total_capital_investment >= 0),
+  capital_investment_unit_id integer REFERENCES lookup_values(id),
   industrial_estate_id integer REFERENCES industrial_estates(id),
   industrial_estate_text text,
   industrial_cluster_id integer REFERENCES industrial_clusters(id),
@@ -305,6 +309,15 @@ CREATE TABLE survey_responses (
   confirmed_at timestamptz,
   synced_at timestamptz,
   app_version varchar(20)
+);
+
+-- A-i(a): people interviewed during this survey visit.
+CREATE TABLE response_interviewees (
+  id bigserial NOT NULL PRIMARY KEY,
+  response_id uuid NOT NULL REFERENCES survey_responses(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  designation text NOT NULL,
+  contact_number varchar(11) NOT NULL CHECK (contact_number ~ '^[0-9]{11}$')
 );
 
 -- Photos or files taken during a survey.
@@ -762,6 +775,7 @@ CREATE INDEX idx_industrial_units_zone_type_id ON industrial_units (zone_type_id
 CREATE INDEX idx_industrial_units_ownership_type_id ON industrial_units (ownership_type_id);
 CREATE INDEX idx_industrial_units_legal_structure_id ON industrial_units (legal_structure_id);
 CREATE INDEX idx_industrial_units_total_area_unit_id ON industrial_units (total_area_unit_id);
+CREATE INDEX idx_industrial_units_capital_investment_unit_id ON industrial_units (capital_investment_unit_id);
 CREATE INDEX idx_industrial_units_industrial_estate_id ON industrial_units (industrial_estate_id);
 CREATE INDEX idx_industrial_units_industrial_cluster_id ON industrial_units (industrial_cluster_id);
 CREATE INDEX idx_industrial_units_created_by ON industrial_units (created_by);
@@ -769,6 +783,7 @@ CREATE INDEX idx_unit_associated_establishments_unit_id ON unit_associated_estab
 CREATE INDEX idx_unit_associated_establishments_major_activity_psic_class_id ON unit_associated_establishments (major_activity_psic_class_id);
 CREATE INDEX idx_survey_responses_form_id ON survey_responses (form_id);
 CREATE INDEX idx_survey_responses_unit_id ON survey_responses (unit_id);
+CREATE INDEX idx_response_interviewees_response_id ON response_interviewees (response_id);
 CREATE INDEX idx_survey_responses_surveyor_id ON survey_responses (surveyor_id);
 CREATE INDEX idx_survey_responses_confirmed_by ON survey_responses (confirmed_by);
 CREATE INDEX idx_survey_attachments_response_id ON survey_attachments (response_id);

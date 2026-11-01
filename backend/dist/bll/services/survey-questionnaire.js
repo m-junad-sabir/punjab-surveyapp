@@ -4,6 +4,14 @@ exports.SURVEY_REFERENCES = exports.QUESTION_INPUTS = void 0;
 const field = (key, label, type, source, required = false) => ({ key, label, type, ...source, ...(required ? { required } : {}) });
 exports.QUESTION_INPUTS = {
     A_ESTABLISHMENT_NAME: { fields: [field('name', 'Name of establishment', 'TEXT', undefined, true)] },
+    A_INTERVIEWEES: {
+        repeatable: true,
+        fields: [
+            field('name', 'Interviewee name', 'TEXT', undefined, true),
+            field('designation', 'Designation', 'TEXT', undefined, true),
+            field('contact_number', 'Contact number', 'PHONE', undefined, true),
+        ],
+    },
     A_ESTABLISHMENT_YEAR: { fields: [field('establishment_year', 'Year of establishment', 'NUMBER')] },
     A_LOCATION_GPS: { fields: [field('location', 'Coordinates (capture from device)', 'GPS')] },
     A_ADDRESS: { fields: [field('address', 'Address', 'TEXT')] },
@@ -16,8 +24,8 @@ exports.QUESTION_INPUTS = {
     A_CONTACT: {
         fields: [
             field('contact_name', 'Contact person', 'TEXT'),
-            field('contact_phone', 'Phone', 'TEXT'),
-            field('contact_email', 'Email', 'TEXT'),
+            field('contact_phone', 'Mobile number', 'PHONE'),
+            field('contact_email', 'Email', 'EMAIL'),
             field('website', 'Website', 'TEXT'),
         ],
     },
@@ -34,9 +42,9 @@ exports.QUESTION_INPUTS = {
         fields: [
             field('company_name', 'Parent company name', 'TEXT', undefined, true),
             field('company_address', 'Parent company address', 'TEXT'),
-            field('phone', 'Phone', 'TEXT'),
-            field('cell', 'Cell', 'TEXT'),
-            field('email', 'Email', 'TEXT'),
+            field('phone', 'Phone', 'PHONE'),
+            field('cell', 'Cell', 'PHONE'),
+            field('email', 'Email', 'EMAIL'),
         ],
     },
     A_ASSOCIATED_ESTABLISHMENTS: {
@@ -44,15 +52,19 @@ exports.QUESTION_INPUTS = {
         fields: [
             field('name', 'Establishment name', 'TEXT', undefined, true),
             field('address', 'Address', 'TEXT'),
-            field('major_activity_text', 'Major activity (PSIC class code or name)', 'TEXT'),
+            field('major_activity_psic_class_id', 'Major activity (PSIC class)', 'SINGLE_CHOICE', { reference: 'associated_psic_classes' }),
         ],
     },
     A_ESTABLISHMENT_AREA: {
         fields: [
             field('total_area_value', 'Total establishment area', 'NUMBER'),
-            field('total_area_unit_id', 'Area unit', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
-            field('industrial_estate_text', 'Industrial estate (enter name)', 'TEXT'),
-            field('industrial_cluster_text', 'Industrial cluster (enter name)', 'TEXT'),
+            field('total_area_unit_id', 'Area unit', 'SINGLE_CHOICE', { reference: 'area_units' })
+        ],
+    },
+    A_TOTAL_CAPITAL_INVESTMENT: {
+        fields: [
+            field('total_capital_investment', 'Total capital investment', 'NUMBER'),
+            field('capital_investment_unit_id', 'Currency unit', 'SINGLE_CHOICE', { lookup_type: 'CAPITAL_INVESTMENT_UNIT' }),
         ],
     },
     B_OPERATION_MONTHS: { fields: [field('operating_months', 'Months of operation', 'MONTHS')] },
@@ -230,7 +242,15 @@ exports.SURVEY_REFERENCES = {
               JOIN provinces p ON p.id = dv.province_id
              WHERE lower(p.name) = 'punjab'
              ORDER BY t.name`,
-    measurement_units: `SELECT id, code, name AS label FROM measurement_units ORDER BY name`,
+    measurement_units: `SELECT id, code, name AS label
+                         FROM measurement_units
+                        WHERE unit_kind <> 'AREA'
+                           OR code IN ('SQM', 'SQFT', 'SQYD', 'HECTARE', 'ACRE')
+                        ORDER BY name`,
+    area_units: `SELECT id, code, name AS label, false AS requires_text
+                 FROM measurement_units
+                WHERE unit_kind = 'AREA'
+                ORDER BY name`,
     product_kinds: `SELECT 1 AS id, 'MAIN' AS code, 'Main product' AS label, false AS requires_text UNION ALL SELECT 2, 'SECONDARY', 'Secondary product', false`,
     capacity_periods: `SELECT 1 AS id, 'PER_DAY' AS code, 'Per day' AS label, false AS requires_text UNION ALL SELECT 2, 'PER_MONTH', 'Per month', false`,
     genders: `SELECT 1 AS id, 'MALE' AS code, 'Male' AS label, false AS requires_text UNION ALL SELECT 2, 'FEMALE', 'Female', false UNION ALL SELECT 3, 'Other', 'Other', false`,
@@ -245,6 +265,9 @@ exports.SURVEY_REFERENCES = {
                         group_id AS parent_id
                    FROM psic_classes
                   ORDER BY code`,
+    associated_psic_classes: `SELECT id, code, name AS label, false AS requires_text
+                             FROM psic_classes
+                            ORDER BY code`,
     hs_codes: `SELECT id, code, description AS label, false AS requires_text
                FROM hs_codes
               ORDER BY code`,

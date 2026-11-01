@@ -17,3 +17,16 @@ All notable application changes are recorded here, grouped by the categories bel
 ### Fixed
 
 - Hidden conditional questions are omitted from generated PDFs instead of being rendered with generic empty-answer text.
+
+### Added
+
+- Added optional repeating interviewee biodata after establishment name, stored against each survey response.
+- Added Total Capital Investment amount/currency fields and a dedicated currency lookup, plus the Section A area-unit choices from the supplied reference.
+- Added associated-establishment PSIC class selection and API-side validation for Section A phone, email, investment, interviewee, currency, and PSIC values.
+- Added migration 08 for Section A persistence, lookup values, question numbering, and schema changes. The migration is allowlisted but has not been run against any database.
+
+### Changed
+
+- Section A now labels interviewee biodata as i(a), parent details as xii(a), associated establishments as xiii, area as xiv, and capital investment as xv.
+- Linked existing units update only capital investment when both values are supplied; blank optional answers preserve existing investment, and other unit fields remain unchanged.
+- Bumped the frontend form-cache revision to 13 so clients refresh the changed Section A definition.

@@ -42,11 +42,11 @@
 ### Repository baseline recorded
 
 - **Repository snapshot:** inspected at commit `e91d2e9` (`Fixes (#51) made workplan 2 after app testing`). The working tree also contains the Phase 1 implementation in this delivery; it is not a clean-commit snapshot.
-- **Form revisions:** the frontend cache revision is `12`; the frontend accepts backend form versions `2` and later. The active database form version cannot be inferred safely from repository files and has not been queried.
+- **Form revisions:** the frontend cache revision is now `13` after the Section A questionnaire changes; the frontend accepts backend form versions `2` and later. The active database form version cannot be inferred safely from repository files and has not been queried.
 - **Form/data flow:** the backend loads active sections/questions/lookups and `QUESTION_INPUTS`; the frontend renders structured/repeating answers and stores drafts in IndexedDB; sync maps question codes into normalized survey tables and generic choice/share/matrix tables; the frontend generates the PDF from the saved response and form definition.
 - **PDF baseline:** unanswered scalar/field values render as `Not provided`; empty repeating groups render as `No entries recorded`; empty share categories render as `Not provided`. Phase 1 now omits questions hidden by the existing parent-company, operation-status, supply-disruption, demand-gap, and future-plan conditions. Section-specific zero/default and not-applicable behavior remains assigned to later phases.
 - **Test baseline:** backend Jest tests are available and the survey-response-writer suite now covers hidden-answer normalization and the closed-status persistence behavior. The frontend package has build and TypeScript-check commands but no configured test script. Frontend production build and type-check, backend build, and the focused backend tests passed during Phase 1.
-- **Migration/setup baseline:** `SETUP_DATABASE.bat` statically allowlists geography/classification/unit reference scripts and migrations 01–05 and 07; it omits migration 06 and legacy cleanup/reset scripts. New migrations must be added explicitly after approval. No migration or database setup command has been run for this plan.
+- **Migration/setup baseline:** `SETUP_DATABASE.bat` statically allowlists geography/classification/unit reference scripts and migrations 01–05, 07, and 08; it omits migration 06 and legacy cleanup/reset scripts. Migration 08 was added for the Section A work below, but no migration or database setup command has been run for this plan.
 - **Schema evidence:** repository inspection documents describe a schema snapshot, not proof of any live environment's current migration state.
 - **Available list references:** the repository contains area and product-unit lists, L1, L2 main/secondary product and machine/spec lists, and the L3/L5 equipment briefs. The L2 references use a numeric industry label column and have no source/version metadata in their headers; authoritative client approval and exact mapping against current `UNIT_TYPE` codes are unverified.
 
@@ -86,6 +86,7 @@
 4. Correct the parent-company question labels. When “No” is selected, hide parent-company details and associated establishments and show `Not Applicable` in the PDF. When “Yes” is selected, show the related details and associated-establishment question.
 5. Make the associated-establishment major activity field a PSIC class dropdown, using the existing `psic_classes` reference.
 6. Add client-approved lookup corrections for zone type, ownership, and legal structure only after the owner supplies/confirms the values. The report says the owner will make these corrections; do not guess or override them.
+7. When a survey is linked to an existing `unit_id`, update only capital investment if both amount and currency are supplied; an empty optional answer preserves the existing values. Do not overwrite other existing Section A fields.
 
 **Frontend / API**
 
@@ -240,7 +241,7 @@
 |---|---|
 | 0 Baseline, decisions, shared infrastructure | In progress — repository baseline and data-flow inventory recorded; waiting on live database/form-state verification and owner/client confirmation of list authority and L1/L2 mapping |
 | 1 Shared conditional-answer and PDF behavior | Complete for the existing parent-company, operation-status, disruption, demand-gap, and future-plan branches; subsequent section-specific gates remain in their corresponding phases |
-| 2 Section A | Not started |
+| 2 Section A | In progress — implementation underway; owner confirmed interviewee biodata as i(a), optional rows that must be complete when entered, dedicated response-linked storage, labeled local area-unit variants, and updating only capital investment on existing units when supplied; validation and migration review remain |
 | 3 Section B | Not started |
 | 4 Section C | Not started |
 | 5 Section D | Not started |
