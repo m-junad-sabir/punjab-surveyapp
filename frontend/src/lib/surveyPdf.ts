@@ -2,6 +2,13 @@ import { jsPDF } from 'jspdf';
 import { getPhoto } from './db';
 import { isQuestionVisible } from './surveyVisibility';
 import {
+  EMPLOYMENT_CATEGORIES,
+  WORKFORCE_GENDERS,
+  normalizeEmployment,
+  normalizeSkills,
+  workforceSkillOptions,
+} from './sectionDWorkforce';
+import {
   isProductFieldVisible,
   productKind,
   productUnitValueForDisplay,
@@ -89,6 +96,62 @@ function getQuestionAnswers(
   references: Record<string, QuestionOption[]>,
 ): AnswerLine[] {
   const fields = question.fields ?? [];
+
+  if (question.question_code === 'D_EMPLOYMENT') {
+    const normalized = normalizeEmployment(answer);
+    if (!normalized.ok) return [{ label: 'Workforce data', value: normalized.error }];
+    const rows = normalized.value;
+    return [
+      ...EMPLOYMENT_CATEGORIES.flatMap((category) => [
+        ...WORKFORCE_GENDERS.map((gender) => ({
+          label: `${category.label} - ${gender.label}`,
+          value: String(rows.find((row) => row.gender === gender.id)![category.key]),
+        })),
+        {
+          label: `${category.label} total`,
+          value: String(rows.reduce((total, row) => total + row[category.key], 0)),
+        },
+      ]),
+      ...WORKFORCE_GENDERS.map((gender) => {
+        const row = rows.find((item) => item.gender === gender.id)!;
+        return {
+          label: `${gender.label} employee subtotal`,
+          value: String(EMPLOYMENT_CATEGORIES.reduce((total, category) => total + row[category.key], 0)),
+        };
+      }),
+      {
+        label: 'All employees',
+        value: String(rows.reduce((total, row) =>
+          total + EMPLOYMENT_CATEGORIES.reduce((sum, category) => sum + row[category.key], 0), 0)),
+      },
+    ];
+  }
+
+  if (question.question_code === 'D_SKILLS') {
+    const normalized = normalizeSkills(question, answer, references);
+    if (!normalized.ok) return [{ label: 'Workforce data', value: normalized.error }];
+    const rows = normalized.value;
+    const options = workforceSkillOptions(question, answer, references);
+    return [
+      ...options.flatMap((option) => [
+        ...WORKFORCE_GENDERS.map((gender) => ({
+          label: `${option.label} - ${gender.label}`,
+          value: String(rows.find((row) => row.skill_level_id === option.id && row.gender === gender.id)!.headcount),
+        })),
+        {
+          label: `${option.label} total`,
+          value: String(rows.filter((row) => row.skill_level_id === option.id)
+            .reduce((total, row) => total + row.headcount, 0)),
+        },
+      ]),
+      ...WORKFORCE_GENDERS.map((gender) => ({
+        label: `${gender.label} employee subtotal`,
+        value: String(rows.filter((row) => row.gender === gender.id)
+          .reduce((total, row) => total + row.headcount, 0)),
+      })),
+      { label: 'All employees', value: String(rows.reduce((total, row) => total + row.headcount, 0)) },
+    ];
+  }
 
   const fieldLines = (row: unknown): AnswerLine[] => {
     return fields.filter((field) => isProductFieldVisible(question.question_code, row, field.key)).map((field) => {

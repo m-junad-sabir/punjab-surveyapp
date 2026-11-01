@@ -42,6 +42,9 @@ export const SECTION_B_WORKING_RANGES = {
   working_months_per_year: { min: 1, max: 12, step: 1 },
 } as const;
 export const SECTION_B_DEFAULT_WORKING_DAYS = 6;
+export const SECTION_D_MAX_COUNT = 2_147_483_647;
+
+const workforceCount = { min: 0, max: SECTION_D_MAX_COUNT, step: 1, default_value: 0 };
 
 const field = (
   key: string,
@@ -152,9 +155,9 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
     repeatable: true,
     fields: [
       field('gender', 'Gender', 'SINGLE_CHOICE', { reference: 'genders' }, true),
-      field('regular_count', 'Regular employees', 'NUMBER'),
-      field('contract_count', 'Contract employees', 'NUMBER'),
-      field('daily_wage_count', 'Daily-wage employees', 'NUMBER'),
+      field('regular_count', 'Regular employees', 'NUMBER', workforceCount),
+      field('contract_count', 'Contract employees', 'NUMBER', workforceCount),
+      field('daily_wage_count', 'Daily-wage employees', 'NUMBER', workforceCount),
     ],
   },
   D_SKILLS: {
@@ -162,7 +165,7 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
     fields: [
       field('gender', 'Gender', 'SINGLE_CHOICE', { reference: 'genders' }, true),
       field('skill_level_id', 'Skill level', 'SINGLE_CHOICE', { lookup_type: 'SKILL_LEVEL' }, true),
-      field('headcount', 'Headcount', 'NUMBER'),
+      field('headcount', 'Headcount', 'NUMBER', workforceCount),
     ],
   },
   E_ACTIVE_SUPPLIERS: { fields: [field('active_suppliers_id', 'Number of active suppliers', 'SINGLE_CHOICE', { lookup_type: 'COUNT_BAND' })] },

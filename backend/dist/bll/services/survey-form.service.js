@@ -124,6 +124,13 @@ let SurveyFormService = class SurveyFormService {
            JOIN psic_classes c ON c.id = m.psic_class_id
           ORDER BY c.code`);
         }
+        if (questions.some((question) => question.question_code === 'D_SKILLS')) {
+            referenceData.workforce_skill_levels = await this.dataSource.query(`SELECT lv.id, lv.code, lv.label, lv.requires_text, lv.is_active AS is_selectable
+           FROM lookup_values lv
+           JOIN lookup_types lt ON lt.id = lv.type_id
+          WHERE lt.code = 'SKILL_LEVEL'
+          ORDER BY lv.sort_order, lv.id`);
+        }
         const qBySection = new Map();
         for (const q of questions) {
             const list = qBySection.get(q.section_id) ?? [];

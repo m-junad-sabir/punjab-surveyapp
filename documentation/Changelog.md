@@ -2,6 +2,22 @@
 
 All notable application changes are recorded here, grouped by the categories below.
 
+## 2026-11-01 — Workplan 2 Phase 5
+
+### Added
+
+- Added zero-default and subtotal handling for employment and skill counts, including generated PDFs and older queued responses that omit Section D.
+- Added workforce validation and regression coverage for all genders, inactive or unknown skill levels, legacy duplicate rows, integer limits, draft storage, sync, and PDFs.
+
+### Changed
+
+- Bumped the frontend form-cache revision to 16. The offline form now includes historical skill-level labels so previously recorded inactive choices remain visible.
+- Blank workforce counts are materialized as zero without changing unrelated nullable answers. Invalid counts and unknown skill levels are retained in drafts and reported for correction.
+
+### Fixed
+
+- Section D PDF subtotals now match workforce component sums. Checked-in schema and existing migration 03 use the established `Other` gender value; live database verification remains owner-managed.
+
 ## 2026-11-01 — Workplan 2 Phase 4
 
 ### Added

@@ -1,5 +1,9 @@
 import { EntityManager } from 'typeorm';
-import { SECTION_B_DEFAULT_WORKING_DAYS, SECTION_B_WORKING_RANGES } from './survey-questionnaire';
+import {
+  SECTION_B_DEFAULT_WORKING_DAYS,
+  SECTION_B_WORKING_RANGES,
+  SECTION_D_MAX_COUNT,
+} from './survey-questionnaire';
 
 export interface SubmittedQuestion {
   id: number;
@@ -260,6 +264,124 @@ function isBlank(row: Record<string, unknown>): boolean {
 function staticCode(value: unknown, codes: readonly string[]): string | null {
   const id = selectionId(value);
   return id === null ? (typeof value === 'string' ? value : null) : codes[id - 1] ?? null;
+}
+
+const WORKFORCE_GENDERS = ['MALE', 'FEMALE', 'Other'] as const;
+type WorkforceGender = typeof WORKFORCE_GENDERS[number];
+const EMPLOYMENT_COUNT_FIELDS = ['regular_count', 'contract_count', 'daily_wage_count'] as const;
+type EmploymentCountField = typeof EMPLOYMENT_COUNT_FIELDS[number];
+type EmploymentCounts = Record<EmploymentCountField, number>;
+
+function workforceRows(value: unknown, label: string): Array<Record<string, unknown>> {
+  if (value === undefined || value === null || value === '') return [];
+  if (!Array.isArray(value)) throw new Error(`Provide valid ${label} rows.`);
+  return value.map((row) => {
+    if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+      throw new Error(`Provide valid ${label} rows.`);
+    }
+    return row as Record<string, unknown>;
+  });
+}
+
+function workforceGender(value: unknown): WorkforceGender {
+  const gender = staticCode(record(value).option_id ?? value, WORKFORCE_GENDERS);
+  if (gender !== 'MALE' && gender !== 'FEMALE' && gender !== 'Other') {
+    throw new Error('Choose a valid gender for each workforce row.');
+  }
+  return gender;
+}
+
+function workforceCount(value: unknown, label: string): number {
+  if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) return 0;
+  const count = number(value);
+  if (count === null || !Number.isInteger(count) || count < 0 || count > SECTION_D_MAX_COUNT) {
+    throw new Error(`${label} must be a whole number between 0 and ${SECTION_D_MAX_COUNT}.`);
+  }
+  return count;
+}
+
+function addWorkforceCounts(first: number, second: number, label: string): number {
+  const total = first + second;
+  if (total > SECTION_D_MAX_COUNT) {
+    throw new Error(`${label} cannot exceed ${SECTION_D_MAX_COUNT}.`);
+  }
+  return total;
+}
+
+export async function normalizeSectionDAnswers(
+  manager: EntityManager,
+  answers: SurveyAnswers,
+): Promise<void> {
+  let employment: Array<{ gender: WorkforceGender } & EmploymentCounts> | undefined;
+  if (answers.has('D_EMPLOYMENT')) {
+    const counts = new Map<WorkforceGender, EmploymentCounts>(
+      WORKFORCE_GENDERS.map((gender) => [gender, {
+        regular_count: 0, contract_count: 0, daily_wage_count: 0,
+      }]),
+    );
+    for (const row of workforceRows(answers.get('D_EMPLOYMENT'), 'employment')) {
+      if (isBlank(row)) continue;
+      const gender = workforceGender(row.gender);
+      const genderCounts = counts.get(gender)!;
+      for (const key of EMPLOYMENT_COUNT_FIELDS) {
+        genderCounts[key] = addWorkforceCounts(
+          genderCounts[key],
+          workforceCount(row[key], `Employment ${key.replace(/_/g, ' ')}`),
+          `Employment ${key.replace(/_/g, ' ')} for ${gender}`,
+        );
+      }
+    }
+    employment = WORKFORCE_GENDERS.map((gender) => {
+      const genderCounts = counts.get(gender)!;
+      if (EMPLOYMENT_COUNT_FIELDS.reduce((total, key) => total + genderCounts[key], 0) > SECTION_D_MAX_COUNT) {
+        throw new Error(`The employment total for ${gender} cannot exceed ${SECTION_D_MAX_COUNT}.`);
+      }
+      return { gender, ...genderCounts };
+    });
+  }
+
+  let skills: Array<{ gender: WorkforceGender; skill_level_id: number; headcount: number }> | undefined;
+  if (answers.has('D_SKILLS')) {
+    const rawRows = workforceRows(answers.get('D_SKILLS'), 'skill');
+    const levels = await manager.query(
+      `SELECT lv.id, lv.is_active
+         FROM lookup_values lv
+         JOIN lookup_types lt ON lt.id = lv.type_id
+        WHERE lt.code = 'SKILL_LEVEL'
+        ORDER BY lv.sort_order, lv.id`,
+    ) as Array<{ id: number; is_active: boolean }>;
+    if (!levels.some((level) => level.is_active)) {
+      throw new Error('Workforce skill levels are unavailable. Refresh the survey form and try again.');
+    }
+    const knownIds = new Set(levels.map((level) => level.id));
+    const selectedIds = new Set<number>();
+    const counts = new Map<string, number>();
+    for (const row of rawRows) {
+      if (isBlank(row)) continue;
+      const gender = workforceGender(row.gender);
+      const skillId = selectionId(row.skill_level_id);
+      if (skillId === null || !Number.isInteger(skillId) || !knownIds.has(skillId)) {
+        throw new Error('Choose a valid skill level for each workforce row.');
+      }
+      selectedIds.add(skillId);
+      const key = `${skillId}:${gender}`;
+      counts.set(key, addWorkforceCounts(
+        counts.get(key) ?? 0,
+        workforceCount(row.headcount, 'Skill headcount'),
+        `Skill headcount for ${gender}`,
+      ));
+    }
+    skills = levels
+      .filter((level) => level.is_active || selectedIds.has(level.id))
+      .flatMap((level) => WORKFORCE_GENDERS.map((gender) => ({
+        gender,
+        skill_level_id: level.id,
+        headcount: counts.get(`${level.id}:${gender}`) ?? 0,
+      })));
+  }
+
+  if (employment) answers.set('D_EMPLOYMENT', employment);
+  if (skills) answers.set('D_SKILLS', skills);
 }
 
 export async function normalizeSectionCAnswers(
@@ -802,8 +924,7 @@ export async function saveNormalizedSurveyAnswers(
 
   for (const employee of rows(answers, 'D_EMPLOYMENT')) {
     if (isBlank(employee)) continue;
-    const gender = staticCode(employee.gender, ['MALE', 'FEMALE', 'Other']);
-    if (!gender) throw new Error('Choose a gender for each employment row.');
+    const gender = workforceGender(employee.gender);
     await manager.query(
       `INSERT INTO workforce_employment
          (response_id, gender, regular_count, contract_count, daily_wage_count)
@@ -811,22 +932,24 @@ export async function saveNormalizedSurveyAnswers(
       [
         responseId,
         gender,
-        number(employee.regular_count) ?? 0,
-        number(employee.contract_count) ?? 0,
-        number(employee.daily_wage_count) ?? 0,
+        workforceCount(employee.regular_count, 'Regular employees'),
+        workforceCount(employee.contract_count, 'Contract employees'),
+        workforceCount(employee.daily_wage_count, 'Daily-wage employees'),
       ],
     );
   }
 
   for (const skill of rows(answers, 'D_SKILLS')) {
     if (isBlank(skill)) continue;
-    const gender = staticCode(skill.gender, ['MALE', 'FEMALE', 'Other']);
+    const gender = workforceGender(skill.gender);
     const skillLevelId = selectionId(skill.skill_level_id);
-    if (!gender || skillLevelId === null) throw new Error('Choose gender and skill level for each skills row.');
+    if (skillLevelId === null || !Number.isInteger(skillLevelId) || skillLevelId < 1) {
+      throw new Error('Choose a valid skill level for each workforce row.');
+    }
     await manager.query(
       `INSERT INTO workforce_skills (response_id, gender, skill_level_id, headcount)
        VALUES ($1, $2, $3, $4)`,
-      [responseId, gender, skillLevelId, number(skill.headcount) ?? 0],
+      [responseId, gender, skillLevelId, workforceCount(skill.headcount, 'Skill headcount')],
     );
   }
 

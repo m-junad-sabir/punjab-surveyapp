@@ -42,7 +42,7 @@
 ### Repository baseline recorded
 
 - **Repository snapshot:** inspected at commit `e91d2e9` (`Fixes (#51) made workplan 2 after app testing`). The working tree also contains the Phase 1 implementation in this delivery; it is not a clean-commit snapshot.
-- **Form revisions:** the frontend cache revision is now `15` after the Section C questionnaire changes; the frontend accepts backend form versions `2` and later. The active database form version cannot be inferred safely from repository files and has not been queried.
+- **Form revisions:** the frontend cache revision is now `16` after the Section D questionnaire changes; the frontend accepts backend form versions `2` and later. The active database form version cannot be inferred safely from repository files and has not been queried.
 - **Form/data flow:** the backend loads active sections/questions/lookups and `QUESTION_INPUTS`; the frontend renders structured/repeating answers and stores drafts in IndexedDB; sync maps question codes into normalized survey tables and generic choice/share/matrix tables; the frontend generates the PDF from the saved response and form definition.
 - **PDF baseline:** unanswered scalar/field values render as `Not provided`; empty repeating groups render as `No entries recorded`; empty share categories render as `Not provided`. Phase 1 now omits questions hidden by the existing parent-company, operation-status, supply-disruption, demand-gap, and future-plan conditions. Section-specific zero/default and not-applicable behavior remains assigned to later phases.
 - **Test baseline:** backend Jest tests cover hidden-answer normalization, Section B validation, and closed-status persistence. The frontend has a Node test script for month selection, validation, conditional visibility, draft cleanup, and generated PDFs, as well as build and TypeScript-check commands.
@@ -136,7 +136,7 @@
 - Migration 10 seeds those options by stable industry code. Product units remain separate from reporting periods; `TONNE` is distinct from the existing `TON`. Existing unit IDs and historical free-text product names are preserved. Previously selected units outside the new list remain visible as disabled choices and can still sync.
 - Product choices are filtered by Type of Unit and product kind. Other requires text. Changing the industry or kind clears the dependent product selection, while changing a previously missing industry or kind preserves legacy free-text names. Secondary rows discard transformation stages, revenue share, and HS code fields in the form, sync, and PDF.
 - Migration 10 adds constraints for future writes without rewriting historical rows; its `NOT VALID` checks/foreign key require review of existing violations before validation. Automated tests cover list fidelity, references, validation, sync, legacy drafts, conditional cleanup, and generated PDFs. A mocked mobile-size browser check covered selection and draft reload; it was not a live or disconnected-device test.
-- **Owner action before release:** review [migration 10](../database/migration_10_section_c_products.sql), back up each target, apply it after migration 07, and run its verification queries. Confirm all 15 active product units, the 101/236 product counts and industry mappings, and any historical constraint violations. Review before validating constraints. Apply the migration before deploying the API and refresh the revision-15 form online before offline use. Live sync, PDF, and genuinely offline-device verification remain outstanding; no database script or deployment was run by this implementation.
+- **Owner action before release:** review [migration 10](../database/migration_10_section_c_products.sql), back up each target, apply it after migration 07, and run its verification queries. Confirm all 15 active product units, the 101/236 product counts and industry mappings, and any historical constraint violations. Review before validating constraints. Apply the migration before deploying the API and refresh the current form online before offline use. Live sync, PDF, and genuinely offline-device verification remain outstanding; no database script or deployment was run by this implementation.
 - The complete HS dataset and mobile presentation of long descriptions remain deferred.
 
 ## Phase 5 — Section D: Workforce values and subtotals
@@ -146,6 +146,14 @@
 3. Verify gender categories, including the established `Other` value, remain compatible with existing schema constraints.
 
 **Exit checks:** Empty numeric categories are explicit zero, totals equal component sums, and all values render consistently in the UI, stored response, and PDF.
+
+### Implementation and outstanding verification
+
+- D(i) displays and saves zero for blank regular, contract, and daily-wage counts for Male, Female, and `Other`. D(ii) does the same for each active skill level and gender. This applies only to these workforce questions; unrelated nullable fields remain unchanged.
+- Drafts, sync, and PDFs use the same zero/default behavior. Sync also fills entirely omitted workforce questions from older queued clients, but only when those questions belong to the response's form. Legacy duplicate rows are combined without losing their counts; referenced inactive skill levels remain available and visible. Unknown levels and malformed or out-of-range counts are reported rather than silently discarded.
+- The form and PDF show category/skill, gender, and grand subtotals. Application validation rejects negative, fractional, and integer-overflow values, including totals that would overflow the database-generated employment total. The two questions are reported independently; their grand totals are not forced to match.
+- Repository schema and existing [migration 03](../database/migration_03_workforce_gender_other.sql) allow the exact gender value `Other`. No new database migration was necessary and no database script was run. Automated tests cover normalization, sync inserts and component sums, invalid inputs, legacy drafts, generated PDFs, and the checked-in constraints. A mocked mobile-size browser check covered default display, editing, validation, draft reload, and historical/unknown skill levels; it was not a live or disconnected-device test.
+- **Owner action before release:** verify workforce tables and the `Other` gender constraints in every target database, using the existing migration 03 verification queries. If alignment is needed, review and back up the target before applying migration 03. Verify the active skill-level references, deploy the API before the frontend, and refresh the revision-16 form online before offline use. Confirm live sync/database-derived totals, PDFs, and an actual offline-device draft round trip. Live migration state and verification remain outstanding.
 
 ## Phase 6 — Sections E and F: Supply chain and market shares/matrices
 
@@ -262,7 +270,7 @@
 | 2 Section A | In progress — implementation underway; owner confirmed interviewee biodata as i(a), optional rows that must be complete when entered, dedicated response-linked storage, labeled local area-unit variants, and updating only capital investment on existing units when supplied; validation and migration review remain |
 | 3 Section B | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 09 and live end-to-end/offline verification remain |
 | 4 Section C | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 10 and live end-to-end/offline verification remain |
-| 5 Section D | Not started |
+| 5 Section D | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed database checks and live/offline verification remain |
 | 6 Sections E and F | Not started |
 | 7 Section G | Not started |
 | 8 Section H | Not started |

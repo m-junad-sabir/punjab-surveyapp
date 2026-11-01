@@ -169,6 +169,15 @@ export class SurveyFormService {
           ORDER BY c.code`,
       );
     }
+    if (questions.some((question) => question.question_code === 'D_SKILLS')) {
+      referenceData.workforce_skill_levels = await this.dataSource.query(
+        `SELECT lv.id, lv.code, lv.label, lv.requires_text, lv.is_active AS is_selectable
+           FROM lookup_values lv
+           JOIN lookup_types lt ON lt.id = lv.type_id
+          WHERE lt.code = 'SKILL_LEVEL'
+          ORDER BY lv.sort_order, lv.id`,
+      );
+    }
     const qBySection = new Map<number, SurveyQuestion[]>();
     for (const q of questions) {
       const list = qBySection.get(q.section_id) ?? [];

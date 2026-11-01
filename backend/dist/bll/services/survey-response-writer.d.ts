@@ -9,6 +9,7 @@ export type SurveyAnswers = Map<string, unknown>;
 export declare function clearHiddenSurveyAnswers(manager: EntityManager, answers: SurveyAnswers): Promise<boolean>;
 export declare function validateSectionAAnswers(manager: EntityManager, answers: SurveyAnswers): Promise<void>;
 export declare function validateSectionBAnswers(manager: EntityManager, answers: SurveyAnswers): Promise<void>;
+export declare function normalizeSectionDAnswers(manager: EntityManager, answers: SurveyAnswers): Promise<void>;
 export declare function normalizeSectionCAnswers(manager: EntityManager, answers: SurveyAnswers): Promise<void>;
 export declare function updateExistingUnitCapitalInvestment(manager: EntityManager, unitId: string, answers: SurveyAnswers): Promise<void>;
 export declare function createIndustrialUnit(manager: EntityManager, userId: string, answers: SurveyAnswers, unitName: string, gps: {

@@ -1,11 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SURVEY_REFERENCES = exports.QUESTION_INPUTS = exports.SECTION_B_DEFAULT_WORKING_DAYS = exports.SECTION_B_WORKING_RANGES = void 0;
+exports.SURVEY_REFERENCES = exports.QUESTION_INPUTS = exports.SECTION_D_MAX_COUNT = exports.SECTION_B_DEFAULT_WORKING_DAYS = exports.SECTION_B_WORKING_RANGES = void 0;
 exports.SECTION_B_WORKING_RANGES = {
     working_days_per_week: { min: 1, max: 7, step: 1 },
     working_months_per_year: { min: 1, max: 12, step: 1 },
 };
 exports.SECTION_B_DEFAULT_WORKING_DAYS = 6;
+exports.SECTION_D_MAX_COUNT = 2_147_483_647;
+const workforceCount = { min: 0, max: exports.SECTION_D_MAX_COUNT, step: 1, default_value: 0 };
 const field = (key, label, type, source, required = false) => ({ key, label, type, ...source, ...(required ? { required } : {}) });
 exports.QUESTION_INPUTS = {
     A_ESTABLISHMENT_NAME: { fields: [field('name', 'Name of establishment', 'TEXT', undefined, true)] },
@@ -106,9 +108,9 @@ exports.QUESTION_INPUTS = {
         repeatable: true,
         fields: [
             field('gender', 'Gender', 'SINGLE_CHOICE', { reference: 'genders' }, true),
-            field('regular_count', 'Regular employees', 'NUMBER'),
-            field('contract_count', 'Contract employees', 'NUMBER'),
-            field('daily_wage_count', 'Daily-wage employees', 'NUMBER'),
+            field('regular_count', 'Regular employees', 'NUMBER', workforceCount),
+            field('contract_count', 'Contract employees', 'NUMBER', workforceCount),
+            field('daily_wage_count', 'Daily-wage employees', 'NUMBER', workforceCount),
         ],
     },
     D_SKILLS: {
@@ -116,7 +118,7 @@ exports.QUESTION_INPUTS = {
         fields: [
             field('gender', 'Gender', 'SINGLE_CHOICE', { reference: 'genders' }, true),
             field('skill_level_id', 'Skill level', 'SINGLE_CHOICE', { lookup_type: 'SKILL_LEVEL' }, true),
-            field('headcount', 'Headcount', 'NUMBER'),
+            field('headcount', 'Headcount', 'NUMBER', workforceCount),
         ],
     },
     E_ACTIVE_SUPPLIERS: { fields: [field('active_suppliers_id', 'Number of active suppliers', 'SINGLE_CHOICE', { lookup_type: 'COUNT_BAND' })] },

@@ -8,6 +8,7 @@ import {
   clearHiddenSurveyAnswers,
   createIndustrialUnit,
   normalizeSectionCAnswers,
+  normalizeSectionDAnswers,
   saveNormalizedSurveyAnswers,
   SubmittedQuestion,
   SurveyAnswers,
@@ -110,16 +111,15 @@ export class SyncService {
           }
 
           const questionIds = [...new Set(resp.answers.map((answer) => answer.question_id))];
-          const questions: SubmittedQuestion[] = questionIds.length
-            ? await trx.query(
-                `SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
-                   FROM survey_questions q
-                   JOIN survey_sections s ON s.id = q.section_id
-                  WHERE q.id = ANY($1::int[]) AND s.form_id = $2`,
-                [questionIds, resp.form_id],
-              )
-            : [];
-          if (questions.length !== questionIds.length) {
+          const questions: SubmittedQuestion[] = await trx.query(
+            `SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
+               FROM survey_questions q
+               JOIN survey_sections s ON s.id = q.section_id
+              WHERE s.form_id = $2
+                AND (q.id = ANY($1::int[]) OR q.question_code IN ('D_EMPLOYMENT', 'D_SKILLS'))`,
+            [questionIds, resp.form_id],
+          );
+          if (questions.filter((question) => questionIds.includes(question.id)).length !== questionIds.length) {
             throw new Error('The response contains a question that does not belong to its survey form.');
           }
 
@@ -130,10 +130,19 @@ export class SyncService {
             if (!question) throw new Error(`Question ${answer.question_id} is not part of this form.`);
             answers.set(question.question_code, answer.answer_value);
           }
+          for (const question of questions) {
+            if (
+              (question.question_code === 'D_EMPLOYMENT' || question.question_code === 'D_SKILLS') &&
+              !answers.has(question.question_code)
+            ) {
+              answers.set(question.question_code, []);
+            }
+          }
           const isPermanentlyClosed = await clearHiddenSurveyAnswers(trx, answers);
           await validateSectionAAnswers(trx, answers);
           await validateSectionBAnswers(trx, answers);
           await normalizeSectionCAnswers(trx, answers);
+          await normalizeSectionDAnswers(trx, answers);
 
           const gpsValue = answers.get('A_LOCATION_GPS');
           const gpsRecord = gpsValue && typeof gpsValue === 'object'

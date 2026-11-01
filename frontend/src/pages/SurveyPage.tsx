@@ -11,6 +11,21 @@ import { areAllOptionsSelected, toggleAllOptions } from '../lib/optionSelection'
 import { questionFormatError } from '../lib/surveyValidation';
 import { clearHiddenAnswers, isQuestionVisible } from '../lib/surveyVisibility';
 import {
+  EMPLOYMENT_CATEGORIES,
+  MAX_WORKFORCE_COUNT,
+  WORKFORCE_GENDERS,
+  isWorkforceRow,
+  materializeWorkforceAnswers,
+  normalizeWorkforceAnswer,
+  totalWorkforceCounts,
+  workforceCellValue,
+  workforceCount,
+  workforceGender,
+  workforceSelectionId,
+  workforceSkillOptions,
+} from '../lib/sectionDWorkforce';
+import type { WorkforceGender, WorkforceSkillOption } from '../lib/sectionDWorkforce';
+import {
   changeProductKind,
   clearProductNames,
   isProductFieldVisible,
@@ -860,25 +875,6 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
   );
 }
 
-function workforceGender(value: any): 'MALE' | 'FEMALE' | 'Other' | null {
-  const id = selectedOptionId(value);
-  if (id === 1 || value === 'MALE') return 'MALE';
-  if (id === 2 || value === 'FEMALE') return 'FEMALE';
-  if (id === 3 || value === 'Other') return 'Other';
-  return null;
-}
-
-function workforceCount(value: unknown): number | null {
-  if (value === '' || value === null || value === undefined) return null;
-  const count = Number(value);
-  return Number.isInteger(count) && count >= 0 ? count : null;
-}
-
-function totalWorkforceCounts(values: unknown[]): number | null {
-  const counts = values.map(workforceCount).filter((count): count is number => count !== null);
-  return counts.length ? counts.reduce((total, count) => total + count, 0) : null;
-}
-
 function WorkforceTotal({ values }: { values: unknown[] }) {
   const total = totalWorkforceCounts(values);
   return <strong>{total === null ? '—' : total}</strong>;
@@ -886,7 +882,7 @@ function WorkforceTotal({ values }: { values: unknown[] }) {
 
 function WorkforceCountInput({ label, value, onChange }: {
   label: string;
-  value: number | null;
+  value: number | string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -896,13 +892,20 @@ function WorkforceCountInput({ label, value, onChange }: {
         className="form-input"
         type="number"
         min={0}
+        max={MAX_WORKFORCE_COUNT}
         step={1}
         inputMode="numeric"
         aria-label={label}
-        value={value ?? ''}
+        value={value}
+        onFocus={(event) => event.currentTarget.select()}
         onChange={(event) => onChange(event.target.value)}
         style={{ marginTop: 4, padding: '9px 10px', fontSize: 16 }}
       />
+      {workforceCount(value) === null && (
+        <small style={{ display: 'block', marginTop: 4, color: 'var(--danger)' }}>
+          Enter a whole number from 0 to {MAX_WORKFORCE_COUNT}.
+        </small>
+      )}
     </label>
   );
 }
@@ -928,51 +931,80 @@ function WorkforceCountSummary({ label, values }: { label: string; values: unkno
   );
 }
 
-function EmploymentDetailsTable({ value, onChange }: {
-  value: any;
-  onChange: (value: any) => void;
+function UnrecognizedWorkforceRows({ value, skills, onChange }: {
+  value: unknown;
+  skills: boolean;
+  onChange: (value: unknown) => void;
 }) {
-  const rows: Array<Record<string, any>> = Array.isArray(value) ? value : [];
-  const categories = [
-    { key: 'regular_count', label: 'Regular employees' },
-    { key: 'contract_count', label: 'Contract employees' },
-    { key: 'daily_wage_count', label: 'Daily wages' },
-  ];
-  const genders = [
-    { code: 'MALE' as const, label: 'Male' },
-    { code: 'FEMALE' as const, label: 'Female' },
-    { code: 'Other' as const, label: 'Other' },
-  ];
-  const countFor = (gender: 'MALE' | 'FEMALE' | 'Other', key: string) =>
-    totalWorkforceCounts(
+  if (value === undefined || value === null || value === '') return null;
+  if (!Array.isArray(value)) {
+    return (
+      <div className="alert alert-error">
+        The saved workforce entries have an invalid format.
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange([])}>
+          Remove invalid entries
+        </button>
+      </div>
+    );
+  }
+  const invalid = value.flatMap((row: unknown, index: number) => {
+    if (!isWorkforceRow(row)) return [index];
+    const hasData = Object.values(row).some((item) =>
+      item !== null && item !== undefined && item !== '' && (!Array.isArray(item) || item.length > 0),
+    );
+    if (!hasData) return [];
+    const skillId = workforceSelectionId(row.skill_level_id);
+    return !workforceGender(row.gender) || (skills && (skillId === null || skillId < 1)) ? [index] : [];
+  });
+  if (!invalid.length) return null;
+  return (
+    <div className="alert alert-error">
+      {invalid.map((index) => (
+        <div key={index}>
+          Saved workforce entry {index + 1} has an unrecognized gender or skill level and is excluded from displayed totals.
+          <button type="button" className="btn btn-ghost btn-sm"
+            onClick={() => onChange(value.filter((_, rowIndex) => rowIndex !== index))}>
+            Remove entry
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmploymentDetailsTable({ value, onChange }: {
+  value: unknown;
+  onChange: (value: unknown) => void;
+}) {
+  const rows = Array.isArray(value) ? value.filter(isWorkforceRow) : [];
+  const categories = EMPLOYMENT_CATEGORIES;
+  const genders = WORKFORCE_GENDERS;
+  const countFor = (gender: WorkforceGender, key: string) =>
+    workforceCellValue(
       rows.filter((row) => workforceGender(row.gender) === gender).map((row) => row[key]),
     );
 
-  const updateCount = (gender: 'MALE' | 'FEMALE' | 'Other', key: string, raw: string) => {
-    const nextCount = workforceCount(raw);
-    const genderRows = rows.filter((row) => workforceGender(row.gender) === gender);
-    const updatedRow: Record<string, any> = {
-      gender: genderRows[0]?.gender ?? (gender === 'MALE' ? 1 : gender === 'FEMALE' ? 2 : 3),
-    };
-    for (const category of categories) {
-      const existingCount = totalWorkforceCounts(genderRows.map((row) => row[category.key]));
-      if (existingCount !== null) updatedRow[category.key] = existingCount;
-    }
-    if (nextCount === null) delete updatedRow[key];
-    else updatedRow[key] = nextCount;
-
-    const otherCounts = categories
-      .filter((category) => category.key !== key)
-      .map((category) => updatedRow[category.key]);
-    const nextRows = rows.filter((row) => workforceGender(row.gender) !== gender);
-    if (nextCount !== null || otherCounts.some((count) => workforceCount(count) !== null)) {
-      nextRows.push(updatedRow);
-    }
+  const updateCount = (gender: WorkforceGender, key: string, raw: string) => {
+    let updated = false;
+    const nextRows: unknown[] = (Array.isArray(value) ? value : []).map((row: unknown) => {
+      if (!isWorkforceRow(row) || workforceGender(row.gender) !== gender) return row;
+      const count = updated ? 0 : raw === '' ? 0 : raw;
+      updated = true;
+      return { ...row, [key]: count };
+    });
+    if (!updated) nextRows.push({
+      gender: genders.find((option) => option.code === gender)?.id,
+      [key]: raw === '' ? 0 : raw,
+    });
     onChange(nextRows);
   };
 
+  if (value !== undefined && value !== null && value !== '' && !Array.isArray(value)) {
+    return <UnrecognizedWorkforceRows value={value} skills={false} onChange={onChange} />;
+  }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+      <UnrecognizedWorkforceRows value={value} skills={false} onChange={onChange} />
       {categories.map((category) => (
         <div key={category.key} style={{
           padding: 11,
@@ -1032,43 +1064,43 @@ function EmploymentDetailsTable({ value, onChange }: {
 }
 
 function EmploymentSkillsTable({ options, value, onChange }: {
-  options: QuestionOption[];
-  value: any;
-  onChange: (value: any) => void;
+  options: WorkforceSkillOption[];
+  value: unknown;
+  onChange: (value: unknown) => void;
 }) {
-  const rows: Array<Record<string, any>> = Array.isArray(value) ? value : [];
-  const genders = [
-    { code: 'MALE' as const, label: 'Male' },
-    { code: 'FEMALE' as const, label: 'Female' },
-    { code: 'Other' as const, label: 'Other' },
-  ];
-  const countFor = (gender: 'MALE' | 'FEMALE' | 'Other', skillId: number) =>
-    totalWorkforceCounts(rows.filter((row) =>
-      workforceGender(row.gender) === gender && selectedOptionId(row.skill_level_id) === skillId,
+  const rows = Array.isArray(value) ? value.filter(isWorkforceRow) : [];
+  const genders = WORKFORCE_GENDERS;
+  const countFor = (gender: WorkforceGender, skillId: number) =>
+    workforceCellValue(rows.filter((row) =>
+      workforceGender(row.gender) === gender && workforceSelectionId(row.skill_level_id) === skillId,
     ).map((row) => row.headcount));
 
-  const updateCount = (gender: 'MALE' | 'FEMALE' | 'Other' , skillId: number, raw: string) => {
-    const nextCount = workforceCount(raw);
-    const existingRows = rows.filter((row) =>
-      workforceGender(row.gender) === gender && selectedOptionId(row.skill_level_id) === skillId,
-    );
-    const existing = existingRows[0];
-    const nextRows = rows.filter((row) =>
-      !(workforceGender(row.gender) === gender && selectedOptionId(row.skill_level_id) === skillId),
-    );
-    if (nextCount !== null) {
-      nextRows.push({
-        ...(existing ?? {}),
-        gender: existing?.gender ?? (gender === 'MALE' ? 1 : gender === 'FEMALE' ? 2 : 3),
-        skill_level_id: existing?.skill_level_id ?? skillId,
-        headcount: nextCount,
-      });
-    }
+  const updateCount = (gender: WorkforceGender, skillId: number, raw: string) => {
+    let updated = false;
+    const nextRows: unknown[] = (Array.isArray(value) ? value : []).map((row: unknown) => {
+      if (!isWorkforceRow(row) || workforceGender(row.gender) !== gender ||
+          workforceSelectionId(row.skill_level_id) !== skillId) return row;
+      const headcount = updated ? 0 : raw === '' ? 0 : raw;
+      updated = true;
+      return { ...row, headcount };
+    });
+    if (!updated) nextRows.push({
+      gender: genders.find((option) => option.code === gender)?.id,
+      skill_level_id: skillId,
+      headcount: raw === '' ? 0 : raw,
+    });
     onChange(nextRows);
   };
 
+  if (value !== undefined && value !== null && value !== '' && !Array.isArray(value)) {
+    return <UnrecognizedWorkforceRows value={value} skills onChange={onChange} />;
+  }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+      <UnrecognizedWorkforceRows value={value} skills onChange={onChange} />
+      {!options.some((option) => option.is_selectable !== false) && (
+        <div className="alert alert-error">Workforce skill levels are unavailable. Refresh the survey form.</div>
+      )}
       {options.map((option) => (
         <div key={option.id} style={{
           padding: 11,
@@ -1079,6 +1111,15 @@ function EmploymentSkillsTable({ options, value, onChange }: {
           <div style={{ fontSize: 12, lineHeight: 1.4, fontWeight: 700, marginBottom: 9 }}>
             {option.label}
           </div>
+          {option.unknown && (
+            <div className="alert alert-error">
+              Refresh the form to restore this skill level, or remove the unknown saved level.
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange(
+                (Array.isArray(value) ? value : []).filter((row: unknown) =>
+                  !isWorkforceRow(row) || workforceSelectionId(row.skill_level_id) !== option.id),
+              )}>Remove unknown level</button>
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
             {genders.map((gender) => (
               <WorkforceCountInput
@@ -1138,8 +1179,8 @@ function StructuredQuestionField({ question, value, onChange, references, indust
     return <EmploymentDetailsTable value={value} onChange={onChange} />;
   }
   if (question.question_code === 'D_SKILLS') {
-    const skillField = fields.find((field) => field.key === 'skill_level_id');
-    return <EmploymentSkillsTable options={skillField?.options ?? []} value={value} onChange={onChange} />;
+    return <EmploymentSkillsTable options={workforceSkillOptions(question, value, references)}
+      value={value} onChange={onChange} />;
   }
   if (!question.repeatable) {
     return <FieldGroup fields={fields} value={value ?? {}} onChange={onChange} references={references}
@@ -1459,6 +1500,8 @@ export default function SurveyPage() {
   const showQuestion = (q: SurveyQuestion): boolean => isQuestionVisible(q, allQs, answers);
   const validationError = (q: SurveyQuestion): string | null => {
     const value = answers[q.question_id];
+    const workforce = normalizeWorkforceAnswer(q, value, form.references ?? {});
+    if (workforce) return workforce.ok ? null : workforce.error;
     return questionFormatError(q, value) ?? (q.question_code === 'C_PRODUCTS'
       ? productRowsError(
           value,
@@ -1473,6 +1516,7 @@ export default function SurveyPage() {
     const value = answers[q.question_id];
     const fields = q.fields ?? [];
     if (validationError(q)) return true;
+    if (q.question_code === 'D_EMPLOYMENT' || q.question_code === 'D_SKILLS') return false;
     if (q.question_code === 'A_UNIT_TYPE') {
       const option = q.options.find((candidate) => candidate.id === selectedOptionId(value));
       return !option || (option.requires_text && !selectedOtherText(value).trim());
@@ -1543,6 +1587,7 @@ export default function SurveyPage() {
   const buildResponse = (status: 'draft' | 'pending_sync'): OfflineResponse => {
     const gpsQ   = allQs.find((q) => q.answer_type === 'GPS' || q.question_code === 'A_LOCATION_GPS');
     const gpsVal = gpsQ ? answers[gpsQ.question_id] : null;
+    const responseAnswers = materializeWorkforceAnswers(allQs, answers, form.references ?? {});
 
     return {
       response_id:    responseId,
@@ -1554,7 +1599,7 @@ export default function SurveyPage() {
       gps_accuracy_m: gpsVal?.accuracy,
       started_at:     startedAt,
       submitted_at:   status === 'pending_sync' ? new Date().toISOString() : undefined,
-      answers: Object.entries(answers)
+      answers: Object.entries(responseAnswers)
         .filter(([qid]) => {
           const question = allQs.find((candidate) => candidate.question_id === Number(qid));
           return !question || showQuestion(question);
