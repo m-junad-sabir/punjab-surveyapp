@@ -42,18 +42,18 @@
 ### Repository baseline recorded
 
 - **Repository snapshot:** inspected at commit `e91d2e9` (`Fixes (#51) made workplan 2 after app testing`). The working tree also contains the Phase 1 implementation in this delivery; it is not a clean-commit snapshot.
-- **Form revisions:** the frontend cache revision is now `14` after the Section B questionnaire changes; the frontend accepts backend form versions `2` and later. The active database form version cannot be inferred safely from repository files and has not been queried.
+- **Form revisions:** the frontend cache revision is now `15` after the Section C questionnaire changes; the frontend accepts backend form versions `2` and later. The active database form version cannot be inferred safely from repository files and has not been queried.
 - **Form/data flow:** the backend loads active sections/questions/lookups and `QUESTION_INPUTS`; the frontend renders structured/repeating answers and stores drafts in IndexedDB; sync maps question codes into normalized survey tables and generic choice/share/matrix tables; the frontend generates the PDF from the saved response and form definition.
 - **PDF baseline:** unanswered scalar/field values render as `Not provided`; empty repeating groups render as `No entries recorded`; empty share categories render as `Not provided`. Phase 1 now omits questions hidden by the existing parent-company, operation-status, supply-disruption, demand-gap, and future-plan conditions. Section-specific zero/default and not-applicable behavior remains assigned to later phases.
 - **Test baseline:** backend Jest tests cover hidden-answer normalization, Section B validation, and closed-status persistence. The frontend has a Node test script for month selection, validation, conditional visibility, draft cleanup, and generated PDFs, as well as build and TypeScript-check commands.
-- **Migration/setup baseline:** `SETUP_DATABASE.bat` statically allowlists geography/classification/unit reference scripts and migrations 01–05 and 07–09; it omits migration 06 and legacy cleanup/reset scripts. Migrations 08 and 09 were added for Sections A and B; no migration or database setup command has been run by this implementation.
+- **Migration/setup baseline:** `SETUP_DATABASE.bat` statically allowlists geography/classification/unit reference scripts and migrations 01–05 and 07–10; it omits migration 06 and legacy cleanup/reset scripts. Migrations 08–10 were added for Sections A–C; no migration or database setup command has been run by this implementation.
 - **Schema evidence:** repository inspection documents describe a schema snapshot, not proof of any live environment's current migration state.
-- **Available list references:** the repository contains area and product-unit lists, L1, L2 main/secondary product and machine/spec lists, and the L3/L5 equipment briefs. The L2 references use a numeric industry label column and have no source/version metadata in their headers; authoritative client approval and exact mapping against current `UNIT_TYPE` codes are unverified.
+- **Available list references:** the repository contains area and product-unit lists, L1, L2 main/secondary product and machine/spec lists, and the L3/L5 equipment briefs. The owner approved the checked-in L2 product lists, their mapping to the existing `UNIT_TYPE` codes, and the product-unit minimum list for Phase 4. Other list authority and live mappings remain to be confirmed.
 
 ### Remaining Phase 0 prerequisites
 
 - Confirm the active form version and applied migration state against each target database. This requires owner-approved access/verification in Neon branch, Neon main, and/or localhost; static files cannot establish live state. The attempted setup-plan command was declined, so it was not run.
-- Confirm with the owner/client that the checked-in L1/L2/L3/L5 and unit lists are the authoritative release inputs and that L2 industry numbers map to the active Type of Unit codes. Do not load or transform these lists into application data until confirmed.
+- Confirm with the owner/client that the remaining checked-in L1, machinery L2, L3/L5, and other unit lists are authoritative, and verify mappings against each live database. The L2 **product** lists and the 15-unit product minimum have been approved for Phase 4; do not load unapproved lists.
 - Confirm the Section H quantity label and unit: the evaluation report requests `kW` for monthly energy consumption, but that is a power unit and may not describe monthly energy quantity. This decision is needed before Phase 8 implementation, not before unrelated phases.
 - Keep operational condition semantics tied to active lookup codes. In the checked-in seed, the stable closure code is `PERM_CLOSED` while its label is “Permanently Close”; the evaluation report says “Permanently closed.” Any label change should be approved and made consistently in the form reference data.
 - The default/sentinel behavior for each later section remains governed by its requirements below; do not generalize Section D/E/F/G zero defaults to all blank values.
@@ -129,6 +129,15 @@
 4. **Deferred:** Completion of the approximately 9,000-entry HS code list and mobile presentation of its long descriptions are marked “will do later” in the evaluation report. Do not claim this item complete in this phase. Keep current HS behavior stable and record a separate follow-up when the authoritative dataset is available.
 
 **Exit checks:** Unit options and L2 entries are stable, correctly filtered, and available offline; Other text round-trips; secondary product payload and PDF contain no main-only fields.
+
+### Implementation and outstanding verification
+
+- The owner approved the 15 options under “Suggested minimum dropdown for a first release” in the product-unit list, plus the checked-in L2 main- and secondary-product lists mapped to existing Type of Unit codes. All 60 numbered industry labels match migration 07: 101 main and 236 secondary product entries. The separate Other industry uses Other (specify).
+- Migration 10 seeds those options by stable industry code. Product units remain separate from reporting periods; `TONNE` is distinct from the existing `TON`. Existing unit IDs and historical free-text product names are preserved. Previously selected units outside the new list remain visible as disabled choices and can still sync.
+- Product choices are filtered by Type of Unit and product kind. Other requires text. Changing the industry or kind clears the dependent product selection, while changing a previously missing industry or kind preserves legacy free-text names. Secondary rows discard transformation stages, revenue share, and HS code fields in the form, sync, and PDF.
+- Migration 10 adds constraints for future writes without rewriting historical rows; its `NOT VALID` checks/foreign key require review of existing violations before validation. Automated tests cover list fidelity, references, validation, sync, legacy drafts, conditional cleanup, and generated PDFs. A mocked mobile-size browser check covered selection and draft reload; it was not a live or disconnected-device test.
+- **Owner action before release:** review [migration 10](../database/migration_10_section_c_products.sql), back up each target, apply it after migration 07, and run its verification queries. Confirm all 15 active product units, the 101/236 product counts and industry mappings, and any historical constraint violations. Review before validating constraints. Apply the migration before deploying the API and refresh the revision-15 form online before offline use. Live sync, PDF, and genuinely offline-device verification remain outstanding; no database script or deployment was run by this implementation.
+- The complete HS dataset and mobile presentation of long descriptions remain deferred.
 
 ## Phase 5 — Section D: Workforce values and subtotals
 
@@ -248,11 +257,11 @@
 
 | Phase | Status |
 |---|---|
-| 0 Baseline, decisions, shared infrastructure | In progress — repository baseline and data-flow inventory recorded; waiting on live database/form-state verification and owner/client confirmation of list authority and L1/L2 mapping |
+| 0 Baseline, decisions, shared infrastructure | In progress — L2 product lists and product units approved; live database/form-state verification and approval of other lists and mappings remain |
 | 1 Shared conditional-answer and PDF behavior | Complete for the existing parent-company, operation-status, disruption, demand-gap, and future-plan branches; subsequent section-specific gates remain in their corresponding phases |
 | 2 Section A | In progress — implementation underway; owner confirmed interviewee biodata as i(a), optional rows that must be complete when entered, dedicated response-linked storage, labeled local area-unit variants, and updating only capital investment on existing units when supplied; validation and migration review remain |
 | 3 Section B | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 09 and live end-to-end/offline verification remain |
-| 4 Section C | Not started |
+| 4 Section C | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 10 and live end-to-end/offline verification remain |
 | 5 Section D | Not started |
 | 6 Sections E and F | Not started |
 | 7 Section G | Not started |

@@ -26,7 +26,9 @@ export interface SurveyInputField {
     code: string;
     label: string;
     requires_text: boolean;
-    parent_id?: number;
+    parent_id?: number | null;
+    product_kind?: 'MAIN' | 'SECONDARY' | null;
+    is_selectable?: boolean;
   }>;
 }
 
@@ -133,14 +135,14 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
     repeatable: true,
     fields: [
       field('product_kind', 'Product kind', 'SINGLE_CHOICE', { reference: 'product_kinds' }, true),
-      field('product_name', 'Product name', 'TEXT', undefined, true),
+      field('product_name', 'Product name', 'SINGLE_CHOICE', { reference: 'industry_products' }, true),
       field('daily_avg_output', 'Daily average output', 'NUMBER'),
-      field('daily_output_unit_id', 'Daily output unit', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
+      field('daily_output_unit_id', 'Daily output unit', 'SINGLE_CHOICE', { reference: 'product_units' }),
       field('annual_production', 'Annual total production', 'NUMBER'),
-      field('annual_production_unit_id', 'Annual production unit', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
+      field('annual_production_unit_id', 'Annual production unit', 'SINGLE_CHOICE', { reference: 'product_units' }),
       field('installed_capacity', 'Installed capacity', 'NUMBER'),
       field('installed_capacity_period', 'Installed capacity period', 'SINGLE_CHOICE', { reference: 'capacity_periods' }),
-      field('unit_of_measurement_id', 'Capacity unit of measurement', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
+      field('unit_of_measurement_id', 'Capacity unit of measurement', 'SINGLE_CHOICE', { reference: 'product_units' }),
       field('transformation_stage_ids', 'Transformation stage on arrival', 'MULTI_CHOICE', { lookup_type: 'TRANSFORMATION_STAGE' }),
       field('revenue_share_pct', 'Share in total revenue (%)', 'NUMBER'),
       field('hs_code_id', 'HS code (code or description)', 'SINGLE_CHOICE', { reference: 'hs_codes' }),
@@ -296,15 +298,39 @@ export const SURVEY_REFERENCES = {
               JOIN provinces p ON p.id = dv.province_id
              WHERE lower(p.name) = 'punjab'
              ORDER BY t.name`,
-  measurement_units: `SELECT id, code, name AS label
-                         FROM measurement_units
-                        WHERE unit_kind <> 'AREA'
-                           OR code IN ('SQM', 'SQFT', 'SQYD', 'HECTARE', 'ACRE')
-                        ORDER BY name`,
-  area_units: `SELECT id, code, name AS label, false AS requires_text
-                 FROM measurement_units
-                WHERE unit_kind = 'AREA'
-                ORDER BY name`,
+  measurement_units: `SELECT m.id, m.code, m.name AS label
+                         FROM measurement_units m
+                        WHERE (m.unit_kind <> 'AREA'
+                           OR m.code IN ('SQM', 'SQFT', 'SQYD', 'HECTARE', 'ACRE'))
+                          AND NOT EXISTS (
+                            SELECT 1 FROM product_measurement_units p
+                             WHERE p.unit_id = m.id AND p.product_only
+                          )
+                        ORDER BY m.name`,
+  product_units: `SELECT m.id, m.code, COALESCE(p.display_label, m.name) AS label,
+                         false AS requires_text, COALESCE(p.is_active, false) AS is_selectable
+                    FROM measurement_units m
+                    LEFT JOIN product_measurement_units p ON p.unit_id = m.id
+                   ORDER BY p.sort_order NULLS LAST, m.name, m.id`,
+  industry_products: `SELECT id, code, label, requires_text, parent_id, product_kind, is_selectable
+                        FROM (
+                          SELECT p.id, p.id::text AS code, p.product_name AS label,
+                                 false AS requires_text, p.unit_type_id AS parent_id,
+                                 p.product_kind, p.is_active AS is_selectable, p.sort_order
+                            FROM industry_product_options p
+                          UNION ALL
+                          SELECT 0, 'OTHER', 'Other (specify)', true, NULL::integer,
+                                 NULL::varchar, true, 0::smallint
+                        ) options
+                       ORDER BY parent_id NULLS FIRST, product_kind, sort_order, id`,
+  area_units: `SELECT m.id, m.code, m.name AS label, false AS requires_text
+                 FROM measurement_units m
+                WHERE m.unit_kind = 'AREA'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM product_measurement_units p
+                     WHERE p.unit_id = m.id AND p.product_only
+                  )
+                ORDER BY m.name`,
   product_kinds: `SELECT 1 AS id, 'MAIN' AS code, 'Main product' AS label, false AS requires_text UNION ALL SELECT 2, 'SECONDARY', 'Secondary product', false`,
   capacity_periods: `SELECT 1 AS id, 'PER_DAY' AS code, 'Per day' AS label, false AS requires_text UNION ALL SELECT 2, 'PER_MONTH', 'Per month', false`,
   genders: `SELECT 1 AS id, 'MALE' AS code, 'Male' AS label, false AS requires_text UNION ALL SELECT 2, 'FEMALE', 'Female', false UNION ALL SELECT 3, 'Other', 'Other', false`,

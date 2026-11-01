@@ -77,6 +77,8 @@ Zone type, ownership, legal structure, measurement units, and Section B–K list
 
 Workplan 2 migration 09 adds optional `sec_b_operations.working_months_per_year` (whole numbers 1–12) and a `Less than 8 Hours` shift option. Working days remain 1–7; a blank value for a non-closed operation uses the existing six-day default. Permanently closed or unselected statuses store null operating fields. The owner must apply the migration and verify each target database; this description is not proof of live migration state.
 
+Workplan 2 migration 10 adds the 15 approved product-specific units and the industry/kind-specific L2 product catalog. New selections and Other text resolve to the existing `products.product_name` text column; historical names and measurement-unit IDs remain valid. Secondary products omit transformation stages, revenue share, and HS fields. New constraints enforce that contract for future writes while preserving historical violations for owner review. The migration and its verification queries are owner-managed and are not evidence of live database state.
+
 ## Integrity and database behavior
 
 - Foreign keys connect responses to units, forms, surveyors, and section records.

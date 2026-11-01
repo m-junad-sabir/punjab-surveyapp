@@ -7,6 +7,7 @@ import { PhotoService } from './photo.service';
 import {
   clearHiddenSurveyAnswers,
   createIndustrialUnit,
+  normalizeSectionCAnswers,
   saveNormalizedSurveyAnswers,
   SubmittedQuestion,
   SurveyAnswers,
@@ -132,6 +133,7 @@ export class SyncService {
           const isPermanentlyClosed = await clearHiddenSurveyAnswers(trx, answers);
           await validateSectionAAnswers(trx, answers);
           await validateSectionBAnswers(trx, answers);
+          await normalizeSectionCAnswers(trx, answers);
 
           const gpsValue = answers.get('A_LOCATION_GPS');
           const gpsRecord = gpsValue && typeof gpsValue === 'object'

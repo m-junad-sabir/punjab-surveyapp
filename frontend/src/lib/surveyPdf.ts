@@ -1,6 +1,12 @@
 import { jsPDF } from 'jspdf';
 import { getPhoto } from './db';
 import { isQuestionVisible } from './surveyVisibility';
+import {
+  isProductFieldVisible,
+  productKind,
+  productUnitValueForDisplay,
+  productValueForDisplay,
+} from './sectionCProducts';
 import type {
   OfflineResponse,
   QuestionOption,
@@ -77,17 +83,36 @@ function displayValue(
   return String(value);
 }
 
-function getQuestionAnswers(question: SurveyQuestion, answer: unknown): AnswerLine[] {
+function getQuestionAnswers(
+  question: SurveyQuestion,
+  answer: unknown,
+  references: Record<string, QuestionOption[]>,
+): AnswerLine[] {
   const fields = question.fields ?? [];
 
   const fieldLines = (row: unknown): AnswerLine[] => {
-    return fields.map((field) => {
+    return fields.filter((field) => isProductFieldVisible(question.question_code, row, field.key)).map((field) => {
       const value = isRecord(row) ? row[field.key] : undefined;
       const useDefault = (value === undefined || value === null || value === '') &&
         field.default_value !== undefined;
+      const options = question.question_code === 'C_PRODUCTS' && field.reference === 'hs_codes'
+        ? references.hs_codes ?? field.options
+        : field.options;
+      const kind = question.question_code === 'C_PRODUCTS' && field.key === 'product_kind'
+        ? productKind(value)
+        : null;
+      let display = value;
+      if (typeof value === 'string' && kind) {
+        display = kind === 'MAIN' ? 1 : 2;
+      } else if (question.question_code === 'C_PRODUCTS' && field.reference === 'product_units') {
+        display = productUnitValueForDisplay(value);
+      } else if (question.question_code === 'C_PRODUCTS' &&
+          field.reference === 'industry_products' && typeof value !== 'string') {
+        display = productValueForDisplay(value, options);
+      }
       return {
         label: field.label,
-        value: useDefault ? `${field.default_value} (default)` : displayValue(value, field.options),
+        value: useDefault ? `${field.default_value} (default)` : displayValue(display, options),
       };
     });
   };
@@ -307,7 +332,7 @@ export async function downloadSurveyPdf(response: OfflineResponse, form?: Survey
     pdf.text(titleLines, margin + 4, y + 5);
     y += Math.max(9, titleLines.length * 4.1 + 3);
 
-    const lines = getQuestionAnswers(question, answer);
+    const lines = getQuestionAnswers(question, answer, form?.references ?? {});
     for (const line of lines) {
       const isEntry = line.value === '' && line.label.startsWith('Entry ');
       if (isEntry) {

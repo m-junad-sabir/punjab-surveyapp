@@ -12,6 +12,8 @@ export interface LookupOption {
   label: string;
   requires_text: boolean;
   parent_id?: number | null;
+  product_kind?: 'MAIN' | 'SECONDARY' | null;
+  is_selectable?: boolean;
 }
 
 interface MatrixItem {

@@ -2,6 +2,23 @@
 
 All notable application changes are recorded here, grouped by the categories below.
 
+## 2026-11-01 — Workplan 2 Phase 4
+
+### Added
+
+- Added the owner-approved 15 product units and 337 main/secondary product choices, filtered by Type of Unit and product kind, with Other (specify).
+- Added rerunnable migration 10, product-specific reference metadata, preservation-oriented constraints, and focused catalog, sync, draft, and PDF tests. The owner must review and apply the migration; it has not been run by this implementation.
+
+### Changed
+
+- Existing free-text product names and previously selected legacy unit IDs remain usable. Product quantities and reporting periods remain separate.
+- Bumped the frontend form-cache revision to 15 and added migration 10 to the explicit setup allowlist.
+
+### Fixed
+
+- Secondary product rows no longer retain or display main-only transformation-stage, revenue-share, or HS-code fields. Product choices are validated against the selected industry and kind.
+- Main-product PDFs resolve the selected HS-code reference label when available. Completion of the HS list and mobile long-description improvements remain deferred.
+
 ## 2026-11-01
 
 ### Added

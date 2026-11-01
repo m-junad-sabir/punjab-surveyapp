@@ -48,6 +48,8 @@ export interface QuestionOption {
   label:         string;
   requires_text: boolean;  // true = show free-text box when selected
   parent_id?:    number | null;
+  product_kind?: 'MAIN' | 'SECONDARY' | null;
+  is_selectable?: boolean;
 }
 
 /**

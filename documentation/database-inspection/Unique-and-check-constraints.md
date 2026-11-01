@@ -2,7 +2,7 @@
 
 > Source: `Unique & Check Constraints (2).csv`
 > Companion to: `Master_Inspection_Schema.md`
-> This is a historical database snapshot and does not include constraints added by Workplan 2 migrations 08 and 09; those migrations have not been applied to a live database by this implementation.
+> This is a historical database snapshot and does not include constraints added by Workplan 2 migrations 08–10; those migrations have not been applied to a live database by this implementation.
 > Conventions:
 > - `UNIQUE` constraints are listed by columns (single or composite).
 > - `CHECK` constraints include the full `check_clause`.
@@ -167,6 +167,7 @@
 
 ### products
 - **products_check**: `product_kind = 'MAIN' OR (revenue_share_pct IS NULL AND hs_code_id IS NULL)`
+- Migration 10 additionally checks `hs_code_text` and restricts transformation-stage rows to main products. Existing violations are not rewritten; review the migration's verification queries before validating its `NOT VALID` constraints.
 - **products_installed_capacity_period_check**: `installed_capacity_period IN ('PER_DAY', 'PER_MONTH')`
 - **products_product_kind_check**: `product_kind IN ('MAIN', 'SECONDARY')`
 - **products_revenue_share_pct_check**: `revenue_share_pct BETWEEN 0 AND 100`

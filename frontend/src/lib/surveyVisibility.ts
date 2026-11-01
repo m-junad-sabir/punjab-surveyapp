@@ -1,4 +1,5 @@
 import type { SurveyQuestion } from '../types';
+import { clearSecondaryProductFields } from './sectionCProducts';
 
 type AnswersByQuestion = Record<number, unknown>;
 
@@ -74,6 +75,18 @@ export function clearHiddenAnswers(
     if (!Object.prototype.hasOwnProperty.call(nextAnswers, question.question_id)) continue;
     if (nextAnswers === answers) nextAnswers = { ...answers };
     delete nextAnswers[question.question_id];
+  }
+
+  const products = questions.find((question) => question.question_code === 'C_PRODUCTS');
+  const productRows = products ? nextAnswers[products.question_id] : undefined;
+  if (products && Array.isArray(productRows)) {
+    const cleanedRows = productRows.map((row) =>
+      isRecord(row) ? clearSecondaryProductFields(row) : row,
+    );
+    if (cleanedRows.some((row, index) => row !== productRows[index])) {
+      if (nextAnswers === answers) nextAnswers = { ...answers };
+      nextAnswers[products.question_id] = cleanedRows;
+    }
   }
 
   return nextAnswers;

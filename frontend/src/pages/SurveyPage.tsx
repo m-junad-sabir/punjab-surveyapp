@@ -10,6 +10,18 @@ import { downloadSurveyPdf } from '../lib/surveyPdf';
 import { areAllOptionsSelected, toggleAllOptions } from '../lib/optionSelection';
 import { questionFormatError } from '../lib/surveyValidation';
 import { clearHiddenAnswers, isQuestionVisible } from '../lib/surveyVisibility';
+import {
+  changeProductKind,
+  clearProductNames,
+  isProductFieldVisible,
+  isProductNameComplete,
+  productKind,
+  productOptionsForRow,
+  productRowsError,
+  productUnitsForDisplay,
+  productUnitValueForDisplay,
+  productValueForDisplay,
+} from '../lib/sectionCProducts';
 import type {
   OfflineResponse,
   SurveySection,
@@ -253,8 +265,8 @@ function selectedOtherText(value: any): string {
     : '';
 }
 
-function ChoiceField({ options, value, onChange, error }: {
-  options: QuestionOption[]; value: any; onChange: (v: any) => void; error?: string;
+function ChoiceField({ options, value, onChange, error, disabled }: {
+  options: QuestionOption[]; value: any; onChange: (v: any) => void; error?: string; disabled?: boolean;
 }) {
   const selectedId = selectedOptionId(value);
   const selectedOption = options.find((option) => option.id === selectedId);
@@ -264,6 +276,7 @@ function ChoiceField({ options, value, onChange, error }: {
       <select
         className={`form-select ${error ? 'error' : ''}`}
         value={selectedId ?? ''}
+        disabled={disabled}
         onChange={(e) => {
           if (e.target.value === '') { onChange(null); return; }
           const id = parseInt(e.target.value, 10);
@@ -275,7 +288,7 @@ function ChoiceField({ options, value, onChange, error }: {
       >
         <option value="">— Select an option —</option>
         {options.map((opt) => (
-          <option key={opt.id} value={opt.id}>{opt.label}</option>
+          <option key={opt.id} value={opt.id} disabled={opt.is_selectable === false}>{opt.label}</option>
         ))}
       </select>
       {selectedOption?.requires_text && (
@@ -283,6 +296,7 @@ function ChoiceField({ options, value, onChange, error }: {
           className="form-input"
           style={{ marginTop: 8 }}
           value={selectedOtherText(value)}
+          disabled={disabled}
           onChange={(event) => onChange({
             option_id: selectedOption.id,
             other_text: event.target.value,
@@ -699,7 +713,7 @@ function InputFieldControl({ field, value, onChange, disabled, manualValue, onMa
           />
         );
       }
-      return <ChoiceField options={field.options} value={value} onChange={onChange} />;
+      return <ChoiceField options={field.options} value={value} onChange={onChange} disabled={disabled} />;
     case 'MULTI_CHOICE':
       return <MultiChoiceField options={field.options} value={value} onChange={onChange} />;
     case 'MONTHS':
@@ -713,11 +727,13 @@ function InputFieldControl({ field, value, onChange, disabled, manualValue, onMa
   }
 }
 
-function FieldGroup({ fields, value, onChange, references }: {
+function FieldGroup({ fields, value, onChange, references, questionCode, industryTypeId }: {
   fields: SurveyInputField[];
   value: Record<string, any>;
   onChange: (value: Record<string, any>) => void;
   references: Record<string, QuestionOption[]>;
+  questionCode: string;
+  industryTypeId: number | null;
 }) {
   const map = value && typeof value === 'object' ? value : {};
   const psicTextKeys: Record<string, string> = {
@@ -751,6 +767,11 @@ function FieldGroup({ fields, value, onChange, references }: {
         } else if (parentKey[field.key] && parentValue == null && hasParentLinks) {
           options = [];
         }
+        if (field.reference === 'industry_products') {
+          options = productOptionsForRow(options, industryTypeId, map.product_kind, map[field.key]);
+        } else if (field.reference === 'product_units') {
+          options = productUnitsForDisplay(options, map[field.key]);
+        }
 
         const visibleField = { ...field, options };
         const manualKey = psicTextKeys[field.key];
@@ -758,13 +779,22 @@ function FieldGroup({ fields, value, onChange, references }: {
           psic_division_id: ['psic_group_id', 'psic_class_id', 'psic_group_text', 'psic_class_text'],
           psic_group_id: ['psic_class_id', 'psic_class_text'],
         };
-        if (field.key === 'transformation_stage_ids' && map.product_kind === 2) return null;
-        if (['revenue_share_pct', 'hs_code_id'].includes(field.key) && map.product_kind === 2) return null;
+        if (!isProductFieldVisible(questionCode, map, field.key)) return null;
         if (field.key === 'company_name' && map.has_parent_company === false) return null;
         if (field.key === 'reinvestment_area_other' && !map.reinvestment_area_id) return null;
 
-        const controlValue = map[field.key];
+        const selectedKind = productKind(map.product_kind);
+        let controlValue = map[field.key];
+        if (field.reference === 'industry_products') {
+          controlValue = productValueForDisplay(controlValue, options);
+        } else if (field.reference === 'product_units') {
+          controlValue = productUnitValueForDisplay(controlValue);
+        } else if (questionCode === 'C_PRODUCTS' && field.key === 'product_kind') {
+          controlValue = selectedKind === 'MAIN' ? 1 : selectedKind === 'SECONDARY' ? 2 : null;
+        }
         const isMonths = field.type === 'MONTHS';
+        const needsProductContext = field.reference === 'industry_products' &&
+          (industryTypeId === null || selectedKind === null);
 
         return (
           <div key={field.key} style={{ gridColumn: isMonths ? '1 / -1' : undefined }}>
@@ -775,10 +805,12 @@ function FieldGroup({ fields, value, onChange, references }: {
               field={visibleField}
               value={controlValue}
               disabled={
-                ['psic_groups', 'psic_classes'].includes(field.reference ?? '') &&
-                Boolean(parentKey[field.key]) &&
-                parentValue == null &&
-                !map[parentTextKey ?? '']
+                needsProductContext || (
+                  ['psic_groups', 'psic_classes'].includes(field.reference ?? '') &&
+                  Boolean(parentKey[field.key]) &&
+                  parentValue == null &&
+                  !map[parentTextKey ?? '']
+                )
               }
               manualValue={manualKey ? map[manualKey] : field.key === 'hs_code_id' ? map[field.key] : undefined}
               onManualChange={manualKey
@@ -792,6 +824,10 @@ function FieldGroup({ fields, value, onChange, references }: {
                   ? (text) => onChange({ ...map, [field.key]: text })
                   : undefined}
               onChange={(next) => {
+                if (questionCode === 'C_PRODUCTS' && field.key === 'product_kind') {
+                  onChange(changeProductKind(map, next));
+                  return;
+                }
                 const dependentSelectionFields: Record<string, string[]> = {
                   district_id: ['tehsil_id'],
                   psic_division_id: dependentFields.psic_division_id,
@@ -807,6 +843,11 @@ function FieldGroup({ fields, value, onChange, references }: {
                 });
               }}
             />
+            {needsProductContext && (
+              <small style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
+                Select Type of Unit and product kind first.
+              </small>
+            )}
             {field.default_value !== undefined && (
               <small style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
                 If left blank, {field.default_value} will be recorded on sync.
@@ -1085,11 +1126,12 @@ function EmploymentSkillsTable({ options, value, onChange }: {
   );
 }
 
-function StructuredQuestionField({ question, value, onChange, references }: {
+function StructuredQuestionField({ question, value, onChange, references, industryTypeId }: {
   question: SurveyQuestion;
   value: any;
   onChange: (value: any) => void;
   references: Record<string, QuestionOption[]>;
+  industryTypeId: number | null;
 }) {
   const fields = question.fields ?? [];
   if (question.question_code === 'D_EMPLOYMENT') {
@@ -1100,7 +1142,8 @@ function StructuredQuestionField({ question, value, onChange, references }: {
     return <EmploymentSkillsTable options={skillField?.options ?? []} value={value} onChange={onChange} />;
   }
   if (!question.repeatable) {
-    return <FieldGroup fields={fields} value={value ?? {}} onChange={onChange} references={references} />;
+    return <FieldGroup fields={fields} value={value ?? {}} onChange={onChange} references={references}
+      questionCode={question.question_code} industryTypeId={industryTypeId} />;
   }
 
   const rows: Array<Record<string, any>> = Array.isArray(value) ? value : [];
@@ -1119,7 +1162,8 @@ function StructuredQuestionField({ question, value, onChange, references }: {
               Remove
             </button>
           </div>
-          <FieldGroup fields={fields} value={row} onChange={(updated) => updateRow(index, updated)} references={references} />
+          <FieldGroup fields={fields} value={row} onChange={(updated) => updateRow(index, updated)} references={references}
+            questionCode={question.question_code} industryTypeId={industryTypeId} />
         </div>
       ))}
       <button type="button" className="btn btn-outline btn-sm"
@@ -1151,7 +1195,8 @@ function QuestionField({ q, value, onChange, error, references, responseId, owne
   }
 
   if (q.fields?.length) {
-    return <StructuredQuestionField question={q} value={value} onChange={onChange} references={references} />;
+    return <StructuredQuestionField question={q} value={value} onChange={onChange}
+      references={references} industryTypeId={industryTypeId} />;
   }
 
   switch (q.answer_type as AnswerType) {
@@ -1202,7 +1247,8 @@ function QuestionField({ q, value, onChange, error, references, responseId, owne
       return <MatrixField question={q} value={value} onChange={onChange} />;
 
     case 'REPEATING_GROUP':
-      return <StructuredQuestionField question={q} value={value} onChange={onChange} references={references} />;
+      return <StructuredQuestionField question={q} value={value} onChange={onChange}
+        references={references} industryTypeId={industryTypeId} />;
 
     case 'GPS':
       return <GpsField value={value} onChange={onChange} />;
@@ -1338,9 +1384,16 @@ export default function SurveyPage() {
   const setAnswer = useCallback((qid: number, val: any) => {
     const questions = form?.sections.flatMap((section) => section.questions) ?? [];
     const next = { ...answers, [qid]: val };
-    if (questions.find((question) => question.question_id === qid)?.question_code === 'A_UNIT_TYPE') {
+    if (questions.find((question) => question.question_id === qid)?.question_code === 'A_UNIT_TYPE' &&
+        selectedOptionId(answers[qid]) !== selectedOptionId(val)) {
       const psicQuestion = questions.find((question) => question.question_code === 'A_PSIC');
       if (psicQuestion) delete next[psicQuestion.question_id];
+      if (selectedOptionId(answers[qid]) !== null) {
+        const productQuestion = questions.find((question) => question.question_code === 'C_PRODUCTS');
+        if (productQuestion && Object.prototype.hasOwnProperty.call(next, productQuestion.question_id)) {
+          next[productQuestion.question_id] = clearProductNames(next[productQuestion.question_id]);
+        }
+      }
     }
     const cleanedAnswers = clearHiddenAnswers(questions, next);
     setAnswers(cleanedAnswers);
@@ -1404,11 +1457,22 @@ export default function SurveyPage() {
     return question ? answers[question.question_id] : undefined;
   };
   const showQuestion = (q: SurveyQuestion): boolean => isQuestionVisible(q, allQs, answers);
+  const validationError = (q: SurveyQuestion): string | null => {
+    const value = answers[q.question_id];
+    return questionFormatError(q, value) ?? (q.question_code === 'C_PRODUCTS'
+      ? productRowsError(
+          value,
+          selectedOptionId(answerForCode('A_UNIT_TYPE')),
+          form.references?.industry_products ?? q.fields?.find((field) => field.reference === 'industry_products')?.options ?? [],
+          form.references?.product_units ?? q.fields?.find((field) => field.reference === 'product_units')?.options ?? [],
+        )
+      : null);
+  };
 
   const questionIsIncomplete = (q: SurveyQuestion): boolean => {
     const value = answers[q.question_id];
     const fields = q.fields ?? [];
-    if (questionFormatError(q, value)) return true;
+    if (validationError(q)) return true;
     if (q.question_code === 'A_UNIT_TYPE') {
       const option = q.options.find((candidate) => candidate.id === selectedOptionId(value));
       return !option || (option.requires_text && !selectedOtherText(value).trim());
@@ -1441,8 +1505,12 @@ export default function SurveyPage() {
     const value = answers[q.question_id];
     const requiredFields = (q.fields ?? []).filter((field) => field.required);
     if (q.repeatable) {
-      return (Array.isArray(value) ? value : []).reduce((count, row) =>
-        count + requiredFields.filter((field) => !isEmptyAnswer(row[field.key])).length, 0);
+      return (Array.isArray(value) ? value : []).reduce((count, row) => {
+        const values = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+        return count + requiredFields.filter((field) => q.question_code === 'C_PRODUCTS' && field.key === 'product_name'
+          ? isProductNameComplete(values[field.key])
+          : !isEmptyAnswer(values[field.key])).length;
+      }, 0);
     }
     if (requiredFields.length) {
       return requiredFields.filter((field) => !isEmptyAnswer(value?.[field.key])).length;
@@ -1460,8 +1528,7 @@ export default function SurveyPage() {
     const errs: Record<number, string> = {};
     for (const q of section.questions) {
       if (!showQuestion(q)) continue;
-      const value = answers[q.question_id];
-      const formatError = questionFormatError(q, value);
+      const formatError = validationError(q);
       if (formatError) {
         errs[q.question_id] = formatError;
       } else if (questionIsIncomplete(q)) {
@@ -1546,7 +1613,7 @@ export default function SurveyPage() {
           .filter((q) => showQuestion(q) && questionIsIncomplete(q))
           .map((q) => [
             q.question_id,
-            questionFormatError(q, answers[q.question_id]) ?? 'Complete the required fields.',
+            validationError(q) ?? 'Complete the required fields.',
           ]),
       ));
       scrollTop();

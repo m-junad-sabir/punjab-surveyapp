@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.clearHiddenSurveyAnswers = clearHiddenSurveyAnswers;
 exports.validateSectionAAnswers = validateSectionAAnswers;
 exports.validateSectionBAnswers = validateSectionBAnswers;
+exports.normalizeSectionCAnswers = normalizeSectionCAnswers;
 exports.updateExistingUnitCapitalInvestment = updateExistingUnitCapitalInvestment;
 exports.createIndustrialUnit = createIndustrialUnit;
 exports.saveNormalizedSurveyAnswers = saveNormalizedSurveyAnswers;
@@ -211,6 +212,92 @@ function isBlank(row) {
 function staticCode(value, codes) {
     const id = selectionId(value);
     return id === null ? (typeof value === 'string' ? value : null) : codes[id - 1] ?? null;
+}
+async function normalizeSectionCAnswers(manager, answers) {
+    const value = answers.get('C_PRODUCTS');
+    if (value === undefined || value === null || value === '')
+        return;
+    if (!Array.isArray(value))
+        throw new Error('Provide valid product rows.');
+    const normalized = [];
+    const unitIds = new Set();
+    const industryId = selectionId(answers.get('A_UNIT_TYPE'));
+    let industryValidated = false;
+    for (const rawRow of value) {
+        if (rawRow === null || typeof rawRow !== 'object' || Array.isArray(rawRow)) {
+            throw new Error('Provide valid product rows.');
+        }
+        const product = { ...rawRow };
+        if (isBlank(product)) {
+            normalized.push(product);
+            continue;
+        }
+        const kind = staticCode(product.product_kind, ['MAIN', 'SECONDARY']);
+        if (kind !== 'MAIN' && kind !== 'SECONDARY') {
+            throw new Error('Choose Main or Secondary product for each product row.');
+        }
+        let name;
+        if (typeof product.product_name === 'string') {
+            name = product.product_name.trim();
+            if (!name)
+                throw new Error('Enter a product name for each product row.');
+        }
+        else {
+            const optionId = selectionId(product.product_name);
+            if (optionId === null || !Number.isSafeInteger(optionId) || optionId < 0) {
+                throw new Error('Choose a valid product name for each product row.');
+            }
+            if (!industryValidated) {
+                if (industryId === null || !Number.isSafeInteger(industryId) || industryId < 1) {
+                    throw new Error('Select a Type of Unit before choosing a product.');
+                }
+                const industries = await manager.query(`SELECT v.id FROM lookup_values v
+             JOIN lookup_types t ON t.id = v.type_id
+            WHERE v.id = $1 AND t.code = 'UNIT_TYPE' AND v.is_active = true`, [industryId]);
+                if (!industries[0])
+                    throw new Error('Select a valid Type of Unit before choosing a product.');
+                industryValidated = true;
+            }
+            if (optionId === 0) {
+                const otherText = record(product.product_name).other_text;
+                if (typeof otherText !== 'string' || !otherText.trim()) {
+                    throw new Error('Specify the other product name.');
+                }
+                name = otherText.trim();
+            }
+            else {
+                const options = await manager.query(`SELECT product_name FROM industry_product_options
+            WHERE id = $1 AND unit_type_id = $2 AND product_kind = $3 AND is_active = true`, [optionId, industryId, kind]);
+                if (!options[0]) {
+                    throw new Error('Choose a product belonging to the selected Type of Unit and product kind.');
+                }
+                name = options[0].product_name;
+            }
+        }
+        for (const key of ['daily_output_unit_id', 'annual_production_unit_id', 'unit_of_measurement_id']) {
+            const unit = product[key];
+            if (unit === undefined || unit === null || unit === '')
+                continue;
+            const unitId = selectionId(unit);
+            if (unitId === null || !Number.isSafeInteger(unitId) || unitId < 1) {
+                throw new Error('Choose a valid product measurement unit.');
+            }
+            unitIds.add(unitId);
+        }
+        if (kind === 'SECONDARY') {
+            delete product.transformation_stage_ids;
+            delete product.revenue_share_pct;
+            delete product.hs_code_id;
+            delete product.hs_code_text;
+        }
+        normalized.push({ ...product, product_kind: kind, product_name: name });
+    }
+    if (unitIds.size) {
+        const units = await manager.query('SELECT id FROM measurement_units WHERE id = ANY($1::int[])', [[...unitIds]]);
+        if (units.length !== unitIds.size)
+            throw new Error('Choose a valid product measurement unit.');
+    }
+    answers.set('C_PRODUCTS', normalized);
 }
 async function resolvePsicSelection(manager, value) {
     const divisionId = selectionId(value.psic_division_id);

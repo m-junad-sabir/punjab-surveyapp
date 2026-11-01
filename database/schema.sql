@@ -122,6 +122,14 @@ CREATE TABLE measurement_units (
   unit_kind varchar(20) NOT NULL CHECK (unit_kind IN ('AREA','QUANTITY','ENERGY','POWER','OTHER'))
 );
 
+CREATE TABLE product_measurement_units (
+  unit_id integer PRIMARY KEY REFERENCES measurement_units(id),
+  display_label text NOT NULL,
+  sort_order smallint NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  product_only boolean NOT NULL DEFAULT false
+);
+
 
 -- ===== M4: Questionnaire & Dropdown Lists =====
 -- One row per drop-down list (e.g. OWNERSHIP_TYPE).
@@ -143,6 +151,16 @@ CREATE TABLE lookup_values (
   sort_order smallint DEFAULT 0 NOT NULL,
   is_active boolean DEFAULT true NOT NULL,
   UNIQUE (type_id, code)
+);
+
+CREATE TABLE industry_product_options (
+  id serial PRIMARY KEY CHECK (id > 0),
+  unit_type_id integer NOT NULL REFERENCES lookup_values(id),
+  product_kind varchar(10) NOT NULL CHECK (product_kind IN ('MAIN','SECONDARY')),
+  product_name text NOT NULL,
+  sort_order smallint NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  UNIQUE (unit_type_id, product_kind, product_name)
 );
 
 -- Allowed-choice filters: which child choices appear after a parent choice (waste type -> disposal methods, collaborator -> purposes).
@@ -390,14 +408,20 @@ CREATE TABLE products (
   hs_code_id integer REFERENCES hs_codes(id),
   hs_code_text text,
   sort_order smallint DEFAULT 0,
-  CHECK (product_kind = 'MAIN' OR (revenue_share_pct IS NULL AND hs_code_id IS NULL AND hs_code_text IS NULL))
+  CONSTRAINT products_id_kind_unique UNIQUE (id, product_kind),
+  CONSTRAINT products_secondary_main_fields_check
+    CHECK (product_kind = 'MAIN' OR (revenue_share_pct IS NULL AND hs_code_id IS NULL AND hs_code_text IS NULL))
 );
 
 -- C-v: one or more stages (T1-T6) per main product.
 CREATE TABLE product_transformation_stages (
   product_id bigint NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   stage_id integer NOT NULL REFERENCES lookup_values(id),
-  PRIMARY KEY (product_id, stage_id)
+  main_product_kind varchar(10) NOT NULL DEFAULT 'MAIN',
+  PRIMARY KEY (product_id, stage_id),
+  CONSTRAINT product_stages_main_kind_check CHECK (main_product_kind = 'MAIN'),
+  CONSTRAINT product_stages_main_product_fk FOREIGN KEY (product_id, main_product_kind)
+    REFERENCES products(id, product_kind) ON DELETE CASCADE
 );
 
 -- D-i: employees by type and gender.
@@ -803,6 +827,7 @@ CREATE INDEX idx_products_annual_production_unit_id ON products (annual_producti
 CREATE INDEX idx_products_unit_of_measurement_id ON products (unit_of_measurement_id);
 CREATE INDEX idx_products_hs_code_id ON products (hs_code_id);
 CREATE INDEX idx_product_transformation_stages_stage_id ON product_transformation_stages (stage_id);
+CREATE INDEX idx_industry_product_options_lookup ON industry_product_options (unit_type_id, product_kind, sort_order);
 CREATE INDEX idx_workforce_employment_response_id ON workforce_employment (response_id);
 CREATE INDEX idx_workforce_skills_response_id ON workforce_skills (response_id);
 CREATE INDEX idx_workforce_skills_skill_level_id ON workforce_skills (skill_level_id);

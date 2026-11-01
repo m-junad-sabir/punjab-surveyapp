@@ -99,7 +99,7 @@ SQL execution and stop on the first SQL error. No arguments show help only;
 `/plan` prints the exact sequence without connecting to PostgreSQL.
 
 Fresh setup enables required extensions, loads the schema/base seed,
-then reference seeds/updates and implemented migrations 01-05 and 07-09. Existing
+then reference seeds/updates and implemented migrations 01-05 and 07-10. Existing
 database migration requires an active form version 3 or newer. Back up before:
 
 ```powershell
@@ -140,6 +140,7 @@ psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_05_
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_07_type_of_unit.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_08_section_a_additions.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_09_section_b_operations.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_10_section_c_products.sql
 ```
 
 These examples use your psql PG environment; adjust it for the target server.
@@ -151,6 +152,15 @@ back up each target before applying migration 09. Run the verification queries
 at the end of that migration; if the working-days constraint is `NOT VALID`,
 review any historical violations before validating it. Apply the migration
 before deploying code that reads or writes `working_months_per_year`.
+
+Review and back up each target before applying migration 10 after migration 07.
+Run its verification queries separately: confirm 15 active product units and
+101 main/236 secondary catalog entries mapped to the intended industry codes.
+Review historical secondary-product and transformation-stage violations before
+validating any `NOT VALID` constraint; the migration does not rewrite those rows.
+Apply it before deploying the API that loads the Section C references. Reload
+the form online after deployment so revision 15 is cached before offline use.
+Previously selected legacy units and free-text product names are retained.
 
 An older version-1 form needs the reviewed full-questionnaire migration, then
 the location-selection update to version 3, before these delivery migrations.
