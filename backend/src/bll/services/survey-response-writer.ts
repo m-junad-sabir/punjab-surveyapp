@@ -89,6 +89,15 @@ export async function clearHiddenSurveyAnswers(
   if (field(answers, 'F_DEMAND_GAP', 'had_demand_gap') !== true) {
     answers.delete('F_DEMAND_GAP_REASON');
   }
+  if (answers.get('H_WATER_WASTE_GATE') === false) {
+    answers.delete('H_WATER_WASTE_DISPOSAL');
+  }
+  if (answers.get('H_GREEN_PRACTICES_GATE') === false) {
+    answers.delete('H_GREEN_PRACTICES');
+  }
+  if (answers.get('H_SOLID_WASTE_GATE') === false) {
+    answers.delete('H_SOLID_WASTE');
+  }
   if (field(answers, 'K_FUTURE_PLAN', 'has_future_plan') !== true) {
     for (const questionCode of answers.keys()) {
       if (questionCode.startsWith('K_') && questionCode !== 'K_FUTURE_PLAN') {
@@ -1129,13 +1138,23 @@ export async function saveNormalizedSurveyAnswers(
   }
 
   const energyCapacity = record(answers.get('H_CAPTIVE_EXPORT_CAPACITY'));
+  const generationRows = rows(answers, 'H_ENERGY_GENERATION');
+  const captiveCapacityKw = generationRows.reduce(
+    (total, generation) => total + (number(generation.capacity_kw) ?? 0),
+    0,
+  );
   await manager.query(
-    `INSERT INTO sec_h_environment (response_id, captive_capacity_kw, export_capacity_kw)
-     VALUES ($1, $2, $3)`,
+    `INSERT INTO sec_h_environment
+       (response_id, captive_capacity_kw, export_capacity_kw,
+        has_water_waste_management, has_solid_waste_generation, has_green_practices)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
     [
       responseId,
-      number(energyCapacity.captive_capacity_kw),
+      Math.round(captiveCapacityKw * 100) / 100,
       number(energyCapacity.export_capacity_kw),
+      answers.get('H_WATER_WASTE_GATE') ?? null,
+      answers.get('H_SOLID_WASTE_GATE') ?? null,
+      answers.get('H_GREEN_PRACTICES_GATE') ?? null,
     ],
   );
 
@@ -1186,11 +1205,16 @@ export async function saveNormalizedSurveyAnswers(
     ) as Array<{ id: number }>;
     const streamId = stream[0]?.id;
     for (const disposalId of selectionIds(waste.disposal_method_ids)) {
-      await manager.query(
-        `INSERT INTO solid_waste_disposals (stream_id, disposal_method_id, other_text)
-         VALUES ($1, $2, $3)`,
-        [streamId, disposalId, waste.other_text ?? null],
-      );
+        const disposalText = record(record(waste.disposal_method_ids).other_text)[String(disposalId)];
+        await manager.query(
+          `INSERT INTO solid_waste_disposals (stream_id, disposal_method_id, other_text)
+           VALUES ($1, $2, $3)`,
+          [
+            streamId,
+            disposalId,
+            typeof disposalText === 'string' && disposalText.trim() ? disposalText.trim() : null,
+          ],
+        );
     }
   }
 

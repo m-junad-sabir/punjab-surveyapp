@@ -10,6 +10,7 @@ import {
   SECTION_EF_MATRIX_DEFAULTS,
 } from './section-e-f';
 import { normalizeSectionGAnswers } from './section-g';
+import { normalizeSectionHAnswers } from './section-h';
 import {
   clearHiddenSurveyAnswers,
   createIndustrialUnit,
@@ -125,6 +126,12 @@ export class SyncService {
             ...Object.keys(SECTION_EF_MATRIX_DEFAULTS),
             'G_INNOVATION_GATE',
             'G_INNOVATION',
+            'H_ENERGY_CONSUMPTION',
+            'H_WATER_WASTE_GATE',
+            'H_WATER_WASTE_DISPOSAL',
+            'H_SOLID_WASTE_GATE',
+            'H_GREEN_PRACTICES_GATE',
+            'H_GREEN_PRACTICES',
           ];
           const questions: SubmittedQuestion[] = await trx.query(
             `SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
@@ -147,7 +154,8 @@ export class SyncService {
           }
           for (const question of questions) {
             if (defaultedQuestionCodes.includes(question.question_code) &&
-                question.question_code !== 'G_INNOVATION_GATE' &&
+                !['G_INNOVATION_GATE', 'H_WATER_WASTE_GATE', 'H_SOLID_WASTE_GATE',
+                  'H_GREEN_PRACTICES_GATE'].includes(question.question_code) &&
                 !answers.has(question.question_code)) {
               answers.set(
                 question.question_code,
@@ -162,6 +170,7 @@ export class SyncService {
           await validateMajorInputUnits(trx, answers);
           await normalizeSectionDAnswers(trx, answers);
           await normalizeSectionGAnswers(trx, answers, questions);
+          await normalizeSectionHAnswers(trx, answers, questions);
           await normalizeSectionEFAnswers(trx, answers, questions);
 
           const gpsValue = answers.get('A_LOCATION_GPS');

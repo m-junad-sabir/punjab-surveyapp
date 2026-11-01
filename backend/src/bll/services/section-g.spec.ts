@@ -113,7 +113,7 @@ describe('Section G form and normalization', () => {
     expect(QUESTION_INPUTS.E_MAJOR_INPUTS.fields.find((field) => field.key === 'unit_id')?.reference)
       .toBe('product_units');
     expect(QUESTION_INPUTS.H_ENERGY_CONSUMPTION.fields.find((field) => field.key === 'unit_id')?.reference)
-      .toBe('measurement_units');
+      .toBe('energy_source_units');
     expect(QUESTION_INPUTS.G_CRITICAL_MACHINES.fields.map((field) => field.reference))
       .toEqual(['industry_machines', undefined, 'machine_specifications']);
     expect(QUESTION_INPUTS.G_MACHINERY_AGE).toBeUndefined();

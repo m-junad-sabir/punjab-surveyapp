@@ -438,6 +438,29 @@ SELECT p.id,c.id FROM (VALUES ('PRODUCTION_SCRAP','SOLD_TO_INDUSTRY'),('PRODUCTI
 JOIN lookup_values p ON p.code=v.w AND p.type_id=(SELECT id FROM lookup_types WHERE code='WASTE_TYPE')
 JOIN lookup_values c ON c.code=v.m AND c.type_id=(SELECT id FROM lookup_types WHERE code='WASTE_DISPOSAL');
 
+-- Monthly energy units approved for each source. "Other" can use any compatible unit.
+INSERT INTO energy_source_units (energy_source_id, unit_id)
+SELECT source.id, unit.id
+  FROM (VALUES
+    ('GRID', 'KWH'),
+    ('DIESEL', 'L'),
+    ('GAS', 'KG'),
+    ('NATURAL_GAS_PROCESS', 'KG'),
+    ('COAL', 'TON'),
+    ('FURNACE_OIL', 'L'),
+    ('SOLAR', 'KWH'),
+    ('BIOMASS', 'TON'),
+    ('OTHER', 'KWH'),
+    ('OTHER', 'L'),
+    ('OTHER', 'KG'),
+    ('OTHER', 'TON')
+  ) mapping(source_code, unit_code)
+  JOIN lookup_values source
+    ON source.code = mapping.source_code
+   AND source.type_id = (SELECT id FROM lookup_types WHERE code = 'ENERGY_SOURCE')
+  JOIN measurement_units unit ON unit.code = mapping.unit_code
+ON CONFLICT DO NOTHING;
+
 -- Form, sections and the questions that use generic answer tables
 INSERT INTO survey_forms (code,title,version) VALUES ('INDUSTRIAL_SURVEY','Punjab Industrial Establishment Survey',3);
 INSERT INTO survey_sections (form_id,section_code,title,sort_order)
@@ -463,8 +486,11 @@ SELECT s.id,v.code,v.no,v.txt,v.at,lt.id,v.st FROM (VALUES
 ('F','F_STRENGTH_VS_COMPETITORS','xi','Perception of strength & weakness vs competitors','MATRIX',NULL,'response_matrix_answers'),
 ('F','F_DIGITAL_PRESENCE','xii','Digital presence','MATRIX',NULL,'response_matrix_answers'),
 ('G','G_INNOVATION','xv','Innovation and upgrading activities','MATRIX',NULL,'response_matrix_answers'),
-('H','H_WATER_WASTE_DISPOSAL','vi','Water waste management','MATRIX',NULL,'response_matrix_answers'),
-('H','H_GREEN_PRACTICES','viii','Green practice and circular economy','MATRIX',NULL,'response_matrix_answers'),
+('H','H_WATER_WASTE_DISPOSAL','vi(a)','Water waste management details','MATRIX',NULL,'response_matrix_answers'),
+('H','H_WATER_WASTE_GATE','vi','Does the establishment manage wastewater?','YES_NO',NULL,'sec_h_environment.has_water_waste_management'),
+('H','H_SOLID_WASTE_GATE','vii','Does the establishment generate solid waste or by-products?','YES_NO',NULL,'sec_h_environment.has_solid_waste_generation'),
+('H','H_GREEN_PRACTICES','viii(a)','Green practice and circular economy','MATRIX',NULL,'response_matrix_answers'),
+('H','H_GREEN_PRACTICES_GATE','viii','Does the establishment have green practices or circular-economy activities?','YES_NO',NULL,'sec_h_environment.has_green_practices'),
 ('I','I_COMPLIANCE_PERMITS','i','Factory safety and environmental compliances','MATRIX',NULL,'response_matrix_answers'),
 ('I','I_CERTIFICATIONS','ii','Quality, safety, export & green certifications','MATRIX',NULL,'response_matrix_answers'),
 ('J','J_PLANNING_AREAS','i','Operational planning','MATRIX',NULL,'response_matrix_answers'),
@@ -522,7 +548,7 @@ SELECT s.id,v.code,v.no,v.txt,v.at,lt.id,v.st FROM (VALUES
 ('H','H_ENERGY_CONSUMPTION','i','Monthly energy consumption by source','REPEATING_GROUP',NULL,'energy_consumption'),
 ('H','H_ENERGY_GENERATION','ii','Power generation by source','REPEATING_GROUP',NULL,'energy_generation'),
 ('H','H_CAPTIVE_EXPORT_CAPACITY','ii','Captive generation and export capacity','REPEATING_GROUP',NULL,'sec_h_environment'),
-('H','H_SOLID_WASTE','vii','Solid waste and by-products','REPEATING_GROUP',NULL,'solid_waste_streams'),
+('H','H_SOLID_WASTE','vii(a)','Solid waste and by-products','REPEATING_GROUP',NULL,'solid_waste_streams'),
 ('I','I_SAFETY_TRAINING','iii','Workers with formal safety training','NUMBER',NULL,'sec_i_compliance.safety_trained_workers'),
 ('J','J_REINVESTMENT_LEVEL','iii','Reinvestment strategy','SINGLE_CHOICE','REINVESTMENT_BAND','sec_j_strategy.reinvestment_level_id'),
 ('J','J_REINVESTMENT_AREA','iv','Primary area of reinvestment','SINGLE_CHOICE','REINVESTMENT_AREA','sec_j_strategy.reinvestment_area_id'),

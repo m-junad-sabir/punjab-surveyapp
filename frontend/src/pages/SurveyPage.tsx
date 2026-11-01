@@ -11,6 +11,14 @@ import { areAllOptionsSelected, toggleAllOptions } from '../lib/optionSelection'
 import { questionFormatError } from '../lib/surveyValidation';
 import { clearHiddenAnswers, isQuestionVisible, utilizationBandCode } from '../lib/surveyVisibility';
 import {
+  changeSectionHField,
+  isSectionHFieldVisible,
+  materializeSectionHAnswers,
+  sectionHSelectionId,
+  sectionHQuestionError,
+  totalGenerationCapacity,
+} from '../lib/sectionH';
+import {
   EMPLOYMENT_CATEGORIES,
   MAX_WORKFORCE_COUNT,
   WORKFORCE_GENDERS,
@@ -1026,6 +1034,7 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
           division_id: 'province_id',
           district_id: 'division_id',
           tehsil_id: 'district_id',
+          unit_id: 'energy_source_id',
           psic_group_id: 'psic_division_id',
           psic_class_id: 'psic_group_id',
           disposal_method_ids: 'waste_type_id',
@@ -1065,11 +1074,32 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
         };
         if (!isProductFieldVisible(questionCode, map, field.key)) return null;
         if (!isSectionGFieldVisible(questionCode, map, field.key)) return null;
+        if (!isSectionHFieldVisible(questionCode, map, field.key, fields)) return null;
         if (field.key === 'company_name' && map.has_parent_company === false) return null;
         if (field.key === 'reinvestment_area_other' && !map.reinvestment_area_id) return null;
 
         const selectedKind = productKind(map.product_kind);
         let controlValue = map[field.key];
+        if (questionCode === 'H_SOLID_WASTE' && field.key === 'disposal_method_ids' &&
+            typeof map.other_text === 'string' && map.other_text.trim()) {
+          const optionIds = Array.isArray(controlValue)
+            ? controlValue
+            : isSectionEfRecord(controlValue) && Array.isArray(controlValue.option_ids)
+              ? controlValue.option_ids
+              : [];
+          const otherOption = field.options.find((option) => option.code === 'OTHER');
+          if (otherOption && optionIds.some((id) => Number(id) === otherOption.id)) {
+            const existing = isSectionEfRecord(controlValue) ? controlValue : {};
+            const otherTextMap = isSectionEfRecord(existing.other_text) ? existing.other_text : {};
+            controlValue = {
+              option_ids: optionIds,
+              other_text: {
+                ...otherTextMap,
+                [otherOption.id]: otherTextMap[String(otherOption.id)] ?? map.other_text,
+              },
+            };
+          }
+        }
         if (field.reference === 'industry_products') {
           controlValue = productValueForDisplay(controlValue, options);
         } else if (field.reference === 'product_units') {
@@ -1090,6 +1120,8 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
           (industryTypeId === null || map.machine_name == null || map.machine_name === '');
         const needsEquipmentContext = questionCode === 'G_WEIGHTS_MEASURES' &&
           field.key === 'equipment_unit_id' && sectionGSelectionId(map.equipment_type_id) === null;
+        const needsEnergyUnitContext = questionCode === 'H_ENERGY_CONSUMPTION' &&
+          field.key === 'unit_id' && sectionHSelectionId(map.energy_source_id) === null;
 
         return (
           <div key={field.key} style={{ gridColumn: isMonths ? '1 / -1' : undefined }}>
@@ -1101,7 +1133,8 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
               value={controlValue}
               preserveNumericText={isSectionGRawDecimalField(questionCode, field.key)}
               disabled={
-                needsProductContext || needsMachineContext || needsSpecificationContext || needsEquipmentContext || (
+                needsProductContext || needsMachineContext || needsSpecificationContext ||
+                needsEquipmentContext || needsEnergyUnitContext || (
                   ['psic_groups', 'psic_classes'].includes(field.reference ?? '') &&
                   Boolean(parentKey[field.key]) &&
                   parentValue == null &&
@@ -1129,10 +1162,21 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
                   onChange(changeSectionGField(questionCode, map, field.key, next));
                   return;
                 }
+                if (['H_ENERGY_CONSUMPTION', 'H_ENERGY_GENERATION'].includes(questionCode)) {
+                  onChange(changeSectionHField(questionCode, map, field.key, next));
+                  return;
+                }
+                if (questionCode === 'H_SOLID_WASTE' && field.key === 'disposal_method_ids') {
+                  const updated = { ...map, [field.key]: next };
+                  delete updated.other_text;
+                  onChange(updated);
+                  return;
+                }
                 const dependentSelectionFields: Record<string, string[]> = {
                   district_id: ['tehsil_id'],
                   psic_division_id: dependentFields.psic_division_id,
                   psic_group_id: dependentFields.psic_group_id,
+                  energy_source_id: ['unit_id', 'other_text'],
                 };
                 onChange({
                   ...map,
@@ -1517,11 +1561,15 @@ function StructuredQuestionField({ question, value, onChange, references, indust
 }
 
 // ─── Universal question renderer ──────────────────────────────────────────────
-function QuestionField({ q, value, onChange, error, references, responseId, ownerId, unitName, industryTypeId }: {
+function QuestionField({
+  q, value, onChange, error, references, responseId, ownerId, unitName, industryTypeId,
+  energyGenerationRows,
+}: {
   q: SurveyQuestion; value: any; onChange: (v: any) => void; error?: string;
   references: Record<string, QuestionOption[]>;
   responseId: string; ownerId: string; unitName: string;
   industryTypeId: number | null;
+  energyGenerationRows: unknown[];
 }) {
   const errCls = error ? 'error' : '';
 
@@ -1533,6 +1581,30 @@ function QuestionField({ q, value, onChange, error, references, responseId, owne
         <option value="">{industryTypeId ? 'Select PSIC class' : 'Select Type of Unit first'}</option>
         {options.map((option) => <option key={option.id} value={option.id}>{option.code === '9609' ? `Other (${option.code})` : option.label}</option>)}
       </select>
+    );
+  }
+
+  if (q.question_code === 'H_CAPTIVE_EXPORT_CAPACITY') {
+    const total = totalGenerationCapacity(energyGenerationRows);
+    const exportValue = value && typeof value === 'object' ? value.export_capacity_kw ?? '' : '';
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 700 }}>
+          Total captive capacity (kW)
+          <input className="form-input" type="number" value={total} readOnly aria-readonly="true" />
+        </label>
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 700 }}>
+          Export capacity (kW)
+          <input className={`form-input ${errCls}`} type="number" min={0} step="0.01"
+            value={exportValue}
+            onChange={(event) => onChange({
+              ...(value && typeof value === 'object' ? value : {}),
+              captive_capacity_kw: total,
+              export_capacity_kw: event.target.value === '' ? null : Number(event.target.value),
+            })}
+            placeholder="Enter number" />
+        </label>
+      </div>
     );
   }
 
@@ -1841,6 +1913,8 @@ export default function SurveyPage() {
       q, value, selectedOptionId(answerForCode('A_UNIT_TYPE')), form.references ?? {},
     );
     if (sectionGError) return sectionGError;
+    const sectionHError = sectionHQuestionError(q, value, form.references ?? {});
+    if (sectionHError) return sectionHError;
     if (q.question_code === 'E_MAJOR_INPUTS') {
       return majorInputUnitsError(
         value,
@@ -1940,6 +2014,7 @@ export default function SurveyPage() {
     const gpsVal = gpsQ ? answers[gpsQ.question_id] : null;
     const workforceAnswers = materializeWorkforceAnswers(allQs, answers, form.references ?? {});
     const responseAnswers = materializeSectionEFAnswers(allQs, workforceAnswers, form.references ?? {});
+    const sectionHAnswers = materializeSectionHAnswers(allQs, responseAnswers);
 
     return {
       response_id:    responseId,
@@ -1951,7 +2026,7 @@ export default function SurveyPage() {
       gps_accuracy_m: gpsVal?.accuracy,
       started_at:     startedAt,
       submitted_at:   status === 'pending_sync' ? new Date().toISOString() : undefined,
-      answers: Object.entries(responseAnswers)
+      answers: Object.entries(sectionHAnswers)
         .filter(([qid]) => {
           const question = allQs.find((candidate) => candidate.question_id === Number(qid));
           return !question || showQuestion(question) ||
@@ -2157,6 +2232,13 @@ export default function SurveyPage() {
                 onChange={(v) => setAnswer(q.question_id, v)}
                 error={errors[q.question_id]}
                 references={form?.references ?? {}}
+                energyGenerationRows={(() => {
+                  const generationQuestion = allQs.find((candidate) =>
+                    candidate.question_code === 'H_ENERGY_GENERATION',
+                  );
+                  const rows = generationQuestion ? answers[generationQuestion.question_id] : [];
+                  return Array.isArray(rows) ? rows : [];
+                })()}
                 responseId={responseId}
                 industryTypeId={selectedOptionId(answerForCode('A_UNIT_TYPE'))}
                 ownerId={user!.user_id}

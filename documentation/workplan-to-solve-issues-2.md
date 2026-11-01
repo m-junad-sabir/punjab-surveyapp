@@ -212,14 +212,21 @@
 
 ## Phase 8 — Section H: Energy, water, waste, and green practices
 
-1. Refine Monthly Energy Consumption by Source to the three specified fields: source, quantity per month, and energy-use share. Label the quantity with `kW` only if the owner confirms that is the intended unit for this measurement; otherwise resolve the report’s apparent dimensional mismatch before release. Persist omitted share categories as zero where requested and show each value plus the total.
-2. Align Power Generation by Source to power source, capacity (kW), and export (kW). Calculate Total Captive Capacity from rows and retain Total Export Capacity as a separately entered field. Confirm persistence in `energy_generation` and `sec_h_environment`.
+1. Keep Monthly Energy Consumption by Source as source, quantity per month, source-dependent unit, and energy-use share. The owner confirmed: Grid = kWh; Diesel and Furnace oil = litre; Gas and Natural gas (for process) = kg; Coal and Biomass = tonne; Solar = kWh; Other = kWh, litre, kg, or tonne. Do not label a monthly quantity as `kW` (power). Persist omitted source shares as zero and show each source value plus the total in the PDF.
+2. Align Power Generation by Source to power source, capacity (kW), and export (kW). Calculate Total Captive Capacity from generation rows and retain Total Export Capacity as a separately entered field. Confirm persistence in `energy_generation` and `sec_h_environment`.
 3. Add a Yes/No gate for water-waste management. No hides follow-ups and stores the requested `No` values; Yes reveals the details.
 4. Change Solid Waste and By-products to one top-level generation Yes/No question. No hides waste-type/disposal questions and omits their PDF answers; Yes reveals them. Remove duplicate Other disposal options and show Other text only when selected.
 5. Add a Yes/No gate for Green Practice and Circular Economy. No hides dependent questions and stores the requested `No` values; Yes reveals them.
 6. Review the database model and migration needs before changing energy answer types or moving the waste-generation gate. Preserve existing responses and avoid duplicate representations.
 
 **Exit checks:** Source row totals and separately entered export capacity are correct; every gate behaves consistently in UI/API/PDF; Other disposal text is captured once; migration preserves existing survey data.
+
+### Implementation and outstanding verification
+
+- Implemented the owner-approved source-specific energy units, zero-defaulted shares, generation-derived captive capacity, and explicit water, solid-waste, and green-practice gates. Hidden details are cleared locally or normalized to `No` in the API and omitted from PDFs.
+- Added migration 13 and fresh-install schema/reference data. The migration adds nullable gates and unit mappings without backfilling or deleting historical answers; setup runs it after migration 12.
+- Focused Section H backend and frontend tests cover normalization, writer persistence, conditional behavior, source-unit compatibility, capacity/share totals, and generated PDFs. Full backend/frontend suites and production builds passed during implementation.
+- **Owner action before release:** review and back up the target database, apply migration 13 after its prerequisites, run its verification queries, and verify live API writes and PDF output. Then test an offline draft/reload/sync round trip. No SQL, live database verification, or deployment was performed during implementation.
 
 ## Phase 9 — Sections I and J: Compliance and strategy
 
@@ -295,7 +302,7 @@
 | 5 Section D | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed database checks and live/offline verification remain |
 | 6 Sections E and F | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 11 and live/offline verification remain |
 | 7 Section G | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 12 and live/offline verification remain |
-| 8 Section H | Not started |
+| 8 Section H | Implementation and automated tests complete; owner-managed migration 13 and live/offline verification remain |
 | 9 Sections I and J | Not started |
 | 10 Section K | Not started |
 | 11 Section L | Not started |

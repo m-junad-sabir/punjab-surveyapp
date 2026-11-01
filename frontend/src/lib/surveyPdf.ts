@@ -32,6 +32,11 @@ import {
   machineValueForDisplay,
   sectionGSelectionId,
 } from './sectionG';
+import {
+  isSectionHFieldVisible,
+  sectionHSelectionId,
+  totalGenerationCapacity,
+} from './sectionH';
 import type {
   OfflineResponse,
   QuestionOption,
@@ -112,8 +117,73 @@ function getQuestionAnswers(
   question: SurveyQuestion,
   answer: unknown,
   references: Record<string, QuestionOption[]>,
+  allAnswers: Record<number, unknown>,
+  allQuestions: SurveyQuestion[],
 ): AnswerLine[] {
   const fields = question.fields ?? [];
+
+  if (question.question_code === 'H_ENERGY_CONSUMPTION') {
+    const sourceRows = Array.isArray(answer) ? answer.filter(isRecord) : [];
+    const bySource = new Map<number, Record<string, unknown>>();
+    for (const row of sourceRows) {
+      const sourceId = sectionHSelectionId(row.energy_source_id);
+      if (sourceId !== null) bySource.set(sourceId, row);
+    }
+    const totalShare = [...bySource.values()].reduce((total, row) => {
+      const share = row.share_pct == null || row.share_pct === '' ? 0 : Number(row.share_pct);
+      return total + (Number.isFinite(share) ? share : 0);
+    }, 0);
+    const lines: AnswerLine[] = [];
+    for (const source of question.options) {
+      if (source.is_selectable === false) continue;
+      const row = bySource.get(source.id);
+      const quantity = row?.quantity_per_month;
+      const unitId = sectionHSelectionId(row?.unit_id);
+      const unit = (references.energy_source_units ?? []).find((option) =>
+        option.id === unitId && option.parent_id === source.id,
+      );
+      const share = row?.share_pct == null || row.share_pct === ''
+        ? 0
+        : Number(row.share_pct);
+      const otherText = typeof row?.other_text === 'string' ? row.other_text.trim() : '';
+      const sourceLabel = otherText ? `${source.label}: ${otherText}` : source.label;
+      lines.push({
+        label: `${sourceLabel} - Quantity per month`,
+        value: quantity === null || quantity === undefined || quantity === ''
+          ? 'Not provided'
+          : `${String(quantity)}${unit ? ` ${unit.label}` : ''}`,
+      });
+      lines.push({
+        label: `${sourceLabel} - Energy use share`,
+        value: `${Number.isFinite(share) ? share.toFixed(2) : '0.00'}%`,
+      });
+    }
+    for (const [sourceId, row] of bySource) {
+      if (question.options.some((source) => source.id === sourceId)) continue;
+      lines.push({
+        label: `Previously selected energy source (${sourceId})`,
+        value: `${row.share_pct == null ? '0.00' : Number(row.share_pct).toFixed(2)}%`,
+      });
+    }
+    lines.push({ label: 'Total energy use share', value: `${totalShare.toFixed(2)}%` });
+    return lines;
+  }
+
+  if (question.question_code === 'H_CAPTIVE_EXPORT_CAPACITY') {
+    const generationQuestion = allQuestions.find((candidate) =>
+      candidate.question_code === 'H_ENERGY_GENERATION',
+    );
+    const generatedCapacity = totalGenerationCapacity(
+      generationQuestion ? allAnswers[generationQuestion.question_id] : [],
+    );
+    return [
+      { label: 'Total captive capacity (kW)', value: `${generatedCapacity}` },
+      {
+        label: 'Export capacity (kW)',
+        value: displayValue(isRecord(answer) ? answer.export_capacity_kw : undefined),
+      },
+    ];
+  }
 
   if (question.question_code === 'D_EMPLOYMENT') {
     const normalized = normalizeEmployment(answer);
@@ -174,7 +244,8 @@ function getQuestionAnswers(
   const fieldLines = (row: unknown): AnswerLine[] => {
     return fields.filter((field) =>
       isProductFieldVisible(question.question_code, row, field.key) &&
-      isSectionGFieldVisible(question.question_code, row, field.key),
+      isSectionGFieldVisible(question.question_code, row, field.key) &&
+      isSectionHFieldVisible(question.question_code, row, field.key, question.fields),
     ).map((field) => {
       const value = isRecord(row) ? row[field.key] : undefined;
       const useDefault = (value === undefined || value === null || value === '') &&
@@ -186,6 +257,26 @@ function getQuestionAnswers(
         ? productKind(value)
         : null;
       let display = value;
+      if (question.question_code === 'H_SOLID_WASTE' && field.key === 'disposal_method_ids' &&
+          isRecord(row) && typeof row.other_text === 'string' && row.other_text.trim()) {
+        const selected = Array.isArray(value)
+          ? value
+          : isRecord(value) && Array.isArray(value.option_ids) ? value.option_ids : [];
+        const other = options.find((option) => option.code === 'OTHER');
+        if (other && selected.some((id) => Number(id) === other.id)) {
+          const existingText = isRecord(value) && isRecord(value.other_text)
+            ? value.other_text[String(other.id)]
+            : undefined;
+          display = {
+            option_ids: selected,
+            other_text: {
+              [other.id]: typeof existingText === 'string' && existingText.trim()
+                ? existingText
+                : row.other_text,
+            },
+          };
+        }
+      }
       if (typeof value === 'string' && kind) {
         display = kind === 'MAIN' ? 1 : 2;
       } else if (field.reference === 'product_units') {
@@ -480,7 +571,12 @@ export async function downloadSurveyPdf(response: OfflineResponse, form?: Survey
     y += 15;
   };
 
-  const drawQuestion = (question: SurveyQuestion, answer: unknown) => {
+  const drawQuestion = (
+    question: SurveyQuestion,
+    answer: unknown,
+    allAnswers: Record<number, unknown>,
+    allQuestions: SurveyQuestion[],
+  ) => {
     ensureSpace(14);
     const title = questionTitle(question);
     const titleLines = pdf.splitTextToSize(title, contentW - 8) as string[];
@@ -490,7 +586,9 @@ export async function downloadSurveyPdf(response: OfflineResponse, form?: Survey
     pdf.text(titleLines, margin + 4, y + 5);
     y += Math.max(9, titleLines.length * 4.1 + 3);
 
-    const lines = getQuestionAnswers(question, answer, form?.references ?? {});
+    const lines = getQuestionAnswers(
+      question, answer, form?.references ?? {}, allAnswers, allQuestions,
+    );
     for (const line of lines) {
       const isEntry = line.value === '' && line.label.startsWith('Entry ');
       if (isEntry) {
@@ -543,7 +641,7 @@ export async function downloadSurveyPdf(response: OfflineResponse, form?: Survey
       for (const question of section.questions) {
         knownQuestionIds.add(question.question_id);
         if (!isQuestionVisible(question, questions, answersRecord)) continue;
-        drawQuestion(question, answersByQuestion.get(question.question_id));
+        drawQuestion(question, answersByQuestion.get(question.question_id), answersRecord, questions);
       }
     }
 

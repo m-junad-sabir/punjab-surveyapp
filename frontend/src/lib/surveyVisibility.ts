@@ -37,6 +37,17 @@ function selectedOptionCode(
   return question.options.find((option) => option.id === optionId)?.code ?? null;
 }
 
+function hasSavedDetail(value: unknown, ignoredKeys: string[] = []): boolean {
+  if (Array.isArray(value)) {
+    return value.some((row) => isRecord(row) && Object.entries(row)
+      .filter(([key]) => !ignoredKeys.includes(key))
+      .some(([, entry]) =>
+      entry !== undefined && entry !== null && entry !== '',
+    ));
+  }
+  return isRecord(value) && Object.keys(value).length > 0;
+}
+
 export function utilizationBandCode(
   questions: SurveyQuestion[],
   answers: AnswersByQuestion,
@@ -80,6 +91,24 @@ export function isQuestionVisible(
       if (answer === false) return false;
       const existing = answers[question.question_id];
       return isRecord(existing) && Object.keys(existing).length > 0;
+    }
+    case 'H_WATER_WASTE_DISPOSAL': {
+      const gate = answerForCode('H_WATER_WASTE_GATE', questions, answers);
+      if (gate === true) return true;
+      if (gate === false) return false;
+      return hasSavedDetail(answers[question.question_id]);
+    }
+    case 'H_SOLID_WASTE': {
+      const gate = answerForCode('H_SOLID_WASTE_GATE', questions, answers);
+      if (gate === true) return true;
+      if (gate === false) return false;
+      return hasSavedDetail(answers[question.question_id], ['is_generated']);
+    }
+    case 'H_GREEN_PRACTICES': {
+      const gate = answerForCode('H_GREEN_PRACTICES_GATE', questions, answers);
+      if (gate === true) return true;
+      if (gate === false) return false;
+      return hasSavedDetail(answers[question.question_id]);
     }
     default:
       if (question.question_code.startsWith('K_') && question.question_code !== 'K_FUTURE_PLAN') {

@@ -84,6 +84,8 @@ call :run migration_11_section_e_f_lookups.sql
 if errorlevel 1 goto failed
 call :run migration_12_section_g_machinery.sql
 if errorlevel 1 goto failed
+call :run migration_13_section_h_energy_and_gates.sql
+if errorlevel 1 goto failed
 echo Setup completed. Phase 5 is deferred; no migration_06 script was executed.
 echo Review the role audit above. Existing account roles are never reassigned automatically.
 echo Fresh installs need an administrator account provisioned separately; see README.md.
@@ -122,6 +124,7 @@ echo migration_09_section_b_operations.sql
 echo migration_10_section_c_products.sql
 echo migration_11_section_e_f_lookups.sql
 echo migration_12_section_g_machinery.sql
+echo migration_13_section_h_energy_and_gates.sql
 echo Phase 5 / migration_06 and legacy cleanup/reset scripts are excluded.
 exit /b 0
 

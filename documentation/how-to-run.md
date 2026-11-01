@@ -13,8 +13,8 @@ was confirmed working by the owner. Phase 5 was rolled back after login regressi
 Phase 6 autosave/leave protection is deferred. Save drafts explicitly. See the
 [workplan](workplan-to-solve-issues.md) for the remaining phases.
 
-For the later Workplan 2, the Section G implementation and the Section E major-input
-unit change require owner-managed database migration and live verification. See
+For Workplan 2, the Section E major-input unit change and Section G/H implementations
+require owner-managed database migration and live verification. See
 [Workplan 2](workplan-to-solve-issues-2.md).
 
 ## 1. Install the required software
@@ -103,7 +103,7 @@ SQL execution and stop on the first SQL error. No arguments show help only;
 `/plan` prints the exact sequence without connecting to PostgreSQL.
 
 Fresh setup enables required extensions, loads the schema/base seed,
-then reference seeds/updates and implemented migrations 01-05 and 07-12. Existing
+then reference seeds/updates and implemented migrations 01-05 and 07-13. Existing
 database migration requires an active form version 3 or newer. Back up before:
 
 ```powershell
@@ -147,6 +147,7 @@ psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_09_
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_10_section_c_products.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_11_section_e_f_lookups.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_12_section_g_machinery.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_13_section_h_energy_and_gates.sql
 ```
 
 These examples use your psql PG environment; adjust it for the target server.

@@ -540,7 +540,10 @@ CREATE TABLE weights_measures_equipment (
 CREATE TABLE sec_h_environment (
   response_id uuid NOT NULL PRIMARY KEY REFERENCES survey_responses(id) ON DELETE CASCADE,
   captive_capacity_kw numeric(12,2),
-  export_capacity_kw numeric(12,2)
+  export_capacity_kw numeric(12,2),
+  has_water_waste_management boolean,
+  has_solid_waste_generation boolean,
+  has_green_practices boolean
 );
 
 -- H-i: monthly use and share of each fuel/energy source.
@@ -553,6 +556,13 @@ CREATE TABLE energy_consumption (
   unit_id integer REFERENCES measurement_units(id),
   share_pct numeric(5,2) CHECK (share_pct BETWEEN 0 AND 100),
   UNIQUE (response_id, energy_source_id)
+);
+
+-- Unit choices are constrained by the selected monthly energy source.
+CREATE TABLE energy_source_units (
+  energy_source_id integer NOT NULL REFERENCES lookup_values(id),
+  unit_id integer NOT NULL REFERENCES measurement_units(id),
+  PRIMARY KEY (energy_source_id, unit_id)
 );
 
 -- H-ii: own power generation by source.

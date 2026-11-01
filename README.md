@@ -54,6 +54,10 @@ For manual upgrades, run these against each target database in order using
 6. [Migration 07: industry and filtered PSIC](database/migration_07_type_of_unit.sql)
 7. [Migration 08: Section A additions](database/migration_08_section_a_additions.sql)
 8. [Migration 09: Section B operations](database/migration_09_section_b_operations.sql)
+9. [Migration 10: Section C products](database/migration_10_section_c_products.sql)
+10. [Migration 11: Section E/F lookups](database/migration_11_section_e_f_lookups.sql)
+11. [Migration 12: Section G machinery](database/migration_12_section_g_machinery.sql)
+12. [Migration 13: Section H energy and gates](database/migration_13_section_h_energy_and_gates.sql)
 
 Load classification references before migration 07; it fails if a mapped
 class is missing. Apply SQL before deploying its code, then reopen online to

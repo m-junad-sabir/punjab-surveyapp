@@ -190,9 +190,9 @@ exports.QUESTION_INPUTS = {
         fields: [
             field('energy_source_id', 'Fuel / energy source', 'SINGLE_CHOICE', { lookup_type: 'ENERGY_SOURCE' }, true),
             field('other_text', 'Other source', 'TEXT'),
-            field('quantity_per_month', 'Quantity per month', 'NUMBER'),
-            field('unit_id', 'Unit', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
-            field('share_pct', 'Share of energy use (%)', 'NUMBER'),
+            field('quantity_per_month', 'Quantity per month', 'NUMBER', { min: 0, step: 0.01 }),
+            field('unit_id', 'Unit', 'SINGLE_CHOICE', { reference: 'energy_source_units' }),
+            field('share_pct', 'Energy use share (%)', 'NUMBER', { min: 0, max: 100, step: 0.01 }),
         ],
     },
     H_ENERGY_GENERATION: {
@@ -200,23 +200,21 @@ exports.QUESTION_INPUTS = {
         fields: [
             field('power_source_id', 'Power source', 'SINGLE_CHOICE', { lookup_type: 'POWER_SOURCE' }, true),
             field('other_text', 'Other source', 'TEXT'),
-            field('capacity_kw', 'Capacity (kW)', 'NUMBER'),
-            field('export_kw', 'Exported power (kW)', 'NUMBER'),
+            field('capacity_kw', 'Capacity (kW)', 'NUMBER', { min: 0, step: 0.01 }),
+            field('export_kw', 'Exported power (kW)', 'NUMBER', { min: 0, step: 0.01 }),
         ],
     },
     H_CAPTIVE_EXPORT_CAPACITY: {
         fields: [
-            field('captive_capacity_kw', 'Captive generation capacity (kW)', 'NUMBER'),
-            field('export_capacity_kw', 'Export capacity (kW)', 'NUMBER'),
+            field('captive_capacity_kw', 'Total captive capacity (kW)', 'NUMBER'),
+            field('export_capacity_kw', 'Export capacity (kW)', 'NUMBER', { min: 0, step: 0.01 }),
         ],
     },
     H_SOLID_WASTE: {
         repeatable: true,
         fields: [
             field('waste_type_id', 'Solid waste / by-product type', 'SINGLE_CHOICE', { lookup_type: 'WASTE_TYPE' }, true),
-            field('is_generated', 'Is this waste generated?', 'YES_NO'),
             field('disposal_method_ids', 'Disposal methods', 'MULTI_CHOICE', { lookup_type: 'WASTE_DISPOSAL' }),
-            field('other_text', 'Other disposal method', 'TEXT'),
         ],
     },
     I_SAFETY_TRAINING: { fields: [field('safety_trained_workers', 'Workers with formal safety training', 'NUMBER')] },
@@ -311,6 +309,15 @@ exports.SURVEY_REFERENCES = {
                 ORDER BY m.name`,
     product_kinds: `SELECT 1 AS id, 'MAIN' AS code, 'Main product' AS label, false AS requires_text UNION ALL SELECT 2, 'SECONDARY', 'Secondary product', false`,
     capacity_periods: `SELECT 1 AS id, 'PER_DAY' AS code, 'Per day' AS label, false AS requires_text UNION ALL SELECT 2, 'PER_MONTH', 'Per month', false`,
+    energy_source_units: `SELECT mapping.unit_id AS id, m.code, m.name AS label,
+                              false AS requires_text, mapping.energy_source_id AS parent_id
+                         FROM energy_source_units mapping
+                         JOIN measurement_units m ON m.id = mapping.unit_id
+                         JOIN lookup_values source ON source.id = mapping.energy_source_id
+                         JOIN lookup_types source_type ON source_type.id = source.type_id
+                        WHERE source_type.code = 'ENERGY_SOURCE'
+                          AND source.is_active = true
+                        ORDER BY source.sort_order, m.name`,
     genders: `SELECT 1 AS id, 'MALE' AS code, 'Male' AS label, false AS requires_text UNION ALL SELECT 2, 'FEMALE', 'Female', false UNION ALL SELECT 3, 'Other', 'Other', false`,
     psic_divisions: `SELECT id, code, name AS label, false AS requires_text
                      FROM psic_divisions

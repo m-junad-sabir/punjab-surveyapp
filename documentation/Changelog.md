@@ -2,6 +2,25 @@
 
 All notable application changes are recorded here, grouped by the categories below.
 
+## 2026-11-01 — Workplan 2 Phase 8
+
+### Added
+
+- Added source-dependent monthly energy units using the owner-approved mapping, explicit Yes/No gates for water waste, solid waste, and green practices, and automatic `No` matrix values when applicable.
+- Added rerunnable migration 13 with nullable gate columns, energy-source unit mappings, form metadata, and owner verification queries. Existing energy, matrix, and waste answers are retained.
+- Added focused Section H tests for unit compatibility, gate behavior, Other disposal descriptions, share defaults, capacity totals, and gated PDF output.
+
+### Changed
+
+- Bumped the offline form-cache revision to 19. The updated API and migration must be available before a new questionnaire is cached.
+- Captive capacity is now calculated from generation rows; export capacity remains entered by the user. Omitted source shares persist as zero, and the PDF shows source shares and their total.
+
+### Fixed
+
+- The solid-waste generation question is asked once; disposal Other text appears only with its selected method. Hidden detail answers are removed from the local form and omitted from PDFs.
+
+Migration 13 and live/offline verification remain owner-managed; no SQL or deployment was performed.
+
 ## 2026-11-01 — Workplan 2 Phase 7
 
 ### Added
