@@ -8,6 +8,8 @@ export interface LookupOption {
     label: string;
     requires_text: boolean;
     parent_id?: number | null;
+    product_kind?: 'MAIN' | 'SECONDARY' | null;
+    is_selectable?: boolean;
 }
 export declare class SurveyFormService {
     private readonly formRepo;
@@ -42,6 +44,10 @@ export declare class SurveyFormService {
                     lookup_type?: string;
                     reference?: string;
                     required?: boolean;
+                    min?: number;
+                    max?: number;
+                    step?: number;
+                    default_value?: number;
                 }[];
                 repeatable: boolean;
                 matrix_items: {

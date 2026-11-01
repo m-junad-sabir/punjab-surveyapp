@@ -118,6 +118,7 @@ SELECT t.id,v.code,v.label,v.rt,v.ord FROM (VALUES
 ('OPERATION_STATUS','OFF_SEASON','Not running, because it is the off season',false,2),
 ('OPERATION_STATUS','TEMP_CLOSED','Temporarily Close',false,3),
 ('OPERATION_STATUS','PERM_CLOSED','Permanently Close',false,4),
+('DAILY_HOURS','LESS_THAN_8','Less than 8 Hours',false,0),
 ('DAILY_HOURS','SINGLE_8','8 hrs - single shift',false,1),
 ('DAILY_HOURS','DOUBLE_16','16 hrs - double shift',false,2),
 ('DAILY_HOURS','TRIPLE_24','24 hrs - triple shift',false,3),
@@ -171,10 +172,12 @@ SELECT t.id,v.code,v.label,v.rt,v.ord FROM (VALUES
 ('RELIABILITY_BAND','R70_90','70-90% (mostly on time, occasional delays)',false,2),
 ('RELIABILITY_BAND','R50_70','50-70% (frequent delays)',false,3),
 ('RELIABILITY_BAND','BELOW_50','Below 50% (serious delivery problem)',false,4),
+('RELIABILITY_BAND','NOT_FORMALLY_TRACKED','Not Formally Tracked',false,5),
 ('ACCEPTANCE_BAND','ABOVE_90','Above 90% (very low rejection rate)',false,1),
 ('ACCEPTANCE_BAND','R70_90','70-90% (mostly accepted)',false,2),
 ('ACCEPTANCE_BAND','R50_70','50-70% (frequent rejections/reworks)',false,3),
 ('ACCEPTANCE_BAND','BELOW_50','Below 50% (serious quality problems)',false,4),
+('ACCEPTANCE_BAND','NOT_FORMALLY_TRACKED','Not Formally Tracked',false,5),
 ('BUYER_TYPE','WHOLESALERS','Wholesalers/traders',false,1),
 ('BUYER_TYPE','RETAILERS','Retailers',false,2),
 ('BUYER_TYPE','MANUFACTURERS','Other manufacturers',false,3),
@@ -435,6 +438,29 @@ SELECT p.id,c.id FROM (VALUES ('PRODUCTION_SCRAP','SOLD_TO_INDUSTRY'),('PRODUCTI
 JOIN lookup_values p ON p.code=v.w AND p.type_id=(SELECT id FROM lookup_types WHERE code='WASTE_TYPE')
 JOIN lookup_values c ON c.code=v.m AND c.type_id=(SELECT id FROM lookup_types WHERE code='WASTE_DISPOSAL');
 
+-- Monthly energy units approved for each source. "Other" can use any compatible unit.
+INSERT INTO energy_source_units (energy_source_id, unit_id)
+SELECT source.id, unit.id
+  FROM (VALUES
+    ('GRID', 'KWH'),
+    ('DIESEL', 'L'),
+    ('GAS', 'KG'),
+    ('NATURAL_GAS_PROCESS', 'KG'),
+    ('COAL', 'TON'),
+    ('FURNACE_OIL', 'L'),
+    ('SOLAR', 'KWH'),
+    ('BIOMASS', 'TON'),
+    ('OTHER', 'KWH'),
+    ('OTHER', 'L'),
+    ('OTHER', 'KG'),
+    ('OTHER', 'TON')
+  ) mapping(source_code, unit_code)
+  JOIN lookup_values source
+    ON source.code = mapping.source_code
+   AND source.type_id = (SELECT id FROM lookup_types WHERE code = 'ENERGY_SOURCE')
+  JOIN measurement_units unit ON unit.code = mapping.unit_code
+ON CONFLICT DO NOTHING;
+
 -- Form, sections and the questions that use generic answer tables
 INSERT INTO survey_forms (code,title,version) VALUES ('INDUSTRIAL_SURVEY','Punjab Industrial Establishment Survey',3);
 INSERT INTO survey_sections (form_id,section_code,title,sort_order)
@@ -460,8 +486,11 @@ SELECT s.id,v.code,v.no,v.txt,v.at,lt.id,v.st FROM (VALUES
 ('F','F_STRENGTH_VS_COMPETITORS','xi','Perception of strength & weakness vs competitors','MATRIX',NULL,'response_matrix_answers'),
 ('F','F_DIGITAL_PRESENCE','xii','Digital presence','MATRIX',NULL,'response_matrix_answers'),
 ('G','G_INNOVATION','xv','Innovation and upgrading activities','MATRIX',NULL,'response_matrix_answers'),
-('H','H_WATER_WASTE_DISPOSAL','vi','Water waste management','MATRIX',NULL,'response_matrix_answers'),
-('H','H_GREEN_PRACTICES','viii','Green practice and circular economy','MATRIX',NULL,'response_matrix_answers'),
+('H','H_WATER_WASTE_DISPOSAL','vi(a)','Water waste management details','MATRIX',NULL,'response_matrix_answers'),
+('H','H_WATER_WASTE_GATE','vi','Does the establishment manage wastewater?','YES_NO',NULL,'sec_h_environment.has_water_waste_management'),
+('H','H_SOLID_WASTE_GATE','vii','Does the establishment generate solid waste or by-products?','YES_NO',NULL,'sec_h_environment.has_solid_waste_generation'),
+('H','H_GREEN_PRACTICES','viii(a)','Green practice and circular economy','MATRIX',NULL,'response_matrix_answers'),
+('H','H_GREEN_PRACTICES_GATE','viii','Does the establishment have green practices or circular-economy activities?','YES_NO',NULL,'sec_h_environment.has_green_practices'),
 ('I','I_COMPLIANCE_PERMITS','i','Factory safety and environmental compliances','MATRIX',NULL,'response_matrix_answers'),
 ('I','I_CERTIFICATIONS','ii','Quality, safety, export & green certifications','MATRIX',NULL,'response_matrix_answers'),
 ('J','J_PLANNING_AREAS','i','Operational planning','MATRIX',NULL,'response_matrix_answers'),
@@ -478,13 +507,13 @@ SELECT s.id,v.code,v.no,v.txt,v.at,lt.id,v.st FROM (VALUES
 ('A','A_OWNERSHIP','ix','Ownership of establishment','SINGLE_CHOICE','OWNERSHIP_TYPE','industrial_units.ownership_type_id'),
 ('A','A_LEGAL_STRUCTURE','x','Legal structure of ownership','SINGLE_CHOICE','LEGAL_STRUCTURE','industrial_units.legal_structure_id'),
 ('A','A_PARENT_COMPANY','xi','Parent company (Yes/No)','YES_NO',NULL,'industrial_units.has_parent_company'),
-('A','A_PARENT_COMPANY_DETAILS','xi','Parent company details','REPEATING_GROUP',NULL,'unit_parent_companies'),
-('A','A_ASSOCIATED_ESTABLISHMENTS','xii','Establishments of the parent company','REPEATING_GROUP',NULL,'unit_associated_establishments'),
-('A','A_ESTABLISHMENT_AREA','xiii','Total establishment area','REPEATING_GROUP',NULL,'industrial_units'),
+('A','A_PARENT_COMPANY_DETAILS','xii(a)','Parent company details','REPEATING_GROUP',NULL,'unit_parent_companies'),
+('A','A_ASSOCIATED_ESTABLISHMENTS','xiii','Establishments of the parent company','REPEATING_GROUP',NULL,'unit_associated_establishments'),
+('A','A_ESTABLISHMENT_AREA','xiv','Total establishment area','REPEATING_GROUP',NULL,'industrial_units'),
 ('B','B_OPERATION_MONTHS','i','Months of operation','MULTI_CHOICE',NULL,'sec_b_operations.operating_months'),
 ('B','B_OPERATION_STATUS','ii','Current operation status','SINGLE_CHOICE','OPERATION_STATUS','sec_b_operations.operation_status_id'),
 ('B','B_CLOSURE_REASON','ii','Reason for closure (if permanently closed)','TEXT',NULL,'sec_b_operations.closure_reason'),
-('B','B_OPERATIONAL_HOURS','iii','Operational hours (daily, weekly and monthly)','REPEATING_GROUP',NULL,'sec_b_operations'),
+('B','B_OPERATIONAL_HOURS','iii','Daily operating hours / shift and working schedule','REPEATING_GROUP',NULL,'sec_b_operations'),
 ('C','C_PRODUCTS','-','Main and secondary products and production details','REPEATING_GROUP',NULL,'products'),
 ('D','D_EMPLOYMENT','i','Employment details, last financial year','REPEATING_GROUP',NULL,'workforce_employment'),
 ('D','D_SKILLS','ii','Employment skill levels by gender','REPEATING_GROUP',NULL,'workforce_skills'),
@@ -519,7 +548,7 @@ SELECT s.id,v.code,v.no,v.txt,v.at,lt.id,v.st FROM (VALUES
 ('H','H_ENERGY_CONSUMPTION','i','Monthly energy consumption by source','REPEATING_GROUP',NULL,'energy_consumption'),
 ('H','H_ENERGY_GENERATION','ii','Power generation by source','REPEATING_GROUP',NULL,'energy_generation'),
 ('H','H_CAPTIVE_EXPORT_CAPACITY','ii','Captive generation and export capacity','REPEATING_GROUP',NULL,'sec_h_environment'),
-('H','H_SOLID_WASTE','vii','Solid waste and by-products','REPEATING_GROUP',NULL,'solid_waste_streams'),
+('H','H_SOLID_WASTE','vii(a)','Solid waste and by-products','REPEATING_GROUP',NULL,'solid_waste_streams'),
 ('I','I_SAFETY_TRAINING','iii','Workers with formal safety training','NUMBER',NULL,'sec_i_compliance.safety_trained_workers'),
 ('J','J_REINVESTMENT_LEVEL','iii','Reinvestment strategy','SINGLE_CHOICE','REINVESTMENT_BAND','sec_j_strategy.reinvestment_level_id'),
 ('J','J_REINVESTMENT_AREA','iv','Primary area of reinvestment','SINGLE_CHOICE','REINVESTMENT_AREA','sec_j_strategy.reinvestment_area_id'),

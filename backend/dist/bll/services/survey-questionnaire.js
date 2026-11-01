@@ -1,9 +1,24 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SURVEY_REFERENCES = exports.QUESTION_INPUTS = void 0;
+exports.SURVEY_REFERENCES = exports.QUESTION_INPUTS = exports.SECTION_D_MAX_COUNT = exports.SECTION_B_DEFAULT_WORKING_DAYS = exports.SECTION_B_WORKING_RANGES = void 0;
+exports.SECTION_B_WORKING_RANGES = {
+    working_days_per_week: { min: 1, max: 7, step: 1 },
+    working_months_per_year: { min: 1, max: 12, step: 1 },
+};
+exports.SECTION_B_DEFAULT_WORKING_DAYS = 6;
+exports.SECTION_D_MAX_COUNT = 2_147_483_647;
+const workforceCount = { min: 0, max: exports.SECTION_D_MAX_COUNT, step: 1, default_value: 0 };
 const field = (key, label, type, source, required = false) => ({ key, label, type, ...source, ...(required ? { required } : {}) });
 exports.QUESTION_INPUTS = {
     A_ESTABLISHMENT_NAME: { fields: [field('name', 'Name of establishment', 'TEXT', undefined, true)] },
+    A_INTERVIEWEES: {
+        repeatable: true,
+        fields: [
+            field('name', 'Interviewee name', 'TEXT', undefined, true),
+            field('designation', 'Designation', 'TEXT', undefined, true),
+            field('contact_number', 'Contact number', 'PHONE', undefined, true),
+        ],
+    },
     A_ESTABLISHMENT_YEAR: { fields: [field('establishment_year', 'Year of establishment', 'NUMBER')] },
     A_LOCATION_GPS: { fields: [field('location', 'Coordinates (capture from device)', 'GPS')] },
     A_ADDRESS: { fields: [field('address', 'Address', 'TEXT')] },
@@ -16,8 +31,8 @@ exports.QUESTION_INPUTS = {
     A_CONTACT: {
         fields: [
             field('contact_name', 'Contact person', 'TEXT'),
-            field('contact_phone', 'Phone', 'TEXT'),
-            field('contact_email', 'Email', 'TEXT'),
+            field('contact_phone', 'Mobile number', 'PHONE'),
+            field('contact_email', 'Email', 'EMAIL'),
             field('website', 'Website', 'TEXT'),
         ],
     },
@@ -34,9 +49,9 @@ exports.QUESTION_INPUTS = {
         fields: [
             field('company_name', 'Parent company name', 'TEXT', undefined, true),
             field('company_address', 'Parent company address', 'TEXT'),
-            field('phone', 'Phone', 'TEXT'),
-            field('cell', 'Cell', 'TEXT'),
-            field('email', 'Email', 'TEXT'),
+            field('phone', 'Phone', 'PHONE'),
+            field('cell', 'Cell', 'PHONE'),
+            field('email', 'Email', 'EMAIL'),
         ],
     },
     A_ASSOCIATED_ESTABLISHMENTS: {
@@ -44,15 +59,19 @@ exports.QUESTION_INPUTS = {
         fields: [
             field('name', 'Establishment name', 'TEXT', undefined, true),
             field('address', 'Address', 'TEXT'),
-            field('major_activity_text', 'Major activity (PSIC class code or name)', 'TEXT'),
+            field('major_activity_psic_class_id', 'Major activity (PSIC class)', 'SINGLE_CHOICE', { reference: 'associated_psic_classes' }),
         ],
     },
     A_ESTABLISHMENT_AREA: {
         fields: [
             field('total_area_value', 'Total establishment area', 'NUMBER'),
-            field('total_area_unit_id', 'Area unit', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
-            field('industrial_estate_text', 'Industrial estate (enter name)', 'TEXT'),
-            field('industrial_cluster_text', 'Industrial cluster (enter name)', 'TEXT'),
+            field('total_area_unit_id', 'Area unit', 'SINGLE_CHOICE', { reference: 'area_units' })
+        ],
+    },
+    A_TOTAL_CAPITAL_INVESTMENT: {
+        fields: [
+            field('total_capital_investment', 'Total capital investment', 'NUMBER'),
+            field('capital_investment_unit_id', 'Currency unit', 'SINGLE_CHOICE', { lookup_type: 'CAPITAL_INVESTMENT_UNIT' }),
         ],
     },
     B_OPERATION_MONTHS: { fields: [field('operating_months', 'Months of operation', 'MONTHS')] },
@@ -60,22 +79,26 @@ exports.QUESTION_INPUTS = {
     B_OPERATIONAL_HOURS: {
         fields: [
             field('daily_shift_id', 'Daily operating hours / shift', 'SINGLE_CHOICE', { lookup_type: 'DAILY_HOURS' }),
-            field('daily_hours', 'Daily hours', 'NUMBER'),
-            field('working_days_per_week', 'Working days per week', 'NUMBER'),
+            field('working_days_per_week', 'Total working days per week', 'NUMBER', {
+                ...exports.SECTION_B_WORKING_RANGES.working_days_per_week,
+                default_value: exports.SECTION_B_DEFAULT_WORKING_DAYS,
+            }),
+            field('working_months_per_year', 'Total working months per year', 'NUMBER', exports.SECTION_B_WORKING_RANGES.working_months_per_year),
+            field('daily_hours', 'Daily hours (optional)', 'NUMBER'),
         ],
     },
     C_PRODUCTS: {
         repeatable: true,
         fields: [
             field('product_kind', 'Product kind', 'SINGLE_CHOICE', { reference: 'product_kinds' }, true),
-            field('product_name', 'Product name', 'TEXT', undefined, true),
+            field('product_name', 'Product name', 'SINGLE_CHOICE', { reference: 'industry_products' }, true),
             field('daily_avg_output', 'Daily average output', 'NUMBER'),
-            field('daily_output_unit_id', 'Daily output unit', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
+            field('daily_output_unit_id', 'Daily output unit', 'SINGLE_CHOICE', { reference: 'product_units' }),
             field('annual_production', 'Annual total production', 'NUMBER'),
-            field('annual_production_unit_id', 'Annual production unit', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
+            field('annual_production_unit_id', 'Annual production unit', 'SINGLE_CHOICE', { reference: 'product_units' }),
             field('installed_capacity', 'Installed capacity', 'NUMBER'),
             field('installed_capacity_period', 'Installed capacity period', 'SINGLE_CHOICE', { reference: 'capacity_periods' }),
-            field('unit_of_measurement_id', 'Capacity unit of measurement', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
+            field('unit_of_measurement_id', 'Capacity unit of measurement', 'SINGLE_CHOICE', { reference: 'product_units' }),
             field('transformation_stage_ids', 'Transformation stage on arrival', 'MULTI_CHOICE', { lookup_type: 'TRANSFORMATION_STAGE' }),
             field('revenue_share_pct', 'Share in total revenue (%)', 'NUMBER'),
             field('hs_code_id', 'HS code (code or description)', 'SINGLE_CHOICE', { reference: 'hs_codes' }),
@@ -85,9 +108,9 @@ exports.QUESTION_INPUTS = {
         repeatable: true,
         fields: [
             field('gender', 'Gender', 'SINGLE_CHOICE', { reference: 'genders' }, true),
-            field('regular_count', 'Regular employees', 'NUMBER'),
-            field('contract_count', 'Contract employees', 'NUMBER'),
-            field('daily_wage_count', 'Daily-wage employees', 'NUMBER'),
+            field('regular_count', 'Regular employees', 'NUMBER', workforceCount),
+            field('contract_count', 'Contract employees', 'NUMBER', workforceCount),
+            field('daily_wage_count', 'Daily-wage employees', 'NUMBER', workforceCount),
         ],
     },
     D_SKILLS: {
@@ -95,7 +118,7 @@ exports.QUESTION_INPUTS = {
         fields: [
             field('gender', 'Gender', 'SINGLE_CHOICE', { reference: 'genders' }, true),
             field('skill_level_id', 'Skill level', 'SINGLE_CHOICE', { lookup_type: 'SKILL_LEVEL' }, true),
-            field('headcount', 'Headcount', 'NUMBER'),
+            field('headcount', 'Headcount', 'NUMBER', workforceCount),
         ],
     },
     E_ACTIVE_SUPPLIERS: { fields: [field('active_suppliers_id', 'Number of active suppliers', 'SINGLE_CHOICE', { lookup_type: 'COUNT_BAND' })] },
@@ -108,7 +131,7 @@ exports.QUESTION_INPUTS = {
         repeatable: true,
         fields: [
             field('input_name', 'Major raw material / input', 'TEXT', undefined, true),
-            field('unit_id', 'Unit', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
+            field('unit_id', 'Unit', 'SINGLE_CHOICE', { reference: 'product_units' }),
             field('cost_share_pct', 'Share of input costs (%)', 'NUMBER'),
             field('hs_code_id', 'HS code (code or description)', 'SINGLE_CHOICE', { reference: 'hs_codes' }),
             field('transformation_stage_id', 'Transformation stage', 'SINGLE_CHOICE', { lookup_type: 'TRANSFORMATION_STAGE' }),
@@ -129,16 +152,9 @@ exports.QUESTION_INPUTS = {
     G_CRITICAL_MACHINES: {
         repeatable: true,
         fields: [
-            field('machine_name', 'Machine name', 'TEXT', undefined, true),
-            field('quantity', 'Quantity', 'NUMBER'),
-            field('specification', 'Specification', 'TEXT'),
-        ],
-    },
-    G_MACHINERY_AGE: {
-        repeatable: true,
-        fields: [
-            field('age_bracket_id', 'Machinery age bracket', 'SINGLE_CHOICE', { lookup_type: 'MACHINE_AGE' }, true),
-            field('machine_count', 'Number of machines', 'NUMBER'),
+            field('machine_name', 'Machine name', 'SINGLE_CHOICE', { reference: 'industry_machines' }, true),
+            field('quantity', 'Quantity', 'NUMBER', { min: 0, max: exports.SECTION_D_MAX_COUNT, step: 1 }),
+            field('specification', 'Specification', 'SINGLE_CHOICE', { reference: 'machine_specifications' }),
         ],
     },
     G_BREAKDOWN_FREQUENCY: { fields: [field('breakdown_frequency_id', 'Machinery breakdown frequency', 'SINGLE_CHOICE', { lookup_type: 'BREAKDOWN_FREQUENCY' })] },
@@ -146,17 +162,24 @@ exports.QUESTION_INPUTS = {
     G_BOILERS: {
         repeatable: true,
         fields: [
-            field('vessel_type', 'Boiler / pressure vessel type', 'TEXT', undefined, true),
-            field('capacity_tph', 'Capacity (tonnes per hour)', 'NUMBER'),
-            field('heating_surface', 'Heating surface', 'TEXT'),
+            field('record_kind', 'Boiler or pressure vessel', 'SINGLE_CHOICE', { reference: 'g_vessel_kinds' }, true),
+            field('equipment_number', 'Boiler / vessel number', 'TEXT', undefined, true),
+            field('boiler_type_id', 'Type of boiler', 'SINGLE_CHOICE', { lookup_type: 'G_BOILER_TYPE' }, true),
+            field('vessel_category_id', 'Vessel category', 'SINGLE_CHOICE', { lookup_type: 'G_VESSEL_CATEGORY' }, true),
+            field('working_pressure_raw', 'Working pressure', 'NUMBER', { min: 0.001, step: 0.001 }, true),
+            field('pressure_unit_id', 'Working pressure unit', 'SINGLE_CHOICE', { lookup_type: 'G_PRESSURE_UNIT' }, true),
+            field('capacity_litres', 'Capacity (litres)', 'NUMBER', { min: 0.001, step: 0.001 }, true),
+            field('heating_surface_raw', 'Heating surface', 'NUMBER', { min: 0.001, step: 0.001 }, true),
+            field('heating_surface_unit_id', 'Heating surface unit', 'SINGLE_CHOICE', { lookup_type: 'G_HEATING_UNIT' }, true),
         ],
     },
     G_WEIGHTS_MEASURES: {
         repeatable: true,
         fields: [
-            field('equipment_type', 'Equipment type', 'TEXT', undefined, true),
-            field('quantity', 'Quantity', 'NUMBER'),
-            field('capacity', 'Capacity', 'TEXT'),
+            field('equipment_type_id', 'Equipment type', 'SINGLE_CHOICE', { lookup_type: 'G_EQUIPMENT_TYPE' }, true),
+            field('equipment_unit_id', 'Unit', 'SINGLE_CHOICE', { lookup_type: 'G_EQUIPMENT_UNIT' }, true),
+            field('capacity_value_raw', 'Capacity / denomination', 'NUMBER', { min: 0.001, step: 0.001 }, true),
+            field('number_of_instruments', 'Number of instruments', 'NUMBER', { min: 1, max: exports.SECTION_D_MAX_COUNT, step: 1 }, true),
         ],
     },
     G_PRODUCTION_PLANNING: { fields: [field('production_planning_id', 'Production planning system', 'SINGLE_CHOICE', { lookup_type: 'PLANNING_SYSTEM' })] },
@@ -167,9 +190,9 @@ exports.QUESTION_INPUTS = {
         fields: [
             field('energy_source_id', 'Fuel / energy source', 'SINGLE_CHOICE', { lookup_type: 'ENERGY_SOURCE' }, true),
             field('other_text', 'Other source', 'TEXT'),
-            field('quantity_per_month', 'Quantity per month', 'NUMBER'),
-            field('unit_id', 'Unit', 'SINGLE_CHOICE', { reference: 'measurement_units' }),
-            field('share_pct', 'Share of energy use (%)', 'NUMBER'),
+            field('quantity_per_month', 'Quantity per month', 'NUMBER', { min: 0, step: 0.01 }),
+            field('unit_id', 'Unit', 'SINGLE_CHOICE', { reference: 'energy_source_units' }),
+            field('share_pct', 'Energy use share (%)', 'NUMBER', { min: 0, max: 100, step: 0.01 }),
         ],
     },
     H_ENERGY_GENERATION: {
@@ -177,23 +200,21 @@ exports.QUESTION_INPUTS = {
         fields: [
             field('power_source_id', 'Power source', 'SINGLE_CHOICE', { lookup_type: 'POWER_SOURCE' }, true),
             field('other_text', 'Other source', 'TEXT'),
-            field('capacity_kw', 'Capacity (kW)', 'NUMBER'),
-            field('export_kw', 'Exported power (kW)', 'NUMBER'),
+            field('capacity_kw', 'Capacity (kW)', 'NUMBER', { min: 0, step: 0.01 }),
+            field('export_kw', 'Exported power (kW)', 'NUMBER', { min: 0, step: 0.01 }),
         ],
     },
     H_CAPTIVE_EXPORT_CAPACITY: {
         fields: [
-            field('captive_capacity_kw', 'Captive generation capacity (kW)', 'NUMBER'),
-            field('export_capacity_kw', 'Export capacity (kW)', 'NUMBER'),
+            field('captive_capacity_kw', 'Total captive capacity (kW)', 'NUMBER'),
+            field('export_capacity_kw', 'Export capacity (kW)', 'NUMBER', { min: 0, step: 0.01 }),
         ],
     },
     H_SOLID_WASTE: {
         repeatable: true,
         fields: [
             field('waste_type_id', 'Solid waste / by-product type', 'SINGLE_CHOICE', { lookup_type: 'WASTE_TYPE' }, true),
-            field('is_generated', 'Is this waste generated?', 'YES_NO'),
             field('disposal_method_ids', 'Disposal methods', 'MULTI_CHOICE', { lookup_type: 'WASTE_DISPOSAL' }),
-            field('other_text', 'Other disposal method', 'TEXT'),
         ],
     },
     I_SAFETY_TRAINING: { fields: [field('safety_trained_workers', 'Workers with formal safety training', 'NUMBER')] },
@@ -230,9 +251,73 @@ exports.SURVEY_REFERENCES = {
               JOIN provinces p ON p.id = dv.province_id
              WHERE lower(p.name) = 'punjab'
              ORDER BY t.name`,
-    measurement_units: `SELECT id, code, name AS label FROM measurement_units ORDER BY name`,
+    measurement_units: `SELECT m.id, m.code, m.name AS label
+                         FROM measurement_units m
+                        WHERE (m.unit_kind <> 'AREA'
+                           OR m.code IN ('SQM', 'SQFT', 'SQYD', 'HECTARE', 'ACRE'))
+                          AND NOT EXISTS (
+                            SELECT 1 FROM product_measurement_units p
+                             WHERE p.unit_id = m.id AND p.product_only
+                          )
+                        ORDER BY m.name`,
+    product_units: `SELECT m.id, m.code, COALESCE(p.display_label, m.name) AS label,
+                         false AS requires_text, COALESCE(p.is_active, false) AS is_selectable
+                    FROM measurement_units m
+                    LEFT JOIN product_measurement_units p ON p.unit_id = m.id
+                   ORDER BY p.sort_order NULLS LAST, m.name, m.id`,
+    industry_products: `SELECT id, code, label, requires_text, parent_id, product_kind, is_selectable
+                        FROM (
+                          SELECT p.id, p.id::text AS code, p.product_name AS label,
+                                 false AS requires_text, p.unit_type_id AS parent_id,
+                                 p.product_kind, p.is_active AS is_selectable, p.sort_order
+                            FROM industry_product_options p
+                          UNION ALL
+                          SELECT 0, 'OTHER', 'Other (specify)', true, NULL::integer,
+                                 NULL::varchar, true, 0::smallint
+                        ) options
+                       ORDER BY parent_id NULLS FIRST, product_kind, sort_order, id`,
+    industry_machines: `SELECT id, code, label, requires_text, parent_id, is_selectable
+                        FROM (
+                          SELECT id, id::text AS code, machine_name AS label,
+                                 false AS requires_text, unit_type_id AS parent_id,
+                                 is_active AS is_selectable, sort_order
+                            FROM industry_machine_options
+                          UNION ALL
+                          SELECT 0, 'OTHER', 'Other (specify)', true, NULL::integer, true, 0::smallint
+                        ) options
+                       ORDER BY parent_id NULLS FIRST, sort_order, id`,
+    machine_specifications: `SELECT id, code, label, requires_text, parent_id, is_selectable
+                             FROM (
+                               SELECT id, id::text AS code, specification AS label,
+                                      false AS requires_text, id AS parent_id,
+                                      is_active AS is_selectable, sort_order
+                                 FROM industry_machine_options
+                               UNION ALL
+                               SELECT 0, 'OTHER', 'Other (specify)', true, NULL::integer, true, 0::smallint
+                             ) options
+                            ORDER BY parent_id NULLS FIRST, sort_order, id`,
+    g_vessel_kinds: `SELECT 1 AS id, 'BOILER' AS code, 'Boiler' AS label, false AS requires_text
+                   UNION ALL
+                   SELECT 2, 'VESSEL', 'Pressure vessel', false`,
+    area_units: `SELECT m.id, m.code, m.name AS label, false AS requires_text
+                 FROM measurement_units m
+                WHERE m.unit_kind = 'AREA'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM product_measurement_units p
+                     WHERE p.unit_id = m.id AND p.product_only
+                  )
+                ORDER BY m.name`,
     product_kinds: `SELECT 1 AS id, 'MAIN' AS code, 'Main product' AS label, false AS requires_text UNION ALL SELECT 2, 'SECONDARY', 'Secondary product', false`,
     capacity_periods: `SELECT 1 AS id, 'PER_DAY' AS code, 'Per day' AS label, false AS requires_text UNION ALL SELECT 2, 'PER_MONTH', 'Per month', false`,
+    energy_source_units: `SELECT mapping.unit_id AS id, m.code, m.name AS label,
+                              false AS requires_text, mapping.energy_source_id AS parent_id
+                         FROM energy_source_units mapping
+                         JOIN measurement_units m ON m.id = mapping.unit_id
+                         JOIN lookup_values source ON source.id = mapping.energy_source_id
+                         JOIN lookup_types source_type ON source_type.id = source.type_id
+                        WHERE source_type.code = 'ENERGY_SOURCE'
+                          AND source.is_active = true
+                        ORDER BY source.sort_order, m.name`,
     genders: `SELECT 1 AS id, 'MALE' AS code, 'Male' AS label, false AS requires_text UNION ALL SELECT 2, 'FEMALE', 'Female', false UNION ALL SELECT 3, 'Other', 'Other', false`,
     psic_divisions: `SELECT id, code, name AS label, false AS requires_text
                      FROM psic_divisions
@@ -245,6 +330,9 @@ exports.SURVEY_REFERENCES = {
                         group_id AS parent_id
                    FROM psic_classes
                   ORDER BY code`,
+    associated_psic_classes: `SELECT id, code, name AS label, false AS requires_text
+                             FROM psic_classes
+                            ORDER BY code`,
     hs_codes: `SELECT id, code, description AS label, false AS requires_text
                FROM hs_codes
               ORDER BY code`,

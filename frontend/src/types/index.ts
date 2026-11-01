@@ -48,6 +48,8 @@ export interface QuestionOption {
   label:         string;
   requires_text: boolean;  // true = show free-text box when selected
   parent_id?:    number | null;
+  product_kind?: 'MAIN' | 'SECONDARY' | null;
+  is_selectable?: boolean;
 }
 
 /**
@@ -77,10 +79,14 @@ export type AnswerType =
 export interface SurveyInputField {
   key:          string;
   label:        string;
-  type:         'TEXT' | 'NUMBER' | 'YES_NO' | 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'SHARE_PERCENT' | 'GPS' | 'MONTHS';
+  type:         'TEXT' | 'PHONE' | 'EMAIL' | 'NUMBER' | 'YES_NO' | 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'SHARE_PERCENT' | 'GPS' | 'MONTHS';
   lookup_type?: string;
   reference?:   string;
   required?:    boolean;
+  min?:         number;
+  max?:         number;
+  step?:        number;
+  default_value?: number;
   options:      QuestionOption[];
 }
 

@@ -18,7 +18,7 @@ resumes after the delivery pause. See the [workplan](documentation/workplan-to-s
 - Section A vii has 60 industry types plus Other (specify). Section A viii
    lists only PSIC classes mapped to that industry by L4. The server validates
    the pair and derives group/division. Other uses official PSIC class 9609.
-- Form cache revision is 12. Save drafts explicitly; autosave is not implemented.
+- Form cache revision is 14. Save drafts explicitly; autosave is not implemented.
 
 ---
 
@@ -37,9 +37,9 @@ use psql password prompts or a private `%APPDATA%\postgresql\pgpass.conf`.
 The setup script does not load backend `.env` or `DATABASE_URL`. Its PG settings
 must target the intended database independently.
 
-The script stops on the first SQL error. Fresh mode runs the unchanged base
+The script stops on the first SQL error. Fresh mode runs the base
 schema and seed, then reference seeds/updates and implemented migrations
-**01, 02 (read-only audit), 03, 04, 05, 07**. Phase 5/migration 06 and legacy
+**01, 02 (read-only audit), 03, 04, 05, 07, 08, 09**. Phase 5/migration 06 and legacy
 cleanup/credential-reset scripts are excluded. Earlier files can already have
 committed if a later file fails; inspect the error before retrying.
 
@@ -52,11 +52,20 @@ For manual upgrades, run these against each target database in order using
 4. [Migration 04: duplicate details](database/migration_04_duplicate_flags_details.sql)
 5. [Migration 05: photo evidence](database/migration_05_photo_evidence.sql)
 6. [Migration 07: industry and filtered PSIC](database/migration_07_type_of_unit.sql)
+7. [Migration 08: Section A additions](database/migration_08_section_a_additions.sql)
+8. [Migration 09: Section B operations](database/migration_09_section_b_operations.sql)
+9. [Migration 10: Section C products](database/migration_10_section_c_products.sql)
+10. [Migration 11: Section E/F lookups](database/migration_11_section_e_f_lookups.sql)
+11. [Migration 12: Section G machinery](database/migration_12_section_g_machinery.sql)
+12. [Migration 13: Section H energy and gates](database/migration_13_section_h_energy_and_gates.sql)
+13. [Migration 14: photo GPS accuracy up to 250 m](database/migration_14_photo_accuracy_250m.sql)
 
 Load classification references before migration 07; it fails if a mapped
 class is missing. Apply SQL before deploying its code, then reopen online to
 refresh the form. Test on a Neon branch before main. Review the role audit;
-no migration automatically reassigns existing users' roles.
+no migration automatically reassigns existing users' roles. For migration 09,
+run its verification queries and inspect any historical working-day violations
+and a `NOT VALID` working-days constraint before validating it.
 
 The geography seed populates Punjab's district and district-linked tehsil options. It uses a
 third-party 2019 administrative snapshot (36 districts, 130 tehsil entries), with division
@@ -214,8 +223,9 @@ Section L requires an interview-session photo and an enumerator-at-entrance/
 signboard photo. Both use the rear camera with no gallery picker. Camera access
 requires HTTPS or localhost and browser permission; a laptop webcam may not
 satisfy the required rear-facing camera constraint. Test the workflow on a phone.
-GPS accuracy up to 50 m is accepted; 50-100 m asks for confirmation; worse than
-100 m or denied location blocks capture. Images are watermarked, JPEG-compressed,
+GPS accuracy up to 50 m is accepted; over 50 m through 250 m asks for confirmation;
+over 250 m or denied location blocks capture. Apply migration 14 before deploying
+the updated API/frontend. Images are watermarked, JPEG-compressed,
 saved offline as Blobs, and uploaded before the survey JSON. The server accepts
 at most 3 MB per photo. JPEG/GPS validation does not prove capture authenticity;
 browser location metadata can be spoofed.
