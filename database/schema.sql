@@ -366,6 +366,9 @@ CREATE TABLE sec_b_operations (
   daily_shift_id integer REFERENCES lookup_values(id),
   daily_hours numeric(4,1),
   working_days_per_week smallint DEFAULT 6 CHECK (working_days_per_week BETWEEN 1 AND 7),
+  working_months_per_year smallint
+    CONSTRAINT sec_b_operations_working_months_per_year_check
+    CHECK (working_months_per_year BETWEEN 1 AND 12),
   weekly_hours numeric(5,1) GENERATED ALWAYS AS (daily_hours * working_days_per_week) STORED,
   monthly_hours numeric(6,1) GENERATED ALWAYS AS (ROUND(daily_hours * working_days_per_week * 52 / 12, 1)) STORED
 );

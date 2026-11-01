@@ -81,13 +81,15 @@ function getQuestionAnswers(question: SurveyQuestion, answer: unknown): AnswerLi
   const fields = question.fields ?? [];
 
   const fieldLines = (row: unknown): AnswerLine[] => {
-    if (!isRecord(row)) {
-      return fields.map((field) => ({ label: field.label, value: 'Not provided' }));
-    }
-    return fields.map((field) => ({
-      label: field.label,
-      value: displayValue(row[field.key], field.options),
-    }));
+    return fields.map((field) => {
+      const value = isRecord(row) ? row[field.key] : undefined;
+      const useDefault = (value === undefined || value === null || value === '') &&
+        field.default_value !== undefined;
+      return {
+        label: field.label,
+        value: useDefault ? `${field.default_value} (default)` : displayValue(value, field.options),
+      };
+    });
   };
 
   if (question.repeatable) {

@@ -98,8 +98,8 @@ the existing database and never reruns the base schema/seed. Both confirm before
 SQL execution and stop on the first SQL error. No arguments show help only;
 `/plan` prints the exact sequence without connecting to PostgreSQL.
 
-Fresh setup enables required extensions, loads the unchanged schema/base seed,
-then reference seeds/updates and implemented migrations 01-05 and 07. Existing
+Fresh setup enables required extensions, loads the schema/base seed,
+then reference seeds/updates and implemented migrations 01-05 and 07-09. Existing
 database migration requires an active form version 3 or newer. Back up before:
 
 ```powershell
@@ -138,13 +138,19 @@ psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_03_
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_04_duplicate_flags_details.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_05_photo_evidence.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_07_type_of_unit.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_08_section_a_additions.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_09_section_b_operations.sql
 ```
 
 These examples use your psql PG environment; adjust it for the target server.
 Review migration 02's role report; it does not automatically correct users.
 Migration 07 requires all mapped PSIC classes, including 9609, and aborts if
 references are missing. The allowlisted setup modes also run the common units,
-zone-type, ownership/legal-structure, and workforce-label updates.
+zone-type, ownership/legal-structure, and workforce-label updates. Review and
+back up each target before applying migration 09. Run the verification queries
+at the end of that migration; if the working-days constraint is `NOT VALID`,
+review any historical violations before validating it. Apply the migration
+before deploying code that reads or writes `working_months_per_year`.
 
 An older version-1 form needs the reviewed full-questionnaire migration, then
 the location-selection update to version 3, before these delivery migrations.
@@ -303,7 +309,7 @@ Run `database\seed_classification_codes.sql` against the same database named by 
 
 If `DATABASE_URL` is set, inspect that target instead. For PSIC, apply migration
 07 and select an industry first; only its mapped classes are offered. Reload
-online to fetch form cache revision 12. Do not manually choose group/division.
+online to fetch form cache revision 14. Do not manually choose group/division.
 
 ### Photo Evidence is missing
 
@@ -346,4 +352,3 @@ No scripts in this update have been executed against your database by the assist
 Free Render/Neon services may need time to wake up. A successful survey sync is
 not sufficient evidence that image storage works: verify attachment metadata,
 private retrieval, the reviewer view and PDF on an actual phone before delivery.
-

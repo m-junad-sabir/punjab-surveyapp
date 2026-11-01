@@ -2,9 +2,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.clearHiddenSurveyAnswers = clearHiddenSurveyAnswers;
 exports.validateSectionAAnswers = validateSectionAAnswers;
+exports.validateSectionBAnswers = validateSectionBAnswers;
 exports.updateExistingUnitCapitalInvestment = updateExistingUnitCapitalInvestment;
 exports.createIndustrialUnit = createIndustrialUnit;
 exports.saveNormalizedSurveyAnswers = saveNormalizedSurveyAnswers;
+const survey_questionnaire_1 = require("./survey-questionnaire");
 function record(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
         ? value
@@ -36,7 +38,12 @@ async function clearHiddenSurveyAnswers(manager, answers) {
         answers.delete('A_PARENT_COMPANY_DETAILS');
         answers.delete('A_ASSOCIATED_ESTABLISHMENTS');
     }
-    const operationStatusId = selectionId(answers.get('B_OPERATION_STATUS'));
+    const statusValue = answers.get('B_OPERATION_STATUS');
+    const operationStatusId = selectionId(statusValue);
+    if (statusValue !== undefined && statusValue !== null && statusValue !== '' &&
+        (operationStatusId === null || !Number.isInteger(operationStatusId) || operationStatusId < 1)) {
+        throw new Error('The selected operation status is not present in the active reference list.');
+    }
     const operationStatusRows = operationStatusId === null
         ? []
         : await manager.query(`SELECT lv.code
@@ -134,6 +141,61 @@ async function validateSectionAAnswers(manager, answers) {
         const classes = await manager.query('SELECT id FROM psic_classes WHERE id = $1', [classId]);
         if (!classes[0])
             throw new Error('Choose a valid PSIC class for the associated establishment.');
+    }
+}
+async function validateSectionBAnswers(manager, answers) {
+    const hoursAnswer = answers.get('B_OPERATIONAL_HOURS');
+    if (hoursAnswer !== undefined && hoursAnswer !== null && hoursAnswer !== '' &&
+        (typeof hoursAnswer !== 'object' || Array.isArray(hoursAnswer))) {
+        throw new Error('Provide a valid working schedule.');
+    }
+    const monthsAnswer = answers.get('B_OPERATION_MONTHS');
+    if (monthsAnswer !== undefined && monthsAnswer !== null && monthsAnswer !== '' &&
+        (typeof monthsAnswer !== 'object' || Array.isArray(monthsAnswer))) {
+        throw new Error('Choose valid months of operation.');
+    }
+    const hours = record(hoursAnswer);
+    const fields = [
+        { key: 'working_days_per_week', label: 'Total working days per week' },
+        { key: 'working_months_per_year', label: 'Total working months per year' },
+    ];
+    for (const { key, label } of fields) {
+        const value = hours[key];
+        if (value === undefined || value === null || value === '')
+            continue;
+        const parsed = number(value);
+        const { min, max } = survey_questionnaire_1.SECTION_B_WORKING_RANGES[key];
+        if (parsed === null || !Number.isInteger(parsed) || parsed < min || parsed > max) {
+            throw new Error(`${label} must be a whole number between ${min} and ${max}.`);
+        }
+    }
+    if (hours.daily_hours !== undefined && hours.daily_hours !== null && hours.daily_hours !== '' &&
+        number(hours.daily_hours) === null) {
+        throw new Error('Daily hours must be a number.');
+    }
+    const months = field(answers, 'B_OPERATION_MONTHS', 'operating_months');
+    if (months !== undefined && months !== null && months !== '') {
+        const list = Array.isArray(months) ? months : record(months).option_ids;
+        if (!Array.isArray(list))
+            throw new Error('Choose valid months of operation.');
+        const selected = list.map(number);
+        if (selected.some((month) => month === null || !Number.isInteger(month) || month < 1 || month > 12) ||
+            new Set(selected).size !== selected.length) {
+            throw new Error('Choose valid months of operation without duplicates.');
+        }
+    }
+    const shift = hours.daily_shift_id;
+    if (shift !== undefined && shift !== null && shift !== '') {
+        const shiftId = selectionId(shift);
+        if (shiftId === null || !Number.isInteger(shiftId) || shiftId < 1) {
+            throw new Error('Choose a valid daily operating hours / shift option.');
+        }
+        const options = await manager.query(`SELECT lv.id
+         FROM lookup_values lv
+         JOIN lookup_types lt ON lt.id = lv.type_id
+        WHERE lv.id = $1 AND lv.is_active = true AND lt.code = 'DAILY_HOURS'`, [shiftId]);
+        if (!options[0])
+            throw new Error('Choose a valid daily operating hours / shift option.');
     }
 }
 function selectionIds(value) {
@@ -425,22 +487,32 @@ async function saveNormalizedSurveyAnswers(manager, responseId, answers, questio
             interviewee.contact_number,
         ]);
     }
-    const operatingMonths = selectionIds(field(answers, 'B_OPERATION_MONTHS', 'operating_months'));
     const operationStatus = selectionId(answers.get('B_OPERATION_STATUS'));
-    const dailyHours = number(field(answers, 'B_OPERATIONAL_HOURS', 'daily_hours'));
-    const daysPerWeek = number(field(answers, 'B_OPERATIONAL_HOURS', 'working_days_per_week'));
+    const hasOperatingStatus = operationStatus !== null && !isPermanentlyClosed;
+    const operatingMonths = hasOperatingStatus
+        ? selectionIds(field(answers, 'B_OPERATION_MONTHS', 'operating_months'))
+        : [];
+    const dailyHours = hasOperatingStatus
+        ? number(field(answers, 'B_OPERATIONAL_HOURS', 'daily_hours'))
+        : null;
+    const daysPerWeek = hasOperatingStatus
+        ? number(field(answers, 'B_OPERATIONAL_HOURS', 'working_days_per_week'))
+        : null;
+    const monthsPerYear = hasOperatingStatus
+        ? number(field(answers, 'B_OPERATIONAL_HOURS', 'working_months_per_year'))
+        : null;
     await manager.query(`INSERT INTO sec_b_operations
-       (response_id, operating_months, operation_status_id, closure_reason, daily_shift_id, daily_hours, working_days_per_week)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
+       (response_id, operating_months, operation_status_id, closure_reason, daily_shift_id, daily_hours,
+        working_days_per_week, working_months_per_year)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [
         responseId,
         operatingMonths.length ? operatingMonths : null,
         operationStatus,
-        field(answers, 'B_CLOSURE_REASON', 'closure_reason') ?? null,
-        field(answers, 'B_OPERATIONAL_HOURS', 'daily_shift_id') == null
-            ? null
-            : selectionId(field(answers, 'B_OPERATIONAL_HOURS', 'daily_shift_id')),
+        isPermanentlyClosed ? field(answers, 'B_CLOSURE_REASON', 'closure_reason') ?? null : null,
+        hasOperatingStatus ? selectionId(field(answers, 'B_OPERATIONAL_HOURS', 'daily_shift_id')) : null,
         dailyHours,
-        isPermanentlyClosed ? null : daysPerWeek ?? 6,
+        hasOperatingStatus ? daysPerWeek ?? survey_questionnaire_1.SECTION_B_DEFAULT_WORKING_DAYS : null,
+        monthsPerYear,
     ]);
     for (const product of rows(answers, 'C_PRODUCTS')) {
         if (isBlank(product))

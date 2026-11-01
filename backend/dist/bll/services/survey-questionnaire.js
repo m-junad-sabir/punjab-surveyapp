@@ -1,6 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SURVEY_REFERENCES = exports.QUESTION_INPUTS = void 0;
+exports.SURVEY_REFERENCES = exports.QUESTION_INPUTS = exports.SECTION_B_DEFAULT_WORKING_DAYS = exports.SECTION_B_WORKING_RANGES = void 0;
+exports.SECTION_B_WORKING_RANGES = {
+    working_days_per_week: { min: 1, max: 7, step: 1 },
+    working_months_per_year: { min: 1, max: 12, step: 1 },
+};
+exports.SECTION_B_DEFAULT_WORKING_DAYS = 6;
 const field = (key, label, type, source, required = false) => ({ key, label, type, ...source, ...(required ? { required } : {}) });
 exports.QUESTION_INPUTS = {
     A_ESTABLISHMENT_NAME: { fields: [field('name', 'Name of establishment', 'TEXT', undefined, true)] },
@@ -72,8 +77,12 @@ exports.QUESTION_INPUTS = {
     B_OPERATIONAL_HOURS: {
         fields: [
             field('daily_shift_id', 'Daily operating hours / shift', 'SINGLE_CHOICE', { lookup_type: 'DAILY_HOURS' }),
-            field('daily_hours', 'Daily hours', 'NUMBER'),
-            field('working_days_per_week', 'Working days per week', 'NUMBER'),
+            field('working_days_per_week', 'Total working days per week', 'NUMBER', {
+                ...exports.SECTION_B_WORKING_RANGES.working_days_per_week,
+                default_value: exports.SECTION_B_DEFAULT_WORKING_DAYS,
+            }),
+            field('working_months_per_year', 'Total working months per year', 'NUMBER', exports.SECTION_B_WORKING_RANGES.working_months_per_year),
+            field('daily_hours', 'Daily hours (optional)', 'NUMBER'),
         ],
     },
     C_PRODUCTS: {

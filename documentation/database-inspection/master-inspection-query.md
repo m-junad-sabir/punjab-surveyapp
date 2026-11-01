@@ -3,7 +3,7 @@
 > Source: `Master Inspection Query New (2).csv`
 > Format: one section per table; columns listed in ordinal order.
 > Conventions: `PK` = primary key, `FK` = foreign key, `ID` = generated identity, `NN` = NOT NULL, `NULL` = nullable.
-> This is a historical database snapshot. Workplan 2 migration 08 adds Section A fields and `response_interviewees`; it has not been applied to a live database by this implementation.
+> This is a historical database snapshot. Workplan 2 migrations 08 and 09 add Section A fields, `response_interviewees`, and Section B working months. They have not been applied to a live database by this implementation; verify each environment separately.
 
 ## Table Index
 
@@ -530,6 +530,8 @@ Composite PK.
 
 ## 42. sec_b_operations
 PK = response_id (1:1 with survey_responses).
+
+The table below records the historical nine-column snapshot. Migration 09 adds a nullable `working_months_per_year` smallint with a 1–12 check; it does not change the existing generated hours columns.
 
 | # | Column | Type | Len | Null | Key | Default | FK |
 |---|--------|------|-----|------|-----|---------|----|

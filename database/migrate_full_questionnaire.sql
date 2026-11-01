@@ -94,7 +94,7 @@ SELECT s.id, v.code, v.no, v.txt, v.answer_type, lt.id, v.stored_in
     ('B','B_OPERATION_MONTHS','i','Months of operation','MULTI_CHOICE',NULL,'sec_b_operations.operating_months'),
     ('B','B_OPERATION_STATUS','ii','Current operation status','SINGLE_CHOICE','OPERATION_STATUS','sec_b_operations.operation_status_id'),
     ('B','B_CLOSURE_REASON','ii','Reason for closure (if permanently closed)','TEXT',NULL,'sec_b_operations.closure_reason'),
-    ('B','B_OPERATIONAL_HOURS','iii','Operational hours (daily, weekly and monthly)','REPEATING_GROUP',NULL,'sec_b_operations'),
+    ('B','B_OPERATIONAL_HOURS','iii','Daily operating hours / shift and working schedule','REPEATING_GROUP',NULL,'sec_b_operations'),
     ('C','C_PRODUCTS','-','Main and secondary products and production details','REPEATING_GROUP',NULL,'products'),
     ('D','D_EMPLOYMENT','i','Employment details, last financial year','REPEATING_GROUP',NULL,'workforce_employment'),
     ('D','D_SKILLS','ii','Employment skill levels by gender','REPEATING_GROUP',NULL,'workforce_skills'),

@@ -18,7 +18,7 @@ resumes after the delivery pause. See the [workplan](documentation/workplan-to-s
 - Section A vii has 60 industry types plus Other (specify). Section A viii
    lists only PSIC classes mapped to that industry by L4. The server validates
    the pair and derives group/division. Other uses official PSIC class 9609.
-- Form cache revision is 12. Save drafts explicitly; autosave is not implemented.
+- Form cache revision is 14. Save drafts explicitly; autosave is not implemented.
 
 ---
 
@@ -37,9 +37,9 @@ use psql password prompts or a private `%APPDATA%\postgresql\pgpass.conf`.
 The setup script does not load backend `.env` or `DATABASE_URL`. Its PG settings
 must target the intended database independently.
 
-The script stops on the first SQL error. Fresh mode runs the unchanged base
+The script stops on the first SQL error. Fresh mode runs the base
 schema and seed, then reference seeds/updates and implemented migrations
-**01, 02 (read-only audit), 03, 04, 05, 07**. Phase 5/migration 06 and legacy
+**01, 02 (read-only audit), 03, 04, 05, 07, 08, 09**. Phase 5/migration 06 and legacy
 cleanup/credential-reset scripts are excluded. Earlier files can already have
 committed if a later file fails; inspect the error before retrying.
 
@@ -52,11 +52,15 @@ For manual upgrades, run these against each target database in order using
 4. [Migration 04: duplicate details](database/migration_04_duplicate_flags_details.sql)
 5. [Migration 05: photo evidence](database/migration_05_photo_evidence.sql)
 6. [Migration 07: industry and filtered PSIC](database/migration_07_type_of_unit.sql)
+7. [Migration 08: Section A additions](database/migration_08_section_a_additions.sql)
+8. [Migration 09: Section B operations](database/migration_09_section_b_operations.sql)
 
 Load classification references before migration 07; it fails if a mapped
 class is missing. Apply SQL before deploying its code, then reopen online to
 refresh the form. Test on a Neon branch before main. Review the role audit;
-no migration automatically reassigns existing users' roles.
+no migration automatically reassigns existing users' roles. For migration 09,
+run its verification queries and inspect any historical working-day violations
+and a `NOT VALID` working-days constraint before validating it.
 
 The geography seed populates Punjab's district and district-linked tehsil options. It uses a
 third-party 2019 administrative snapshot (36 districts, 130 tehsil entries), with division

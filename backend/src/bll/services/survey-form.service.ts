@@ -38,6 +38,11 @@ function questionNumberOrder(value: string | null): number {
   return romanOrder * 100 + subQuestionOrder;
 }
 
+function questionOrder(question: SurveyQuestion, sectionCode: string): number {
+  if (sectionCode === 'B' && question.question_code === 'B_OPERATION_STATUS') return -1;
+  return questionNumberOrder(question.question_no);
+}
+
 @Injectable()
 export class SurveyFormService {
   constructor(
@@ -181,7 +186,7 @@ export class SurveyFormService {
         sort_order:   sec.sort_order,
         questions: [...(qBySection.get(sec.id) ?? [])]
           .sort((a, b) =>
-            questionNumberOrder(a.question_no) - questionNumberOrder(b.question_no),
+            questionOrder(a, sec.section_code) - questionOrder(b, sec.section_code),
           )
           .map((q) => ({
           question_id:    q.id,

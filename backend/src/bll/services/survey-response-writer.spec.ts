@@ -5,6 +5,7 @@ import {
   saveNormalizedSurveyAnswers,
   updateExistingUnitCapitalInvestment,
   validateSectionAAnswers,
+  validateSectionBAnswers,
 } from './survey-response-writer';
 
 describe('Section A validation and interviewees', () => {
@@ -147,7 +148,7 @@ describe('conditional survey answers', () => {
       ['A_ASSOCIATED_ESTABLISHMENTS', [{ name: 'Old establishment' }]],
       ['B_OPERATION_STATUS', 12],
       ['B_OPERATION_MONTHS', { operating_months: [1, 2] }],
-      ['B_OPERATIONAL_HOURS', { daily_hours: 8 }],
+      ['B_OPERATIONAL_HOURS', { daily_hours: 8, working_months_per_year: 12 }],
       ['B_CLOSURE_REASON', { closure_reason: 'Closed' }],
       ['E_SUPPLY_DISRUPTION', { had_supply_disruption: false }],
       ['E_SUPPLY_DISRUPTION_REASON', [1]],
@@ -193,12 +194,31 @@ describe('conditional survey answers', () => {
     expect(answers.has('B_OPERATIONAL_HOURS')).toBe(true);
   });
 
+  it.each(['invalid', 0, 1.5])('rejects an invalid operation status: %s', async (status) => {
+    const query = jest.fn(async () => []);
+    await expect(clearHiddenSurveyAnswers(
+      { query } as unknown as EntityManager,
+      new Map([['B_OPERATION_STATUS', status]]),
+    )).rejects.toThrow('The selected operation status is not present in the active reference list.');
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it('stores null working days for a permanently closed establishment', async () => {
     const query = jest.fn(async (_sql: string, _parameters?: unknown[]) => []);
     await saveNormalizedSurveyAnswers(
       { query } as unknown as EntityManager,
       'response-id',
-      new Map(),
+      new Map<string, unknown>([
+        ['B_OPERATION_STATUS', 12],
+        ['B_CLOSURE_REASON', { closure_reason: 'Closed' }],
+        ['B_OPERATION_MONTHS', { operating_months: [1, 2] }],
+        ['B_OPERATIONAL_HOURS', {
+          daily_shift_id: 3,
+          daily_hours: 8,
+          working_days_per_week: 5,
+          working_months_per_year: 10,
+        }],
+      ]),
       [],
       true,
     );
@@ -207,7 +227,8 @@ describe('conditional survey answers', () => {
     expect(operationInsert?.[1]).toEqual([
       'response-id',
       null,
-      null,
+      12,
+      'Closed',
       null,
       null,
       null,
@@ -220,12 +241,118 @@ describe('conditional survey answers', () => {
     await saveNormalizedSurveyAnswers(
       { query } as unknown as EntityManager,
       'response-id',
-      new Map(),
+      new Map([['B_OPERATION_STATUS', 4]]),
       [],
     );
 
     const operationInsert = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO sec_b_operations'));
     expect(operationInsert?.[1]?.[6]).toBe(6);
+  });
+
+  it('does not default hidden operational fields when status is not selected', async () => {
+    const query = jest.fn(async (_sql: string, _parameters?: unknown[]) => []);
+    await saveNormalizedSurveyAnswers(
+      { query } as unknown as EntityManager,
+      'response-id',
+      new Map([['B_OPERATIONAL_HOURS', { working_days_per_week: 5, working_months_per_year: 10 }]]),
+      [],
+    );
+
+    const operationInsert = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO sec_b_operations'));
+    expect(operationInsert?.[1]).toEqual(['response-id', null, null, null, null, null, null, null]);
+  });
+});
+
+describe('Section B operating schedule', () => {
+  const manager = { query: jest.fn(async () => []) } as unknown as EntityManager;
+
+  it.each([
+    ['working_days_per_week', 0, 'Total working days per week must be a whole number between 1 and 7.'],
+    ['working_days_per_week', 8, 'Total working days per week must be a whole number between 1 and 7.'],
+    ['working_days_per_week', 1.5, 'Total working days per week must be a whole number between 1 and 7.'],
+    ['working_months_per_year', 0, 'Total working months per year must be a whole number between 1 and 12.'],
+    ['working_months_per_year', 13, 'Total working months per year must be a whole number between 1 and 12.'],
+    ['working_months_per_year', 'invalid', 'Total working months per year must be a whole number between 1 and 12.'],
+    ['working_months_per_year', 11.5, 'Total working months per year must be a whole number between 1 and 12.'],
+  ])('rejects invalid %s value %s', async (key, value, message) => {
+    await expect(validateSectionBAnswers(
+      manager,
+      new Map([['B_OPERATIONAL_HOURS', { [key]: value }]]),
+    )).rejects.toThrow(message);
+  });
+
+  it.each([
+    [{ working_days_per_week: 1, working_months_per_year: 1 }],
+    [{ working_days_per_week: 7, working_months_per_year: 12 }],
+    [{ working_days_per_week: null, working_months_per_year: '' }],
+  ])('accepts valid boundaries and optional blanks: %j', async (hours) => {
+    await expect(validateSectionBAnswers(
+      manager,
+      new Map([['B_OPERATIONAL_HOURS', hours]]),
+    )).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ['B_OPERATIONAL_HOURS', [{ working_months_per_year: 13 }], 'Provide a valid working schedule.'],
+    ['B_OPERATIONAL_HOURS', 'invalid', 'Provide a valid working schedule.'],
+    ['B_OPERATION_MONTHS', [1, 13], 'Choose valid months of operation.'],
+    ['B_OPERATION_MONTHS', 'invalid', 'Choose valid months of operation.'],
+    ['B_OPERATIONAL_HOURS', { daily_hours: 'invalid' }, 'Daily hours must be a number.'],
+  ])('rejects malformed %s answers', async (key, value, message) => {
+    await expect(validateSectionBAnswers(
+      manager,
+      new Map([[key, value]]),
+    )).rejects.toThrow(message);
+  });
+
+  it.each([[0], [13], [1, 1], [1, 'invalid']])(
+    'rejects invalid or repeated selected months: %j',
+    async (...months) => {
+      await expect(validateSectionBAnswers(
+        manager,
+        new Map([['B_OPERATION_MONTHS', { operating_months: months }]]),
+      )).rejects.toThrow('Choose valid months of operation');
+    },
+  );
+
+  it('accepts all twelve months and validates a shift against its active lookup', async () => {
+    const query = jest.fn(async () => [{ id: 21 }]);
+    await expect(validateSectionBAnswers(
+      { query } as unknown as EntityManager,
+      new Map([
+        ['B_OPERATION_MONTHS', { operating_months: Array.from({ length: 12 }, (_, i) => i + 1) }],
+        ['B_OPERATIONAL_HOURS', { daily_shift_id: 21, working_days_per_week: 7, working_months_per_year: 12 }],
+      ]),
+    )).resolves.toBeUndefined();
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("lt.code = 'DAILY_HOURS'"), [21]);
+  });
+
+  it('rejects a shift outside the active DAILY_HOURS lookup', async () => {
+    await expect(validateSectionBAnswers(
+      manager,
+      new Map([['B_OPERATIONAL_HOURS', { daily_shift_id: 21 }]]),
+    )).rejects.toThrow('Choose a valid daily operating hours / shift option.');
+  });
+
+  it('persists selected months and the supplied working schedule', async () => {
+    const query = jest.fn(async (_sql: string, _parameters?: unknown[]) => []);
+    await saveNormalizedSurveyAnswers(
+      { query } as unknown as EntityManager,
+      'response-id',
+      new Map<string, unknown>([
+        ['B_OPERATION_STATUS', 4],
+        ['B_OPERATION_MONTHS', { operating_months: [1, 4, 12] }],
+        ['B_OPERATIONAL_HOURS', {
+          daily_shift_id: 21,
+          daily_hours: 7.5,
+          working_days_per_week: 6,
+          working_months_per_year: 3,
+        }],
+      ]),
+      [],
+    );
+    const operationInsert = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO sec_b_operations'));
+    expect(operationInsert?.[1]).toEqual(['response-id', [1, 4, 12], 4, null, 21, 7.5, 6, 3]);
   });
 });
 

@@ -88,6 +88,7 @@ let SyncService = class SyncService {
                     }
                     const isPermanentlyClosed = await (0, survey_response_writer_1.clearHiddenSurveyAnswers)(trx, answers);
                     await (0, survey_response_writer_1.validateSectionAAnswers)(trx, answers);
+                    await (0, survey_response_writer_1.validateSectionBAnswers)(trx, answers);
                     const gpsValue = answers.get('A_LOCATION_GPS');
                     const gpsRecord = gpsValue && typeof gpsValue === 'object'
                         ? gpsValue.location

@@ -2,6 +2,24 @@
 
 All notable application changes are recorded here, grouped by the categories below.
 
+## 2026-11-01
+
+### Added
+
+- Added Select All/Deselect All for operational months, the `Less than 8 Hours` shift option, and optional working months per year validated as whole numbers from 1 to 12.
+- Added rerunnable migration 09 for Section B's working-month column, constraints, shift option, and question heading. The owner must review and apply it; it has not been run by this implementation.
+- Added focused frontend and backend coverage for Section B selection, range validation, branch cleanup, sync, and generated PDFs.
+
+### Changed
+
+- Current Operation Status appears first; closed or unselected statuses keep dependent operating values null, while the operating branch retains optional numeric daily hours.
+- Working days accept whole numbers from 1 to 7. The existing six-day default for blank operating responses is now explained on the form and identified as a default in the PDF.
+- Bumped the frontend form-cache revision to 14 and added migration 09 to the explicit setup allowlist.
+
+### Fixed
+
+- Draft loading no longer restores hidden operating answers after conditional cleanup, and malformed Section B schedule/month payloads are rejected instead of silently discarded.
+
 ## 2026-10-30
 
 ### Changed

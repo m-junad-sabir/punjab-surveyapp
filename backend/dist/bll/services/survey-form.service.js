@@ -32,6 +32,11 @@ function questionNumberOrder(value) {
     const subQuestionOrder = match[2] ? match[2].toLowerCase().charCodeAt(0) - 96 : 0;
     return romanOrder * 100 + subQuestionOrder;
 }
+function questionOrder(question, sectionCode) {
+    if (sectionCode === 'B' && question.question_code === 'B_OPERATION_STATUS')
+        return -1;
+    return questionNumberOrder(question.question_no);
+}
 let SurveyFormService = class SurveyFormService {
     constructor(formRepo, sectionRepo, questionRepo, dataSource) {
         this.formRepo = formRepo;
@@ -136,7 +141,7 @@ let SurveyFormService = class SurveyFormService {
                 title: sec.title,
                 sort_order: sec.sort_order,
                 questions: [...(qBySection.get(sec.id) ?? [])]
-                    .sort((a, b) => questionNumberOrder(a.question_no) - questionNumberOrder(b.question_no))
+                    .sort((a, b) => questionOrder(a, sec.section_code) - questionOrder(b, sec.section_code))
                     .map((q) => ({
                     question_id: q.id,
                     question_code: q.question_code,

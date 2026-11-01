@@ -12,6 +12,7 @@ import {
   SurveyAnswers,
   updateExistingUnitCapitalInvestment,
   validateSectionAAnswers,
+  validateSectionBAnswers,
 } from './survey-response-writer';
 
 // ─── Levenshtein similarity ────────────────────────────────────────────────────
@@ -130,6 +131,7 @@ export class SyncService {
           }
           const isPermanentlyClosed = await clearHiddenSurveyAnswers(trx, answers);
           await validateSectionAAnswers(trx, answers);
+          await validateSectionBAnswers(trx, answers);
 
           const gpsValue = answers.get('A_LOCATION_GPS');
           const gpsRecord = gpsValue && typeof gpsValue === 'object'

@@ -6,6 +6,10 @@ export interface SurveyInputField {
     lookup_type?: string;
     reference?: string;
     required?: boolean;
+    min?: number;
+    max?: number;
+    step?: number;
+    default_value?: number;
     options?: Array<{
         id: number;
         code: string;
@@ -18,6 +22,19 @@ export interface SurveyQuestionInput {
     fields: SurveyInputField[];
     repeatable?: boolean;
 }
+export declare const SECTION_B_WORKING_RANGES: {
+    readonly working_days_per_week: {
+        readonly min: 1;
+        readonly max: 7;
+        readonly step: 1;
+    };
+    readonly working_months_per_year: {
+        readonly min: 1;
+        readonly max: 12;
+        readonly step: 1;
+    };
+};
+export declare const SECTION_B_DEFAULT_WORKING_DAYS = 6;
 export declare const QUESTION_INPUTS: Record<string, SurveyQuestionInput>;
 export declare const SURVEY_REFERENCES: {
     readonly districts: "SELECT d.id, d.code, d.name AS label, false AS requires_text\n                FROM districts d\n                JOIN divisions dv ON dv.id = d.division_id\n                JOIN provinces p ON p.id = dv.province_id\n               WHERE lower(p.name) = 'punjab'\n               ORDER BY d.name";

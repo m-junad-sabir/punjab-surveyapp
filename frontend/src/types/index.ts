@@ -81,6 +81,10 @@ export interface SurveyInputField {
   lookup_type?: string;
   reference?:   string;
   required?:    boolean;
+  min?:         number;
+  max?:         number;
+  step?:        number;
+  default_value?: number;
   options:      QuestionOption[];
 }
 

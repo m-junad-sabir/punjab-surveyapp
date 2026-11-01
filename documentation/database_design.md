@@ -75,6 +75,8 @@ The client also has local-only statuses such as `draft`, `pending_sync`, and `fa
 
 Zone type, ownership, legal structure, measurement units, and Section B–K lists remain lookup-backed choice controls.
 
+Workplan 2 migration 09 adds optional `sec_b_operations.working_months_per_year` (whole numbers 1–12) and a `Less than 8 Hours` shift option. Working days remain 1–7; a blank value for a non-closed operation uses the existing six-day default. Permanently closed or unselected statuses store null operating fields. The owner must apply the migration and verify each target database; this description is not proof of live migration state.
+
 ## Integrity and database behavior
 
 - Foreign keys connect responses to units, forms, surveyors, and section records.

@@ -42,11 +42,11 @@
 ### Repository baseline recorded
 
 - **Repository snapshot:** inspected at commit `e91d2e9` (`Fixes (#51) made workplan 2 after app testing`). The working tree also contains the Phase 1 implementation in this delivery; it is not a clean-commit snapshot.
-- **Form revisions:** the frontend cache revision is now `13` after the Section A questionnaire changes; the frontend accepts backend form versions `2` and later. The active database form version cannot be inferred safely from repository files and has not been queried.
+- **Form revisions:** the frontend cache revision is now `14` after the Section B questionnaire changes; the frontend accepts backend form versions `2` and later. The active database form version cannot be inferred safely from repository files and has not been queried.
 - **Form/data flow:** the backend loads active sections/questions/lookups and `QUESTION_INPUTS`; the frontend renders structured/repeating answers and stores drafts in IndexedDB; sync maps question codes into normalized survey tables and generic choice/share/matrix tables; the frontend generates the PDF from the saved response and form definition.
 - **PDF baseline:** unanswered scalar/field values render as `Not provided`; empty repeating groups render as `No entries recorded`; empty share categories render as `Not provided`. Phase 1 now omits questions hidden by the existing parent-company, operation-status, supply-disruption, demand-gap, and future-plan conditions. Section-specific zero/default and not-applicable behavior remains assigned to later phases.
-- **Test baseline:** backend Jest tests are available and the survey-response-writer suite now covers hidden-answer normalization and the closed-status persistence behavior. The frontend package has build and TypeScript-check commands but no configured test script. Frontend production build and type-check, backend build, and the focused backend tests passed during Phase 1.
-- **Migration/setup baseline:** `SETUP_DATABASE.bat` statically allowlists geography/classification/unit reference scripts and migrations 01–05, 07, and 08; it omits migration 06 and legacy cleanup/reset scripts. Migration 08 was added for the Section A work below, but no migration or database setup command has been run for this plan.
+- **Test baseline:** backend Jest tests cover hidden-answer normalization, Section B validation, and closed-status persistence. The frontend has a Node test script for month selection, validation, conditional visibility, draft cleanup, and generated PDFs, as well as build and TypeScript-check commands.
+- **Migration/setup baseline:** `SETUP_DATABASE.bat` statically allowlists geography/classification/unit reference scripts and migrations 01–05 and 07–09; it omits migration 06 and legacy cleanup/reset scripts. Migrations 08 and 09 were added for Sections A and B; no migration or database setup command has been run by this implementation.
 - **Schema evidence:** repository inspection documents describe a schema snapshot, not proof of any live environment's current migration state.
 - **Available list references:** the repository contains area and product-unit lists, L1, L2 main/secondary product and machine/spec lists, and the L3/L5 equipment briefs. The L2 references use a numeric industry label column and have no source/version metadata in their headers; authoritative client approval and exact mapping against current `UNIT_TYPE` codes are unverified.
 
@@ -107,8 +107,17 @@
 2. Add a Select All months action that selects all 12 months and remains synchronized with individual month selection.
 3. Align the daily operating hours/shift question and its related working-days-per-week and working-months-per-year fields with the specified survey sequence and actual `sec_b_operations` representation.
 4. Add the `Less than 8 Hours` shift option.
-5. Validate working days per week (1–7) and working months per year against the agreed domain range in the UI and API; confirm the appropriate database constraint.
+5. Validate working days per week (1–7) and optional working months per year (whole numbers 1–12) in the UI and API; confirm the appropriate database constraints.
 6. Clear hours/months answers when the permanently-closed path is selected. Do not silently turn the dependent fields into zero.
+
+### Implementation and verification
+
+- The owner approved optional whole-number working months from 1 to 12 and retaining numeric daily hours as an optional fourth field after shift, working days, and working months.
+- Status is presented first. Permanently closed or unselected status clears and persists null for dependent months/hours; other statuses display the operating fields. Month selection supports select all, individual changes, and deselect all.
+- The existing six-day working-week default remains for a selected non-closed status when working days are blank. The form explains this default and the PDF labels it as a default; it is not applied to closed or unselected status.
+- Migration 09 adds nullable `working_months_per_year` with a 1–12 check, adds the `LESS_THAN_8` shift option, and updates the question heading. The existing daily-hours and generated weekly/monthly-hours columns remain. If the working-days check is missing, the migration adds it `NOT VALID` to preserve historical rows while enforcing future writes.
+- Verification completed: 49 focused backend Jest tests and five frontend tests, including actual generated PDFs; backend/frontend TypeScript checks and a frontend production build. Mocked browser checks exercised month selection, validation, status branches, draft reload/cleanup, and the default hint. The offline check used a cached synthetic form and simulated offline state while assets were served locally; it was not a fully disconnected-device or live-sync test.
+- **Owner action before release:** review [migration 09](../database/migration_09_section_b_operations.sql), back up each target, and apply it after the required earlier migrations. Run its verification queries in each environment; review any invalid historical working-day rows and the constraint's `convalidated` state before deciding whether to validate it. Confirm the new lookup and column, then smoke-test the live API, real offline draft/sync, and PDF. No database or deployment was changed by this implementation.
 
 **Exit checks:** Closed and operating branches render and export correctly; month Select All and deselect-all behavior work; invalid ranges are rejected by both client and API.
 
@@ -242,7 +251,7 @@
 | 0 Baseline, decisions, shared infrastructure | In progress — repository baseline and data-flow inventory recorded; waiting on live database/form-state verification and owner/client confirmation of list authority and L1/L2 mapping |
 | 1 Shared conditional-answer and PDF behavior | Complete for the existing parent-company, operation-status, disruption, demand-gap, and future-plan branches; subsequent section-specific gates remain in their corresponding phases |
 | 2 Section A | In progress — implementation underway; owner confirmed interviewee biodata as i(a), optional rows that must be complete when entered, dedicated response-linked storage, labeled local area-unit variants, and updating only capital investment on existing units when supplied; validation and migration review remain |
-| 3 Section B | Not started |
+| 3 Section B | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 09 and live end-to-end/offline verification remain |
 | 4 Section C | Not started |
 | 5 Section D | Not started |
 | 6 Sections E and F | Not started |

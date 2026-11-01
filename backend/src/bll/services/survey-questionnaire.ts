@@ -17,6 +17,10 @@ export interface SurveyInputField {
   lookup_type?: string;
   reference?: string;
   required?: boolean;
+  min?: number;
+  max?: number;
+  step?: number;
+  default_value?: number;
   options?: Array<{
     id: number;
     code: string;
@@ -31,11 +35,17 @@ export interface SurveyQuestionInput {
   repeatable?: boolean;
 }
 
+export const SECTION_B_WORKING_RANGES = {
+  working_days_per_week: { min: 1, max: 7, step: 1 },
+  working_months_per_year: { min: 1, max: 12, step: 1 },
+} as const;
+export const SECTION_B_DEFAULT_WORKING_DAYS = 6;
+
 const field = (
   key: string,
   label: string,
   type: SurveyInputType,
-  source?: { lookup_type?: string; reference?: string },
+  source?: Pick<SurveyInputField, 'lookup_type' | 'reference' | 'min' | 'max' | 'step' | 'default_value'>,
   required = false,
 ): SurveyInputField => ({ key, label, type, ...source, ...(required ? { required } : {}) });
 
@@ -111,8 +121,12 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
   B_OPERATIONAL_HOURS: {
     fields: [
       field('daily_shift_id', 'Daily operating hours / shift', 'SINGLE_CHOICE', { lookup_type: 'DAILY_HOURS' }),
-      field('daily_hours', 'Daily hours', 'NUMBER'),
-      field('working_days_per_week', 'Working days per week', 'NUMBER'),
+      field('working_days_per_week', 'Total working days per week', 'NUMBER', {
+        ...SECTION_B_WORKING_RANGES.working_days_per_week,
+        default_value: SECTION_B_DEFAULT_WORKING_DAYS,
+      }),
+      field('working_months_per_year', 'Total working months per year', 'NUMBER', SECTION_B_WORKING_RANGES.working_months_per_year),
+      field('daily_hours', 'Daily hours (optional)', 'NUMBER'),
     ],
   },
   C_PRODUCTS: {

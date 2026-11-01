@@ -2,7 +2,7 @@
 
 > Source: `Unique & Check Constraints (2).csv`
 > Companion to: `Master_Inspection_Schema.md`
-> This is a historical database snapshot and does not include constraints added by Workplan 2 migration 08; that migration has not been applied to a live database by this implementation.
+> This is a historical database snapshot and does not include constraints added by Workplan 2 migrations 08 and 09; those migrations have not been applied to a live database by this implementation.
 > Conventions:
 > - `UNIQUE` constraints are listed by columns (single or composite).
 > - `CHECK` constraints include the full `check_clause`.
@@ -180,6 +180,8 @@
 
 ### sec_b_operations
 - **sec_b_operations_working_days_per_week_check**: `working_days_per_week BETWEEN 1 AND 7`
+
+Migration 09 adds a 1–12 check for `working_months_per_year`. If the historical working-days check is missing in a target database, migration 09 adds it `NOT VALID`; inspect historical rows before validating it.
 
 ### sec_i_compliance
 - **sec_i_compliance_safety_trained_workers_check**: `safety_trained_workers >= 0`

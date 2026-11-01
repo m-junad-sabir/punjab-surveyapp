@@ -7,6 +7,8 @@ import { useAuth }   from '../context/AuthContext';
 import { deletePhoto, getPhoto, savePhoto, saveResponse, getResponse } from '../lib/db';
 import { getDeviceId } from '../lib/deviceId';
 import { downloadSurveyPdf } from '../lib/surveyPdf';
+import { areAllOptionsSelected, toggleAllOptions } from '../lib/optionSelection';
+import { questionFormatError } from '../lib/surveyValidation';
 import { clearHiddenAnswers, isQuestionVisible } from '../lib/surveyVisibility';
 import type {
   OfflineResponse,
@@ -463,8 +465,9 @@ function SearchableReferenceField({ options, value, onChange, disabled, manualVa
 }
 
 // ─── MULTI_CHOICE (checkboxes) ────────────────────────────────────────────────
-function MultiChoiceField({ options, value, onChange }: {
+function MultiChoiceField({ options, value, onChange, showMonthToggle = false }: {
   options: QuestionOption[]; value: any; onChange: (v: any) => void;
+  showMonthToggle?: boolean;
 }) {
   const selected: number[] = Array.isArray(value) ? value : [];
   const selectedIds = Array.isArray(value) ? selected : value?.option_ids ?? [];
@@ -481,9 +484,17 @@ function MultiChoiceField({ options, value, onChange }: {
   const chosen = (id: number) => Array.isArray(value)
     ? selected.includes(id)
     : (value?.option_ids ?? []).includes(id);
+  const allSelected = areAllOptionsSelected(options, selectedIds);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {showMonthToggle && (
+        <button type="button" className="btn btn-outline btn-sm"
+          aria-pressed={allSelected}
+          onClick={() => onChange(toggleAllOptions(options, selectedIds))}>
+          {allSelected ? 'Deselect all months' : 'Select all months'}
+        </button>
+      )}
       {options.map((opt) => {
         const isChecked = chosen(opt.id);
         return (
@@ -663,6 +674,7 @@ function InputFieldControl({ field, value, onChange, disabled, manualValue, onMa
         onChange={(event) => onChange(event.target.value)} placeholder="name@example.com" />;
     case 'NUMBER':
       return <input className="form-input" type="number" value={value ?? ''}
+        min={field.min} max={field.max} step={field.step}
         onChange={(event) => onChange(event.target.value === '' ? null : Number(event.target.value))}
         placeholder="Enter number" />;
     case 'YES_NO':
@@ -689,8 +701,9 @@ function InputFieldControl({ field, value, onChange, disabled, manualValue, onMa
       }
       return <ChoiceField options={field.options} value={value} onChange={onChange} />;
     case 'MULTI_CHOICE':
-    case 'MONTHS':
       return <MultiChoiceField options={field.options} value={value} onChange={onChange} />;
+    case 'MONTHS':
+      return <MultiChoiceField options={field.options} value={value} onChange={onChange} showMonthToggle />;
     case 'SHARE_PERCENT':
       return <SharePercentField options={field.options} value={value} onChange={onChange} />;
     case 'GPS':
@@ -794,6 +807,11 @@ function FieldGroup({ fields, value, onChange, references }: {
                 });
               }}
             />
+            {field.default_value !== undefined && (
+              <small style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
+                If left blank, {field.default_value} will be recorded on sync.
+              </small>
+            )}
           </div>
         );
       })}
@@ -1275,20 +1293,6 @@ function isEmptyAnswer(value: any): boolean {
     (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
 }
 
-function hasFieldFormatError(field: SurveyInputField, value: unknown): boolean {
-  if (value === undefined || value === null || value === '') return false;
-  if (field.type === 'PHONE') return typeof value !== 'string' || !/^\d{11}$/.test(value);
-  if (field.type === 'EMAIL') {
-    return typeof value !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-  }
-  return false;
-}
-
-function fieldValue(row: unknown, key: string): unknown {
-  if (typeof row !== 'object' || row === null || Array.isArray(row)) return undefined;
-  return (row as Record<string, unknown>)[key];
-}
-
 // ─── Main SurveyPage ──────────────────────────────────────────────────────────
 export default function SurveyPage() {
   const { id }   = useParams<{ id: string }>();
@@ -1326,10 +1330,10 @@ export default function SurveyPage() {
   }, [id, user?.user_id]);
 
   useEffect(() => {
-    if (!form) return;
+    if (!form || !existingResponseLoaded) return;
     const questions = form.sections.flatMap((section) => section.questions);
     setAnswers((previous) => clearHiddenAnswers(questions, previous));
-  }, [form]);
+  }, [form, existingResponseLoaded]);
 
   const setAnswer = useCallback((qid: number, val: any) => {
     const questions = form?.sections.flatMap((section) => section.questions) ?? [];
@@ -1404,13 +1408,7 @@ export default function SurveyPage() {
   const questionIsIncomplete = (q: SurveyQuestion): boolean => {
     const value = answers[q.question_id];
     const fields = q.fields ?? [];
-    const formatError = (row: unknown) =>
-      fields.some((field) => hasFieldFormatError(field, fieldValue(row, field.key)));
-    if (q.repeatable) {
-      if ((Array.isArray(value) ? value : []).some(formatError)) return true;
-    } else if (formatError(value)) {
-      return true;
-    }
+    if (questionFormatError(q, value)) return true;
     if (q.question_code === 'A_UNIT_TYPE') {
       const option = q.options.find((candidate) => candidate.id === selectedOptionId(value));
       return !option || (option.requires_text && !selectedOtherText(value).trim());
@@ -1463,14 +1461,9 @@ export default function SurveyPage() {
     for (const q of section.questions) {
       if (!showQuestion(q)) continue;
       const value = answers[q.question_id];
-      const fields = q.fields ?? [];
-      const formatError = (row: unknown) =>
-        fields.some((field) => hasFieldFormatError(field, fieldValue(row, field.key)));
-      const invalidFormat = q.repeatable
-        ? (Array.isArray(value) ? value : []).some(formatError)
-        : formatError(value);
-      if (invalidFormat) {
-        errs[q.question_id] = 'Enter an 11-digit phone number and a valid email address.';
+      const formatError = questionFormatError(q, value);
+      if (formatError) {
+        errs[q.question_id] = formatError;
       } else if (questionIsIncomplete(q)) {
         errs[q.question_id] = 'Complete the required fields.';
       }
@@ -1551,7 +1544,10 @@ export default function SurveyPage() {
       setErrors(Object.fromEntries(
         candidate.questions
           .filter((q) => showQuestion(q) && questionIsIncomplete(q))
-          .map((q) => [q.question_id, 'Complete the required fields.']),
+          .map((q) => [
+            q.question_id,
+            questionFormatError(q, answers[q.question_id]) ?? 'Complete the required fields.',
+          ]),
       ));
       scrollTop();
       return;
@@ -1655,7 +1651,7 @@ export default function SurveyPage() {
         {/* Section validation banner */}
         {Object.keys(errors).length > 0 && (
           <div className="alert alert-error" style={{ marginBottom: 12 }}>
-            ⚠ {Object.keys(errors).length} required field{Object.keys(errors).length > 1 ? 's' : ''} missing.
+            ⚠ {Object.keys(errors).length} field{Object.keys(errors).length > 1 ? 's need' : ' needs'} attention.
           </div>
         )}
 
@@ -1703,13 +1699,6 @@ export default function SurveyPage() {
 
               {errors[q.question_id] && (
                 <div className="form-error" style={{ marginTop: 6 }}>
-                  {errors[q.question_id]}
-                </div>
-              )}
-
-              {/* Error message */}
-              {errors[q.question_id] && (
-                <div className="form-error" style={{ marginTop: 6 }}>
                   ⚠ {errors[q.question_id]}
                 </div>
               )}
@@ -1721,8 +1710,7 @@ export default function SurveyPage() {
       {/* Incomplete warning on last section */}
       {isLastSection && otherSectionErrors > 0 && (
         <div className="alert alert-warning" style={{ margin: '0 14px 12px' }}>
-          ⚠ {otherSectionErrors} required field{otherSectionErrors > 1 ? 's' : ''} in earlier sections still need answers.
-          You can submit now but the completeness score will be lower.
+          ⚠ {otherSectionErrors} field{otherSectionErrors > 1 ? 's' : ''} in earlier sections {otherSectionErrors > 1 ? 'need' : 'needs'} attention before submitting.
         </div>
       )}
 
