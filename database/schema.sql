@@ -1,5 +1,5 @@
--- Punjab Industries Survey App - PostgreSQL 16 / PostGIS schema
--- Generated from the schema definition. Run first, then 02_seed_reference_data.sql
+-- Punjab Industries Survey App DB Design - PostgreSQL 16 / PostGIS schema
+-- Generated from the schema definition.
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 

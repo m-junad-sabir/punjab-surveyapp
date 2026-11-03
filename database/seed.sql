@@ -1,5 +1,4 @@
--- Reference data taken from 'Database Design for Survey APP'. Run after 01_schema.sql.
--- NOTE: OWNERSHIP_TYPE and LEGAL_STRUCTURE names were not in the source document - add them.
+-- SEED data For Database for Survey APP
 
 INSERT INTO roles (code,name,description) VALUES
   ('ADMIN','Admin','Full access. Adds surveyors and supervisors, assigns designations and supervisors, manages roles and their rights, manages reference data, sees and edits everything.'),
