@@ -14,6 +14,11 @@ npm run dev
 Open http://localhost:3000. For a production build, run `npm run build`, then
 `npm start`. Run `npm run typecheck` to validate TypeScript.
 
+The app is a static export (`next.config.mjs` uses `output: "export"`), so
+`npm run build` writes deployable files to `out/`. Netlify settings live in
+`netlify.toml` (build `npm run build`, publish `out`, Node 22) and override
+the Netlify UI values.
+
 ## Demonstration walkthrough
 
 - Choose a division in the filter bar, click a map district, or select a summary
