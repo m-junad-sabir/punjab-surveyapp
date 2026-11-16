@@ -499,7 +499,8 @@ SELECT s.id,v.code,v.no,v.txt,v.at,lt.id,v.st FROM (VALUES
 ('J','J_OPERATIONAL_PLANNING_GATE','i(a)','Does the establishment have operational planning?','YES_NO',NULL,'sec_j_strategy.has_operational_planning'),
 ('J','J_PLANNING_AREAS','i(b)','Operational planning','MATRIX',NULL,'response_matrix_answers'),
 ('J','J_UPSCALING_READINESS','vii','Readiness of upscaling (1 = not at all ready, 5 = fully ready)','MATRIX',NULL,'response_matrix_answers'),
-('K','K_BARRIERS','iv','Barriers & bottlenecks','MATRIX',NULL,'response_matrix_answers'),
+('K','K_BARRIERS_GATE','iv','Does the establishment face any barriers or bottlenecks?','YES_NO',NULL,'sec_k_future.has_barriers'),
+('K','K_BARRIERS','iv(a)','Rate barriers and bottlenecks: 1 = Don''t happen, 2 = Rarely happen, 3 = Happens, 4 = Happens more often, 5 = Happens frequently.','MATRIX',NULL,'response_matrix_answers'),
 ('A','A_ESTABLISHMENT_NAME','i','Name of establishment','TEXT',NULL,'industrial_units.name'),
 ('A','A_ESTABLISHMENT_YEAR','ii','Year of establishment','NUMBER',NULL,'industrial_units.establishment_year'),
 ('A','A_LOCATION_GPS','iii','Coordinates (capture from device)','TEXT',NULL,'industrial_units.location'),
@@ -563,7 +564,7 @@ SELECT s.id,v.code,v.no,v.txt,v.at,lt.id,v.st FROM (VALUES
 ) v(sec,code,no,txt,at,lt,st) JOIN survey_sections s ON s.section_code=v.sec LEFT JOIN lookup_types lt ON lt.code=v.lt;
 UPDATE survey_questions
    SET is_required = true
- WHERE question_code IN ('A_ESTABLISHMENT_NAME', 'A_LOCATION');
+ WHERE question_code IN ('A_ESTABLISHMENT_NAME', 'A_LOCATION', 'K_FUTURE_PLAN', 'K_BARRIERS_GATE');
 
 -- Rows of the tick-box tables
 INSERT INTO matrix_items (question_id,group_label,item_code,item_label,answer_type,scale_type_id,allows_text,sort_order)

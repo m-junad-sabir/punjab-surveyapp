@@ -4,6 +4,7 @@ import {
   SECTION_B_WORKING_RANGES,
   SECTION_D_MAX_COUNT,
 } from './survey-questionnaire';
+import { clearNoCollaborationPurposes } from './section-k';
 
 export interface SubmittedQuestion {
   id: number;
@@ -119,7 +120,10 @@ export async function clearHiddenSurveyAnswers(
         answers.delete(questionCode);
       }
     }
+  } else if (answers.get('K_BARRIERS_GATE') === false) {
+    answers.delete('K_BARRIERS');
   }
+  await clearNoCollaborationPurposes(manager, answers);
   return operationStatus === 'PERM_CLOSED';
 }
 
@@ -1268,11 +1272,14 @@ export async function saveNormalizedSurveyAnswers(
 
   const futurePlan = field(answers, 'K_FUTURE_PLAN', 'has_future_plan');
   await manager.query(
-    `INSERT INTO sec_k_future (response_id, has_future_plan, most_critical_barrier)
-     VALUES ($1, $2, $3)`,
+    `INSERT INTO sec_k_future (response_id, has_future_plan, has_barriers, most_critical_barrier)
+     VALUES ($1, $2, $3, $4)`,
     [
       responseId,
       typeof futurePlan === 'boolean' ? futurePlan : null,
+      typeof answers.get('K_BARRIERS_GATE') === 'boolean'
+        ? answers.get('K_BARRIERS_GATE')
+        : null,
       field(answers, 'K_MOST_CRITICAL_BARRIER', 'most_critical_barrier') ?? null,
     ],
   );
@@ -1347,7 +1354,9 @@ export async function saveNormalizedSurveyAnswers(
         const otherText = typeof matrixAnswer.other_text === 'string' && matrixAnswer.other_text.trim()
           ? matrixAnswer.other_text.trim()
           : null;
-        if (choiceValueId === null && rating === null && otherText === null) continue;
+        const nullBarrierRating = question.question_code === 'K_BARRIERS' &&
+          answers.get('K_BARRIERS_GATE') === false;
+        if (choiceValueId === null && rating === null && otherText === null && !nullBarrierRating) continue;
         await manager.query(
           `INSERT INTO response_matrix_answers
              (response_id, item_id, choice_value_id, rating, other_text)

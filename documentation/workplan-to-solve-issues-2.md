@@ -262,6 +262,15 @@
 
 **Exit checks:** No-plan, collaboration, and barriers branches clear stale answers and render only applicable PDF content; null ratings remain null on the No branch.
 
+### Implementation and outstanding verification
+
+- The future-plan Yes/No question is required. No remains visible in the PDF, and dependent Section K answers are hidden and cleared from the draft and sync payload.
+- Purpose of Collaboration is hidden and cleared for a `NONE` Potential Collaborator, and remains available for other collaborators.
+- Added a required Yes/No Barriers & Bottlenecks gate. No hides and clears the matrix and persists a null rating row for each configured barrier; Yes reveals the rating matrix. The question text displays the requested 1–5 frequency definitions.
+- Added nullable `sec_k_future.has_barriers`, updated fresh-install questionnaire metadata, and added rerunnable [migration 16](../database/migration_16_section_k_gates.sql). Historical answers are not backfilled or rewritten. Migration 16 is explicitly allowlisted; the offline form cache revision is 21.
+- Focused backend and frontend regression tests cover stale answer cleanup, null ratings, field visibility, form readiness, and applicable PDF branches.
+- **Owner action before release:** review migration 16, back up each target, apply it after prerequisite migrations, and run its verification queries. Deploy the updated API before the frontend, refresh revision 21 online, and verify persisted gates, sync, PDF output, and offline draft/reload/sync. No SQL or deployment was performed during implementation.
+
 ## Phase 11 — Section L: Photo GPS accuracy
 
 1. Raise the GPS accuracy radius to 250 m. The owner confirmed this applies to both required photos, retaining confirmation above 50 m and camera-only capture.
@@ -291,7 +300,7 @@
 - The owner selected **an answer to every visible question for Done**. Empty sections remain Pending; partly answered or invalid sections are Partial. Matrix coverage includes each row; explicit zero and No count as answers. Hidden questions do not block completion. This status rule does not make optional questions mandatory for saving or submission.
 - Next, Previous, and section buttons store the selected section in the URL. Browser Back/Forward restores it. Vertical scrolling resets the actual page container after the section renders; horizontal section-strip scrolling no longer moves the page vertically.
 - Desktop and mobile-sized browser checks passed for Next, Previous, section buttons, same-section clicks, Back/Forward, Pending/Partial/Done/current states, gate changes, cached draft reload with the API unavailable, and unchanged optional submission behavior. The progress bar is labeled Required field completion to distinguish it from all-question section coverage.
-- Question codes remain visible as explicitly deferred. Phase 9 is implemented as documented above; Phase 10 remains temporarily deferred for client delivery.
+- Question codes remain visible as explicitly deferred. Phases 9 and 10 are implemented as documented above.
 
 ## Phase 13 — Full regression, migration readiness, and release
 
@@ -327,7 +336,7 @@
 | 7 Section G | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 12 and live/offline verification remain |
 | 8 Section H | Implementation and automated tests complete; owner-managed migration 13 and live/offline verification remain |
 | 9 Sections I and J | Implementation and automated tests complete; owner-managed migration 15 and live/offline verification remain |
-| 10 Section K | Temporarily deferred by the owner for client delivery |
+| 10 Section K | Implementation and automated tests complete; owner-managed migration 16 and live/offline verification remain |
 | 11 Section L | Implementation, automated tests, and mocked browser checks complete; owner-managed migration 14 and live-device verification remain |
 | 12 Navigation and section status UI | Implementation, automated tests, and desktop/mobile-sized browser checks complete |
 | 13 Regression, migration readiness, and release | Not started |

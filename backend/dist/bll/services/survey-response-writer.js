@@ -10,6 +10,7 @@ exports.updateExistingUnitCapitalInvestment = updateExistingUnitCapitalInvestmen
 exports.createIndustrialUnit = createIndustrialUnit;
 exports.saveNormalizedSurveyAnswers = saveNormalizedSurveyAnswers;
 const survey_questionnaire_1 = require("./survey-questionnaire");
+const section_k_1 = require("./section-k");
 function record(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
         ? value
@@ -102,6 +103,10 @@ async function clearHiddenSurveyAnswers(manager, answers) {
             }
         }
     }
+    else if (answers.get('K_BARRIERS_GATE') === false) {
+        answers.delete('K_BARRIERS');
+    }
+    await (0, section_k_1.clearNoCollaborationPurposes)(manager, answers);
     return operationStatus === 'PERM_CLOSED';
 }
 function validatePhone(value, label) {
@@ -1033,10 +1038,13 @@ async function saveNormalizedSurveyAnswers(manager, responseId, answers, questio
         answerOptionId(answers, 'J_UPSCALING_TIME', 'upscaling_time_id'),
     ]);
     const futurePlan = field(answers, 'K_FUTURE_PLAN', 'has_future_plan');
-    await manager.query(`INSERT INTO sec_k_future (response_id, has_future_plan, most_critical_barrier)
-     VALUES ($1, $2, $3)`, [
+    await manager.query(`INSERT INTO sec_k_future (response_id, has_future_plan, has_barriers, most_critical_barrier)
+     VALUES ($1, $2, $3, $4)`, [
         responseId,
         typeof futurePlan === 'boolean' ? futurePlan : null,
+        typeof answers.get('K_BARRIERS_GATE') === 'boolean'
+            ? answers.get('K_BARRIERS_GATE')
+            : null,
         field(answers, 'K_MOST_CRITICAL_BARRIER', 'most_critical_barrier') ?? null,
     ]);
     for (const collaboration of rows(answers, 'K_COLLABORATIONS')) {
@@ -1103,7 +1111,9 @@ async function saveNormalizedSurveyAnswers(manager, responseId, answers, questio
                 const otherText = typeof matrixAnswer.other_text === 'string' && matrixAnswer.other_text.trim()
                     ? matrixAnswer.other_text.trim()
                     : null;
-                if (choiceValueId === null && rating === null && otherText === null)
+                const nullBarrierRating = question.question_code === 'K_BARRIERS' &&
+                    answers.get('K_BARRIERS_GATE') === false;
+                if (choiceValueId === null && rating === null && otherText === null && !nullBarrierRating)
                     continue;
                 await manager.query(`INSERT INTO response_matrix_answers
              (response_id, item_id, choice_value_id, rating, other_text)

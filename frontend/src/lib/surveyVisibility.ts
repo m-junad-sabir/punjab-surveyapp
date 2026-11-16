@@ -1,6 +1,7 @@
 import type { SurveyQuestion } from '../types';
 import { clearSecondaryProductFields } from './sectionCProducts';
 import { clearSectionIOtherText } from './sectionIJ';
+import { clearSectionKCollaborationPurposes } from './sectionK';
 import { sectionGSelectionId } from './sectionG';
 
 type AnswersByQuestion = Record<number, unknown>;
@@ -127,6 +128,15 @@ export function isQuestionVisible(
       if (planningGate === false) return false;
       return hasSavedDetail(answers[question.question_id]);
     }
+    case 'K_BARRIERS': {
+      if (booleanField(answerForCode('K_FUTURE_PLAN', questions, answers), 'has_future_plan') !== true) {
+        return false;
+      }
+      const gate = answerForCode('K_BARRIERS_GATE', questions, answers);
+      if (gate === true) return true;
+      if (gate === false) return false;
+      return hasSavedDetail(answers[question.question_id]);
+    }
     default:
       if (question.question_code.startsWith('J_') && question.question_code !== 'J_STRATEGIC_PLAN_GATE') {
         const gate = answerForCode('J_STRATEGIC_PLAN_GATE', questions, answers);
@@ -160,6 +170,16 @@ export function clearHiddenAnswers(
     if (!['I_COMPLIANCE_PERMITS', 'I_CERTIFICATIONS'].includes(question.question_code)) continue;
     const current = nextAnswers[question.question_id];
     const cleaned = clearSectionIOtherText(question, current);
+    if (cleaned !== current) {
+      if (nextAnswers === answers) nextAnswers = { ...answers };
+      nextAnswers[question.question_id] = cleaned;
+    }
+  }
+
+  for (const question of questions) {
+    if (question.question_code !== 'K_COLLABORATIONS') continue;
+    const current = nextAnswers[question.question_id];
+    const cleaned = clearSectionKCollaborationPurposes(question, current);
     if (cleaned !== current) {
       if (nextAnswers === answers) nextAnswers = { ...answers };
       nextAnswers[question.question_id] = cleaned;

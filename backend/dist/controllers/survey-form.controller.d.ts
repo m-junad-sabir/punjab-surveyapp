@@ -40,7 +40,7 @@ export declare class SurveyFormController {
                     code: string;
                     label: string;
                     group_label: string;
-                    answer_type: "CHOICE" | "RATING_1_5";
+                    answer_type: "RATING_1_5" | "CHOICE";
                     allows_text: boolean;
                     options: import("../bll/services/survey-form.service").LookupOption[];
                 }[];

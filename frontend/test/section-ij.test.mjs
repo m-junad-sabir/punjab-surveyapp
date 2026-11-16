@@ -268,4 +268,78 @@ test('PDF shows strategic-plan No and only includes applicable Section I/J detai
     assert.ok(text.includes('No'));
     assert.doesNotMatch(captures[1], /Not provided/i);
   });
+
+  const futurePlan = question(41, 'K_FUTURE_PLAN', 'REPEATING_GROUP', {
+    question_text: 'Future plan',
+    fields: [{ key: 'has_future_plan', label: 'Has future plan?', options: [] }],
+  });
+  const collaborations = question(42, 'K_COLLABORATIONS', 'REPEATING_GROUP', {
+    question_text: 'Future collaboration opportunities',
+    repeatable: true,
+    fields: [
+      {
+        key: 'collaborator_type_id',
+        label: 'Potential collaborator',
+        options: [option(4201, 'NONE', 'Not interested in any collaboration')],
+      },
+      {
+        key: 'purpose_ids',
+        label: 'Purpose of collaboration',
+        options: [option(4202, 'BULK_PROCUREMENT', 'Bulk procurement')],
+      },
+    ],
+  });
+  const barriersGate = question(43, 'K_BARRIERS_GATE', 'YES_NO', {
+    question_text: 'Does the establishment face any barriers or bottlenecks?',
+  });
+  const barriers = question(44, 'K_BARRIERS', 'MATRIX', {
+    question_text: 'Barrier ratings',
+    matrix_items: [{
+      id: 4401,
+      code: 'B01',
+      label: 'Electricity shortage',
+      answer_type: 'RATING_1_5',
+      options: [],
+    }],
+  });
+  const sectionKForm = {
+    sections: [{
+      section_code: 'K',
+      title: 'Future plans and barriers',
+      questions: [futurePlan, collaborations, barriersGate, barriers],
+    }],
+  };
+  await downloadSurveyPdf({
+    ...response,
+    answers: [
+      { question_id: 41, answer_value: { has_future_plan: true } },
+      {
+        question_id: 42,
+        answer_value: [{ collaborator_type_id: 4201, purpose_ids: [4202] }],
+      },
+      { question_id: 43, answer_value: false },
+      { question_id: 44, answer_value: { 4401: { rating: 5 } } },
+    ],
+  }, sectionKForm);
+  assert.match(captures[2], /Not interested in any collaboration/);
+  assert.doesNotMatch(captures[2], /Purpose of collaboration|Bulk procurement|Electricity shortage/);
+  assert.ok([...captures[2].matchAll(/\(((?:\\.|[^\\)])*)\) Tj/g)]
+    .map((match) => match[1]).includes('No'));
+
+  await downloadSurveyPdf({
+    ...response,
+    answers: [
+      { question_id: 41, answer_value: { has_future_plan: false } },
+      {
+        question_id: 42,
+        answer_value: [{ collaborator_type_id: 4201, purpose_ids: [4202] }],
+      },
+      { question_id: 43, answer_value: false },
+      { question_id: 44, answer_value: { 4401: { rating: 5 } } },
+    ],
+  }, sectionKForm);
+  const noPlanText = [...captures[3].matchAll(/\(((?:\\.|[^\\)])*)\) Tj/g)]
+    .map((match) => match[1]);
+  assert.ok(noPlanText.includes('No'));
+  assert.doesNotMatch(captures[3], /Future collaboration opportunities|Not interested in any collaboration|Electricity shortage/);
 });

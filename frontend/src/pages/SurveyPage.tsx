@@ -27,6 +27,7 @@ import {
   isSectionIOtherTextVisible,
   reinvestmentAreaError,
 } from '../lib/sectionIJ';
+import { isSectionKFieldVisible } from '../lib/sectionK';
 import {
   EMPLOYMENT_CATEGORIES,
   MAX_WORKFORCE_COUNT,
@@ -1096,6 +1097,7 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
         if (!isProductFieldVisible(questionCode, map, field.key)) return null;
         if (!isSectionGFieldVisible(questionCode, map, field.key)) return null;
         if (!isSectionHFieldVisible(questionCode, map, field.key, fields)) return null;
+        if (!isSectionKFieldVisible(questionCode, map, field.key, fields)) return null;
         if (field.key === 'company_name' && map.has_parent_company === false) return null;
         if (questionCode === 'J_REINVESTMENT_AREA' &&
             field.key === 'reinvestment_area_other' &&

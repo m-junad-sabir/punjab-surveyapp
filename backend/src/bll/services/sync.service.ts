@@ -12,6 +12,7 @@ import {
 import { normalizeSectionGAnswers } from './section-g';
 import { normalizeSectionHAnswers } from './section-h';
 import { normalizeSectionIJAnswers } from './section-i-j';
+import { normalizeSectionKAnswers } from './section-k';
 import {
   clearHiddenSurveyAnswers,
   createIndustrialUnit,
@@ -189,6 +190,7 @@ export class SyncService {
           await normalizeSectionHAnswers(trx, answers, questions);
           await normalizeSectionIJAnswers(trx, answers, questions);
           await normalizeSectionEFAnswers(trx, answers, questions);
+          await normalizeSectionKAnswers(trx, answers, questions);
 
           const gpsValue = answers.get('A_LOCATION_GPS');
           const gpsRecord = gpsValue && typeof gpsValue === 'object'

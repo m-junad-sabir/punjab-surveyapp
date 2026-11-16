@@ -2,6 +2,20 @@
 
 All notable application changes are recorded here, grouped by the categories below.
 
+## 2026-11-16 — Workplan 2 Phase 10
+
+### Added
+
+- Added the Section K barriers Yes/No gate and nullable `has_barriers` persistence. No clears/hides ratings and sync stores null rating rows; Yes reveals the ratings.
+- Added the rating-frequency definition to the barriers question and conditional Purpose of Collaboration visibility for the “Not interested in any collaboration” choice.
+- Added rerunnable migration 16, fresh-install metadata, cache-revision 21 readiness checks, and regression coverage for Section K branches and PDF output.
+
+### Changed
+
+- Section K future-plan Yes/No is now required; No remains visible in PDFs while dependent answers are omitted.
+
+Migration 16 and live/offline verification remain owner-managed; no SQL or deployment was performed.
+
 ## 2026-11-16 — PDF blank-value label
 
 ### Changed

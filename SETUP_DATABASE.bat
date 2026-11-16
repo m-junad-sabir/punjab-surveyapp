@@ -90,6 +90,8 @@ call :run migration_14_photo_accuracy_250m.sql
 if errorlevel 1 goto failed
 call :run migration_15_section_i_j_gates.sql
 if errorlevel 1 goto failed
+call :run migration_16_section_k_gates.sql
+if errorlevel 1 goto failed
 echo Setup completed. Phase 5 is deferred; no migration_06 script was executed.
 echo Review the role audit above. Existing account roles are never reassigned automatically.
 echo Fresh installs need an administrator account provisioned separately; see README.md.
@@ -131,6 +133,7 @@ echo migration_12_section_g_machinery.sql
 echo migration_13_section_h_energy_and_gates.sql
 echo migration_14_photo_accuracy_250m.sql
 echo migration_15_section_i_j_gates.sql
+echo migration_16_section_k_gates.sql
 echo Phase 5 / migration_06 and legacy cleanup/reset scripts are excluded.
 exit /b 0
 

@@ -226,7 +226,9 @@ exports.QUESTION_INPUTS = {
         ],
     },
     J_UPSCALING_TIME: { fields: [field('upscaling_time_id', 'Upscaling time', 'SINGLE_CHOICE', { lookup_type: 'UPSCALING_TIME' })] },
-    K_FUTURE_PLAN: { fields: [field('has_future_plan', 'Does the establishment have a future plan?', 'YES_NO')] },
+    K_FUTURE_PLAN: {
+        fields: [field('has_future_plan', 'Does the establishment have a future plan?', 'YES_NO', undefined, true)],
+    },
     K_COLLABORATIONS: {
         repeatable: true,
         fields: [

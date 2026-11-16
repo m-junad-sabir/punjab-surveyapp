@@ -38,6 +38,7 @@ import {
   totalGenerationCapacity,
 } from './sectionH';
 import { isReinvestmentOtherVisible } from './sectionIJ';
+import { isSectionKFieldVisible } from './sectionK';
 import type {
   OfflineResponse,
   QuestionOption,
@@ -247,6 +248,7 @@ function getQuestionAnswers(
       isProductFieldVisible(question.question_code, row, field.key) &&
       isSectionGFieldVisible(question.question_code, row, field.key) &&
       isSectionHFieldVisible(question.question_code, row, field.key, question.fields) &&
+      isSectionKFieldVisible(question.question_code, row, field.key, fields) &&
       (question.question_code !== 'J_REINVESTMENT_AREA' ||
         field.key !== 'reinvestment_area_other' ||
         isReinvestmentOtherVisible(

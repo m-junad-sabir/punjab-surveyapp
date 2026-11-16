@@ -131,3 +131,24 @@ export function revision20FormError(form: SurveyForm): string | null {
   return ready ? null
     : 'The server questionnaire is not ready for the Section I/J update. Apply migration 15 and deploy the updated API, then download the form again.';
 }
+
+export function revision21FormError(form: SurveyForm): string | null {
+  const questions = form.sections.flatMap((section) => section.questions);
+  const byCode = (code: string) => questions.find((question) => question.question_code === code);
+  const futurePlan = byCode('K_FUTURE_PLAN');
+  const collaborations = byCode('K_COLLABORATIONS');
+  const barrierGate = byCode('K_BARRIERS_GATE');
+  const barriers = byCode('K_BARRIERS');
+  const collaboratorField = collaborations?.fields?.find((field) => field.key === 'collaborator_type_id');
+  const ready =
+    futurePlan?.is_required === true &&
+    futurePlan.fields?.some((field) => field.key === 'has_future_plan' && field.required === true) &&
+    barrierGate?.answer_type === 'YES_NO' && barrierGate.is_required &&
+    barriers?.answer_type === 'MATRIX' && (barriers.matrix_items?.length ?? 0) > 0 &&
+    barriers.matrix_items?.every((item) => item.answer_type === 'RATING_1_5') &&
+    collaboratorField?.options?.some((option) => option.code === 'NONE') &&
+    collaborations?.fields?.some((field) => field.key === 'purpose_ids');
+
+  return ready ? null
+    : 'The server questionnaire is not ready for the Section K update. Apply migration 16 and deploy the updated API, then download the form again.';
+}

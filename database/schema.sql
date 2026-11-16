@@ -618,6 +618,7 @@ CREATE TABLE sec_j_strategy (
 CREATE TABLE sec_k_future (
   response_id uuid NOT NULL PRIMARY KEY REFERENCES survey_responses(id) ON DELETE CASCADE,
   has_future_plan boolean,
+  has_barriers boolean,
   most_critical_barrier text
 );
 

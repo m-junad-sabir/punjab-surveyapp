@@ -23,6 +23,7 @@ const section_e_f_1 = require("./section-e-f");
 const section_g_1 = require("./section-g");
 const section_h_1 = require("./section-h");
 const section_i_j_1 = require("./section-i-j");
+const section_k_1 = require("./section-k");
 const survey_response_writer_1 = require("./survey-response-writer");
 function nameSimilarity(a, b) {
     const s1 = (a ?? '').toLowerCase().trim();
@@ -136,6 +137,7 @@ let SyncService = class SyncService {
                     await (0, section_h_1.normalizeSectionHAnswers)(trx, answers, questions);
                     await (0, section_i_j_1.normalizeSectionIJAnswers)(trx, answers, questions);
                     await (0, section_e_f_1.normalizeSectionEFAnswers)(trx, answers, questions);
+                    await (0, section_k_1.normalizeSectionKAnswers)(trx, answers, questions);
                     const gpsValue = answers.get('A_LOCATION_GPS');
                     const gpsRecord = gpsValue && typeof gpsValue === 'object'
                         ? gpsValue.location
