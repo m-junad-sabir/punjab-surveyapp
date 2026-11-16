@@ -2,6 +2,12 @@
 
 All notable application changes are recorded here, grouped by the categories below.
 
+## 2026-11-16 — PDF blank-value label
+
+### Changed
+
+- The generic PDF formatter now displays `Not Applicable` for `null`, `undefined`, and empty-string answers. Other formatting and stored answers are unchanged.
+
 ## 2026-11-15 — Workplan 2 Phase 9
 
 ### Added

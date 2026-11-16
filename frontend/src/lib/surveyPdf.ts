@@ -70,7 +70,7 @@ function displayValue(
   value: unknown,
   options: QuestionOption[] = [],
 ): string {
-  if (value === null || value === undefined || value === '') return 'Not provided';
+  if (value === null || value === undefined || value === '') return 'Not Applicable';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'number') {
     return options.find((option) => option.id === value)?.label ?? String(value);

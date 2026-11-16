@@ -249,4 +249,23 @@ test('PDF shows strategic-plan No and only includes applicable Section I/J detai
   assert.doesNotMatch(captures[0], /Factory safety and environmental compliances/);
   assert.doesNotMatch(captures[0], /Operational planning/);
   assert.doesNotMatch(captures[0], /stale strategic detail/);
+
+  await t.test('PDF labels blank scalar values Not Applicable without changing zero or false', async () => {
+    const values = [null, undefined, '', 0, false];
+    await downloadSurveyPdf({
+      ...response,
+      answers: values.map((answer_value, index) => ({ question_id: 100 + index, answer_value })),
+    }, {
+      sections: [{
+        section_code: 'A',
+        title: 'Blank value formatting',
+        questions: values.map((_, index) => question(100 + index, `A_VALUE_${index}`, 'TEXT')),
+      }],
+    });
+    const text = [...captures[1].matchAll(/\(((?:\\.|[^\\)])*)\) Tj/g)].map((match) => match[1]);
+    assert.equal(text.filter((value) => value === 'Not Applicable').length, 3);
+    assert.ok(text.includes('0'));
+    assert.ok(text.includes('No'));
+    assert.doesNotMatch(captures[1], /Not provided/i);
+  });
 });
