@@ -598,12 +598,16 @@ CREATE TABLE solid_waste_disposals (
 -- Section I single answer: safety training.
 CREATE TABLE sec_i_compliance (
   response_id uuid NOT NULL PRIMARY KEY REFERENCES survey_responses(id) ON DELETE CASCADE,
-  safety_trained_workers int CHECK (safety_trained_workers >= 0)
+  safety_trained_workers int CHECK (safety_trained_workers >= 0),
+  has_factory_compliance boolean,
+  has_certifications boolean
 );
 
 -- Section J single-answer questions.
 CREATE TABLE sec_j_strategy (
   response_id uuid NOT NULL PRIMARY KEY REFERENCES survey_responses(id) ON DELETE CASCADE,
+  has_strategic_business_plan boolean,
+  has_operational_planning boolean,
   reinvestment_level_id integer REFERENCES lookup_values(id),
   reinvestment_area_id integer REFERENCES lookup_values(id),
   reinvestment_area_other text,

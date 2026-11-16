@@ -243,12 +243,24 @@ function normalizeMatrix(
       const selectedChoice = isRecord(choice) ? choice.option_id : choice;
       if (!isBlank(selectedChoice)) {
         const id = matrixChoiceId(choice);
-        if (id === null || !available.some((option) => option.id === id)) {
+        const selectedOption = available.find((option) => option.id === id);
+        if (id === null || !selectedOption) {
           throw new Error(`${question.question_code}: choose a valid option for ${item.item_label}.`);
+        }
+        if (['I_COMPLIANCE_PERMITS', 'I_CERTIFICATIONS'].includes(question.question_code) &&
+            item.item_code === 'OTHER') {
+          if (selectedOption.code === 'NA') {
+            delete row.other_text;
+          } else if (!row.other_text) {
+            throw new Error(`${question.question_code}: specify the Other item for ${item.item_label}.`);
+          }
         }
         row.choice_value_id = id;
       } else if (defaultCode) {
         row.choice_value_id = fallback!.id;
+      } else if (['I_COMPLIANCE_PERMITS', 'I_CERTIFICATIONS'].includes(question.question_code) &&
+                 item.item_code === 'OTHER') {
+        delete row.other_text;
       }
     } else if (item.answer_type === 'RATING_1_5') {
       if (defaultCode) {

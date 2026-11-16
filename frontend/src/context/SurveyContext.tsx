@@ -7,7 +7,7 @@ import {
   ReactNode,
 } from 'react';
 import { api } from '../lib/api';
-import { revision18FormError, revision19FormError } from '../lib/formRevision';
+import { revision18FormError, revision19FormError, revision20FormError } from '../lib/formRevision';
 import { getSurveyForm, saveSurveyForm, getResponsesForOwner, getPendingResponsesForOwner } from '../lib/db';
 import type { SurveyForm, OfflineResponse } from '../types';
 import { useAuth } from './AuthContext';
@@ -19,7 +19,7 @@ import { useAuth } from './AuthContext';
  * browsers discard stale cached forms and re-fetch.
  */
 const MINIMUM_FORM_VERSION = 2;
-const CURRENT_FORM_CACHE_REVISION = 19;
+const CURRENT_FORM_CACHE_REVISION = 20;
 
 interface SurveyContextValue {
   form:             SurveyForm | null;
@@ -80,6 +80,8 @@ export function SurveyProvider({ children }: { children: ReactNode }) {
       if (revisionError) throw new Error(revisionError);
       const sectionHRevisionError = revision19FormError(data);
       if (sectionHRevisionError) throw new Error(sectionHRevisionError);
+      const sectionIJRevisionError = revision20FormError(data);
+      if (sectionIJRevisionError) throw new Error(sectionIJRevisionError);
       const currentForm = {
         ...data,
         client_cache_revision: CURRENT_FORM_CACHE_REVISION,

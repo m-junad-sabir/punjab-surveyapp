@@ -22,6 +22,7 @@ const photo_service_1 = require("./photo.service");
 const section_e_f_1 = require("./section-e-f");
 const section_g_1 = require("./section-g");
 const section_h_1 = require("./section-h");
+const section_i_j_1 = require("./section-i-j");
 const survey_response_writer_1 = require("./survey-response-writer");
 function nameSimilarity(a, b) {
     const s1 = (a ?? '').toLowerCase().trim();
@@ -85,6 +86,13 @@ let SyncService = class SyncService {
                         'H_SOLID_WASTE_GATE',
                         'H_GREEN_PRACTICES_GATE',
                         'H_GREEN_PRACTICES',
+                        'I_COMPLIANCE_GATE',
+                        'I_COMPLIANCE_PERMITS',
+                        'I_CERTIFICATIONS_GATE',
+                        'I_CERTIFICATIONS',
+                        'J_STRATEGIC_PLAN_GATE',
+                        'J_OPERATIONAL_PLANNING_GATE',
+                        'J_PLANNING_AREAS',
                     ];
                     const questions = await trx.query(`SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
                FROM survey_questions q
@@ -104,8 +112,16 @@ let SyncService = class SyncService {
                     }
                     for (const question of questions) {
                         if (defaultedQuestionCodes.includes(question.question_code) &&
-                            !['G_INNOVATION_GATE', 'H_WATER_WASTE_GATE', 'H_SOLID_WASTE_GATE',
-                                'H_GREEN_PRACTICES_GATE'].includes(question.question_code) &&
+                            ![
+                                'G_INNOVATION_GATE',
+                                'H_WATER_WASTE_GATE',
+                                'H_SOLID_WASTE_GATE',
+                                'H_GREEN_PRACTICES_GATE',
+                                'I_COMPLIANCE_GATE',
+                                'I_CERTIFICATIONS_GATE',
+                                'J_STRATEGIC_PLAN_GATE',
+                                'J_OPERATIONAL_PLANNING_GATE',
+                            ].includes(question.question_code) &&
                             !answers.has(question.question_code)) {
                             answers.set(question.question_code, question.question_code === 'D_EMPLOYMENT' || question.question_code === 'D_SKILLS' ? [] : {});
                         }
@@ -118,6 +134,7 @@ let SyncService = class SyncService {
                     await (0, survey_response_writer_1.normalizeSectionDAnswers)(trx, answers);
                     await (0, section_g_1.normalizeSectionGAnswers)(trx, answers, questions);
                     await (0, section_h_1.normalizeSectionHAnswers)(trx, answers, questions);
+                    await (0, section_i_j_1.normalizeSectionIJAnswers)(trx, answers, questions);
                     await (0, section_e_f_1.normalizeSectionEFAnswers)(trx, answers, questions);
                     const gpsValue = answers.get('A_LOCATION_GPS');
                     const gpsRecord = gpsValue && typeof gpsValue === 'object'

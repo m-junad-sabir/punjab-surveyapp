@@ -1,5 +1,6 @@
 import type { SurveyQuestion } from '../types';
 import { clearSecondaryProductFields } from './sectionCProducts';
+import { clearSectionIOtherText } from './sectionIJ';
 import { sectionGSelectionId } from './sectionG';
 
 type AnswersByQuestion = Record<number, unknown>;
@@ -110,7 +111,29 @@ export function isQuestionVisible(
       if (gate === false) return false;
       return hasSavedDetail(answers[question.question_id]);
     }
+    case 'I_COMPLIANCE_PERMITS': {
+      const gate = answerForCode('I_COMPLIANCE_GATE', questions, answers);
+      return gate === true || (gate !== false && hasSavedDetail(answers[question.question_id]));
+    }
+    case 'I_CERTIFICATIONS': {
+      const gate = answerForCode('I_CERTIFICATIONS_GATE', questions, answers);
+      return gate === true || (gate !== false && hasSavedDetail(answers[question.question_id]));
+    }
+    case 'J_PLANNING_AREAS': {
+      const planGate = answerForCode('J_STRATEGIC_PLAN_GATE', questions, answers);
+      if (planGate === false) return false;
+      const planningGate = answerForCode('J_OPERATIONAL_PLANNING_GATE', questions, answers);
+      if (planningGate === true) return true;
+      if (planningGate === false) return false;
+      return hasSavedDetail(answers[question.question_id]);
+    }
     default:
+      if (question.question_code.startsWith('J_') && question.question_code !== 'J_STRATEGIC_PLAN_GATE') {
+        const gate = answerForCode('J_STRATEGIC_PLAN_GATE', questions, answers);
+        if (gate === true) return true;
+        if (gate === false) return false;
+        return hasSavedDetail(answers[question.question_id]);
+      }
       if (question.question_code.startsWith('K_') && question.question_code !== 'K_FUTURE_PLAN') {
         return booleanField(answerForCode('K_FUTURE_PLAN', questions, answers), 'has_future_plan') === true;
       }
@@ -131,6 +154,16 @@ export function clearHiddenAnswers(
     if (!Object.prototype.hasOwnProperty.call(nextAnswers, question.question_id)) continue;
     if (nextAnswers === answers) nextAnswers = { ...answers };
     delete nextAnswers[question.question_id];
+  }
+
+  for (const question of questions) {
+    if (!['I_COMPLIANCE_PERMITS', 'I_CERTIFICATIONS'].includes(question.question_code)) continue;
+    const current = nextAnswers[question.question_id];
+    const cleaned = clearSectionIOtherText(question, current);
+    if (cleaned !== current) {
+      if (nextAnswers === answers) nextAnswers = { ...answers };
+      nextAnswers[question.question_id] = cleaned;
+    }
   }
 
   const products = questions.find((question) => question.question_code === 'C_PRODUCTS');

@@ -2,6 +2,23 @@
 
 All notable application changes are recorded here, grouped by the categories below.
 
+## 2026-11-15 — Workplan 2 Phase 9
+
+### Added
+
+- Added independent Yes/No gates for Section I compliance/certifications and Section J strategic-plan/operational-planning questions, with nullable persistence columns and rerunnable migration 15.
+- Section I No answers persist `N/A` for dependent matrix rows; operational-planning No persists `No Plan`. Hidden answers are cleared from drafts and omitted from PDFs.
+- Added regression coverage for gate combinations, stale-answer cleanup, sentinel values, reinvestment Other text, and active form-cache compatibility.
+
+### Changed
+
+- Section J now asks whether a Strategic Business Plan exists before showing its details. Primary Area of Reinvestment shows one required Other text field only when Other is selected.
+- Section I's Other matrix row shows one description field for Held/In Progress, requires and stores its text, and clears it for N/A.
+- Bumped the offline form-cache revision to 20; clients require the updated form and lookup options.
+- Migration 15 is explicitly allowlisted for setup. It adds nullable columns and updates question metadata without backfilling or rewriting historical answers.
+
+Migration 15 and live/offline verification remain owner-managed; no SQL or deployment was performed.
+
 ## 2026-11-02 — Workplan 2 Phases 11 and 12
 
 ### Added

@@ -22,6 +22,12 @@ import {
   totalGenerationCapacity,
 } from '../lib/sectionH';
 import {
+  changeReinvestmentArea,
+  isReinvestmentOtherVisible,
+  isSectionIOtherTextVisible,
+  reinvestmentAreaError,
+} from '../lib/sectionIJ';
+import {
   EMPLOYMENT_CATEGORIES,
   MAX_WORKFORCE_COUNT,
   WORKFORCE_GENDERS,
@@ -865,6 +871,12 @@ function MatrixField({ question, value, onChange, references }: {
     const next = isSectionEfRecord(value) ? { ...value } : {};
     delete next[item.code];
     delete next[String(item.id)];
+    if (entry && ['I_COMPLIANCE_PERMITS', 'I_CERTIFICATIONS'].includes(question.question_code) &&
+        item.code === 'OTHER') {
+      const selectedId = positiveId(entry.choice_value_id ?? entry.option_id);
+      const optionCode = item.options.find((option) => option.id === selectedId)?.code;
+      if (optionCode === 'NA' || !optionCode) delete entry.other_text;
+    }
     if (entry && Object.values(entry).some((part) => part !== null && part !== undefined && part !== '')) {
       next[String(item.id)] = entry;
     }
@@ -933,7 +945,8 @@ function MatrixField({ question, value, onChange, references }: {
                     : { choice_value_id: selection, other_text: item.allows_text ? otherText : '' })}
               />
             )}
-            {!selectedOption?.requires_text && (item.allows_text || otherText) && (
+            {!selectedOption?.requires_text && (item.allows_text || otherText) &&
+                isSectionIOtherTextVisible(question.question_code, item.code, selectedOption?.code) && (
               <input className="form-input" style={{ marginTop: 8 }} value={otherText}
                 aria-label={`${item.label} description`} placeholder="Please specify"
                 onChange={(event) => update(item, { ...entry, other_text: event.target.value })} />
@@ -1070,6 +1083,9 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
         } else if (questionCode === 'G_WEIGHTS_MEASURES' && field.key === 'equipment_unit_id') {
           options = equipmentUnitOptions(options, map.equipment_type_id, map[field.key]);
         }
+        if (questionCode === 'J_REINVESTMENT_AREA' && field.key === 'reinvestment_area_id') {
+          options = options.map((option) => ({ ...option, requires_text: false }));
+        }
 
         const visibleField = { ...field, options };
         const manualKey = psicTextKeys[field.key];
@@ -1081,7 +1097,11 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
         if (!isSectionGFieldVisible(questionCode, map, field.key)) return null;
         if (!isSectionHFieldVisible(questionCode, map, field.key, fields)) return null;
         if (field.key === 'company_name' && map.has_parent_company === false) return null;
-        if (field.key === 'reinvestment_area_other' && !map.reinvestment_area_id) return null;
+        if (questionCode === 'J_REINVESTMENT_AREA' &&
+            field.key === 'reinvestment_area_other' &&
+            !isReinvestmentOtherVisible(map.reinvestment_area_id, fields.find(
+              (candidate) => candidate.key === 'reinvestment_area_id',
+            )?.options ?? [])) return null;
 
         const selectedKind = productKind(map.product_kind);
         let controlValue = map[field.key];
@@ -1116,6 +1136,12 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
           controlValue = kind === 'BOILER' ? 1 : kind === 'VESSEL' ? 2 : null;
         } else if (questionCode === 'C_PRODUCTS' && field.key === 'product_kind') {
           controlValue = selectedKind === 'MAIN' ? 1 : selectedKind === 'SECONDARY' ? 2 : null;
+        }
+        if (questionCode === 'J_REINVESTMENT_AREA' &&
+            field.key === 'reinvestment_area_other' &&
+            !map.reinvestment_area_other &&
+            isSectionEfRecord(map.reinvestment_area_id)) {
+          controlValue = map.reinvestment_area_id.other_text ?? '';
         }
         const isMonths = field.type === 'MONTHS';
         const needsProductContext = field.reference === 'industry_products' &&
@@ -1175,6 +1201,10 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
                   const updated: Record<string, unknown> = { ...map, [field.key]: next };
                   delete updated.other_text;
                   onChange(updated);
+                  return;
+                }
+                if (questionCode === 'J_REINVESTMENT_AREA' && field.key === 'reinvestment_area_id') {
+                  onChange(changeReinvestmentArea(map, field.key, next, field.options ?? []));
                   return;
                 }
                 const dependentSelectionFields: Record<string, string[]> = {
@@ -1902,6 +1932,10 @@ export default function SurveyPage() {
     if (workforce) return workforce.ok ? null : workforce.error;
     if (q.question_code === 'G_MACHINERY_AGE' && legacyMachineryAgeRows(value)) {
       return 'Review the previous machine counts and re-enter percentage shares.';
+    }
+    if (q.question_code === 'J_REINVESTMENT_AREA') {
+      const error = reinvestmentAreaError(q, value);
+      if (error) return error;
     }
     if (isDefaultedShare(q)) {
       const share = normalizeShares(q, value, form.references ?? {});

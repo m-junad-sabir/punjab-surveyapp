@@ -98,6 +98,21 @@ export async function clearHiddenSurveyAnswers(
   if (answers.get('H_SOLID_WASTE_GATE') === false) {
     answers.delete('H_SOLID_WASTE');
   }
+  if (answers.get('I_COMPLIANCE_GATE') === false) {
+    answers.delete('I_COMPLIANCE_PERMITS');
+  }
+  if (answers.get('I_CERTIFICATIONS_GATE') === false) {
+    answers.delete('I_CERTIFICATIONS');
+  }
+  if (answers.get('J_STRATEGIC_PLAN_GATE') === false) {
+    for (const questionCode of answers.keys()) {
+      if (questionCode.startsWith('J_') && questionCode !== 'J_STRATEGIC_PLAN_GATE') {
+        answers.delete(questionCode);
+      }
+    }
+  } else if (answers.get('J_OPERATIONAL_PLANNING_GATE') === false) {
+    answers.delete('J_PLANNING_AREAS');
+  }
   if (field(answers, 'K_FUTURE_PLAN', 'has_future_plan') !== true) {
     for (const questionCode of answers.keys()) {
       if (questionCode.startsWith('K_') && questionCode !== 'K_FUTURE_PLAN') {
@@ -1219,17 +1234,31 @@ export async function saveNormalizedSurveyAnswers(
   }
 
   await manager.query(
-    `INSERT INTO sec_i_compliance (response_id, safety_trained_workers) VALUES ($1, $2)`,
-    [responseId, number(field(answers, 'I_SAFETY_TRAINING', 'safety_trained_workers'))],
+    `INSERT INTO sec_i_compliance
+       (response_id, safety_trained_workers, has_factory_compliance, has_certifications)
+     VALUES ($1, $2, $3, $4)`,
+    [
+      responseId,
+      number(field(answers, 'I_SAFETY_TRAINING', 'safety_trained_workers')),
+      typeof answers.get('I_COMPLIANCE_GATE') === 'boolean' ? answers.get('I_COMPLIANCE_GATE') : null,
+      typeof answers.get('I_CERTIFICATIONS_GATE') === 'boolean' ? answers.get('I_CERTIFICATIONS_GATE') : null,
+    ],
   );
 
   const reinvestmentArea = record(answers.get('J_REINVESTMENT_AREA'));
   await manager.query(
     `INSERT INTO sec_j_strategy
-       (response_id, reinvestment_level_id, reinvestment_area_id, reinvestment_area_other, upscaling_time_id)
-     VALUES ($1, $2, $3, $4, $5)`,
+       (response_id, has_strategic_business_plan, has_operational_planning,
+        reinvestment_level_id, reinvestment_area_id, reinvestment_area_other, upscaling_time_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
       responseId,
+      typeof answers.get('J_STRATEGIC_PLAN_GATE') === 'boolean'
+        ? answers.get('J_STRATEGIC_PLAN_GATE')
+        : null,
+      typeof answers.get('J_OPERATIONAL_PLANNING_GATE') === 'boolean'
+        ? answers.get('J_OPERATIONAL_PLANNING_GATE')
+        : null,
       answerOptionId(answers, 'J_REINVESTMENT_LEVEL', 'reinvestment_level_id'),
       selectionId(reinvestmentArea.reinvestment_area_id),
       reinvestmentArea.reinvestment_area_other ?? null,

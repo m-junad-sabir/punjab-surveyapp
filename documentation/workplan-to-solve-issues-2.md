@@ -244,6 +244,15 @@
 
 **Exit checks:** Test outer and inner gates independently, including changing Yes to No after entering details; verify specified sentinel values and PDF omission rules.
 
+### Implementation and outstanding verification
+
+- Added independent Yes/No gates for factory safety/environmental compliance and certifications. No clears and omits the corresponding details in the draft and PDF while sync stores `N/A` for every dependent matrix row.
+- Section J now has a top-level strategic-plan gate; No remains visible in the PDF and removes dependent details. With a plan, the operational-planning gate independently hides the matrix and stores `No Plan` for every row when answered No.
+- Section I's Other matrix row shows one description field for Held/In Progress, requires and stores its text, and clears it for N/A. Primary Area of Reinvestment uses one conditional Other text field, requires its value when selected, and clears stale text when another area is chosen.
+- Added rerunnable [migration 15](../database/migration_15_section_i_j_gates.sql) and fresh-install schema/questionnaire metadata. New gate columns are nullable and historical answers are not backfilled or rewritten. Migration 15 is explicitly allowlisted; the offline form cache revision is 20.
+- Focused backend and frontend regression tests cover independent gate branches, hidden-answer cleanup, sentinels, reinvestment Other text, and form readiness.
+- **Owner action before release:** review migration 15, back up each target, apply it after the prerequisite migrations, and run its verification queries. Deploy the updated API before the frontend, refresh revision 20 online, and verify live sync, persisted gate values, PDF omission/sentinel behavior, and offline draft/reload/sync. No SQL or deployment was performed during implementation.
+
 ## Phase 10 — Section K: Future plans and barriers
 
 1. When “Do they have a future plan?” is No, show the No answer in the PDF and omit all dependent future-plan answers.
@@ -282,7 +291,7 @@
 - The owner selected **an answer to every visible question for Done**. Empty sections remain Pending; partly answered or invalid sections are Partial. Matrix coverage includes each row; explicit zero and No count as answers. Hidden questions do not block completion. This status rule does not make optional questions mandatory for saving or submission.
 - Next, Previous, and section buttons store the selected section in the URL. Browser Back/Forward restores it. Vertical scrolling resets the actual page container after the section renders; horizontal section-strip scrolling no longer moves the page vertically.
 - Desktop and mobile-sized browser checks passed for Next, Previous, section buttons, same-section clicks, Back/Forward, Pending/Partial/Done/current states, gate changes, cached draft reload with the API unavailable, and unchanged optional submission behavior. The progress bar is labeled Required field completion to distinguish it from all-question section coverage.
-- Question codes remain visible as explicitly deferred. Phases 9 and 10 are temporarily skipped for this delivery; their existing behavior is unchanged.
+- Question codes remain visible as explicitly deferred. Phase 9 is implemented as documented above; Phase 10 remains temporarily deferred for client delivery.
 
 ## Phase 13 — Full regression, migration readiness, and release
 
@@ -317,7 +326,7 @@
 | 6 Sections E and F | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 11 and live/offline verification remain |
 | 7 Section G | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 12 and live/offline verification remain |
 | 8 Section H | Implementation and automated tests complete; owner-managed migration 13 and live/offline verification remain |
-| 9 Sections I and J | Temporarily deferred by the owner for client delivery |
+| 9 Sections I and J | Implementation and automated tests complete; owner-managed migration 15 and live/offline verification remain |
 | 10 Section K | Temporarily deferred by the owner for client delivery |
 | 11 Section L | Implementation, automated tests, and mocked browser checks complete; owner-managed migration 14 and live-device verification remain |
 | 12 Navigation and section status UI | Implementation, automated tests, and desktop/mobile-sized browser checks complete |
