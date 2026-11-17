@@ -11,6 +11,8 @@ import {
 } from './section-e-f';
 import { normalizeSectionGAnswers } from './section-g';
 import { normalizeSectionHAnswers } from './section-h';
+import { normalizeSectionIJAnswers } from './section-i-j';
+import { normalizeSectionKAnswers } from './section-k';
 import {
   clearHiddenSurveyAnswers,
   createIndustrialUnit,
@@ -132,6 +134,13 @@ export class SyncService {
             'H_SOLID_WASTE_GATE',
             'H_GREEN_PRACTICES_GATE',
             'H_GREEN_PRACTICES',
+            'I_COMPLIANCE_GATE',
+            'I_COMPLIANCE_PERMITS',
+            'I_CERTIFICATIONS_GATE',
+            'I_CERTIFICATIONS',
+            'J_STRATEGIC_PLAN_GATE',
+            'J_OPERATIONAL_PLANNING_GATE',
+            'J_PLANNING_AREAS',
           ];
           const questions: SubmittedQuestion[] = await trx.query(
             `SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
@@ -154,8 +163,16 @@ export class SyncService {
           }
           for (const question of questions) {
             if (defaultedQuestionCodes.includes(question.question_code) &&
-                !['G_INNOVATION_GATE', 'H_WATER_WASTE_GATE', 'H_SOLID_WASTE_GATE',
-                  'H_GREEN_PRACTICES_GATE'].includes(question.question_code) &&
+                ![
+                  'G_INNOVATION_GATE',
+                  'H_WATER_WASTE_GATE',
+                  'H_SOLID_WASTE_GATE',
+                  'H_GREEN_PRACTICES_GATE',
+                  'I_COMPLIANCE_GATE',
+                  'I_CERTIFICATIONS_GATE',
+                  'J_STRATEGIC_PLAN_GATE',
+                  'J_OPERATIONAL_PLANNING_GATE',
+                ].includes(question.question_code) &&
                 !answers.has(question.question_code)) {
               answers.set(
                 question.question_code,
@@ -171,7 +188,9 @@ export class SyncService {
           await normalizeSectionDAnswers(trx, answers);
           await normalizeSectionGAnswers(trx, answers, questions);
           await normalizeSectionHAnswers(trx, answers, questions);
+          await normalizeSectionIJAnswers(trx, answers, questions);
           await normalizeSectionEFAnswers(trx, answers, questions);
+          await normalizeSectionKAnswers(trx, answers, questions);
 
           const gpsValue = answers.get('A_LOCATION_GPS');
           const gpsRecord = gpsValue && typeof gpsValue === 'object'
