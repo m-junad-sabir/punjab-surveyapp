@@ -1,0 +1,77 @@
+[
+  {
+    "concurrency": 5,
+    "secs": 12.3,
+    "attempted": 100,
+    "synced": 100,
+    "duplicate": 0,
+    "already": 0,
+    "failed": 0,
+    "photoFail": 0,
+    "netErr": 0,
+    "surveysPerSec": 8.1,
+    "photo": {
+      "p50": 141,
+      "p95": 297
+    },
+    "sync": {
+      "p50": 258,
+      "p95": 453
+    },
+    "survey": {
+      "p50": 553,
+      "p95": 1037
+    },
+    "problems": {}
+  },
+  {
+    "concurrency": 10,
+    "secs": 11.3,
+    "attempted": 100,
+    "synced": 100,
+    "duplicate": 0,
+    "already": 0,
+    "failed": 0,
+    "photoFail": 0,
+    "netErr": 0,
+    "surveysPerSec": 8.9,
+    "photo": {
+      "p50": 207,
+      "p95": 472
+    },
+    "sync": {
+      "p50": 616,
+      "p95": 1083
+    },
+    "survey": {
+      "p50": 1107,
+      "p95": 1706
+    },
+    "problems": {}
+  },
+  {
+    "concurrency": 20,
+    "secs": 10.1,
+    "attempted": 100,
+    "synced": 100,
+    "duplicate": 0,
+    "already": 0,
+    "failed": 0,
+    "photoFail": 0,
+    "netErr": 0,
+    "surveysPerSec": 9.9,
+    "photo": {
+      "p50": 583,
+      "p95": 884
+    },
+    "sync": {
+      "p50": 670,
+      "p95": 1342
+    },
+    "survey": {
+      "p50": 1946,
+      "p95": 2512
+    },
+    "problems": {}
+  }
+]

@@ -1,0 +1,266 @@
+{
+  "results": [
+    {
+      "name": "GET /auth/me",
+      "status": 200,
+      "bytes": 333,
+      "rows": [
+        {
+          "connections": 10,
+          "rps": 863.7,
+          "avg": 11.2,
+          "p50": 8,
+          "p99": 74,
+          "max": 286,
+          "non2xx": 0,
+          "errors": 0,
+          "timeouts": 0,
+          "mbps": 0.5
+        },
+        {
+          "connections": 50,
+          "rps": 1306.8,
+          "avg": 37.7,
+          "p50": 36,
+          "p99": 56,
+          "max": 409,
+          "non2xx": 0,
+          "errors": 0,
+          "timeouts": 0,
+          "mbps": 0.7
+        },
+        {
+          "connections": 100,
+          "rps": 1264.3,
+          "avg": 78.5,
+          "p50": 75,
+          "p99": 114,
+          "max": 819,
+          "non2xx": 0,
+          "errors": 0,
+          "timeouts": 0,
+          "mbps": 0.7
+        },
+        {
+          "connections": 200,
+          "rps": 1281.3,
+          "avg": 155.1,
+          "p50": 151,
+          "p99": 200,
+          "max": 1267,
+          "non2xx": 0,
+          "errors": 0,
+          "timeouts": 0,
+          "mbps": 0.7
+        }
+      ],
+      "note": ""
+    },
+    {
+      "name": "GET /industrial-units",
+      "status": 200,
+      "bytes": 1217490,
+      "rows": [
+        {
+          "connections": 10,
+          "rps": 18.9,
+          "avg": 520,
+          "p50": 507,
+          "p99": 1033,
+          "max": 1157,
+          "non2xx": 0,
+          "errors": 0,
+          "timeouts": 0,
+          "mbps": 22
+        },
+        {
+          "connections": 50,
+          "rps": 19.5,
+          "avg": 2232.1,
+          "p50": 2099,
+          "p99": 9220,
+          "max": 9892,
+          "non2xx": 0,
+          "errors": 4,
+          "timeouts": 4,
+          "mbps": 22.6
+        },
+        {
+          "connections": 100,
+          "rps": 18.2,
+          "avg": 2116.6,
+          "p50": 1932,
+          "p99": 8927,
+          "max": 9220,
+          "non2xx": 0,
+          "errors": 58,
+          "timeouts": 58,
+          "mbps": 21.1
+        },
+        {
+          "connections": 200,
+          "rps": 17.2,
+          "avg": 6855.6,
+          "p50": 7673,
+          "p99": 9919,
+          "max": 10001,
+          "non2xx": 0,
+          "errors": 34,
+          "timeouts": 34,
+          "mbps": 20
+        }
+      ],
+      "note": ""
+    },
+    {
+      "name": "GET /industrial-units/:id",
+      "status": 200,
+      "bytes": 1012,
+      "rows": [
+        {
+          "connections": 10,
+          "rps": 691.1,
+          "avg": 14,
+          "p50": 13,
+          "p99": 25,
+          "max": 80,
+          "non2xx": 0,
+          "errors": 0,
+          "timeouts": 0,
+          "mbps": 0.8
+        },
+        {
+          "connections": 50,
+          "rps": 674.3,
+          "avg": 73.5,
+          "p50": 69,
+          "p99": 142,
+          "max": 393,
+          "non2xx": 0,
+          "errors": 0,
+          "timeouts": 0,
+          "mbps": 0.8
+        },
+        {
+          "connections": 100,
+          "rps": 586.7,
+          "avg": 169.3,
+          "p50": 147,
+          "p99": 411,
+          "max": 732,
+          "non2xx": 0,
+          "errors": 0,
+          "timeouts": 0,
+          "mbps": 0.7
+        },
+        {
+          "connections": 200,
+          "rps": 624.1,
+          "avg": 322.5,
+          "p50": 276,
+          "p99": 1333,
+          "max": 2156,
+          "non2xx": 0,
+          "errors": 2,
+          "timeouts": 0,
+          "mbps": 0.8
+        }
+      ],
+      "note": ""
+    },
+    {
+      "name": "GET /survey-forms/active",
+      "status": 200,
+      "bytes": 2990261,
+      "rows": [
+        {
+          "connections": 10,
+          "rps": 13.7,
+          "avg": 710.9,
+          "p50": 685,
+          "p99": 1056,
+          "max": 1062,
+          "non2xx": 0,
+          "errors": 0,
+          "timeouts": 0,
+          "mbps": 39.2
+        },
+        {
+          "connections": 50,
+          "rps": 13.7,
+          "avg": 3333.9,
+          "p50": 3401,
+          "p99": 4302,
+          "max": 4374,
+          "non2xx": 0,
+          "errors": 0,
+          "timeouts": 0,
+          "mbps": 39.2
+        },
+        {
+          "connections": 100,
+          "rps": 13.7,
+          "avg": 6091.3,
+          "p50": 6741,
+          "p99": 8159,
+          "max": 8206,
+          "non2xx": 0,
+          "errors": 0,
+          "timeouts": 0,
+          "mbps": 39.2
+        },
+        {
+          "connections": 200,
+          "rps": 4.8,
+          "avg": 5550.8,
+          "p50": 5420,
+          "p99": 9971,
+          "max": 9971,
+          "non2xx": 0,
+          "errors": 164,
+          "timeouts": 160,
+          "mbps": 13.7
+        }
+      ],
+      "note": ""
+    }
+  ],
+  "loginRows": [
+    {
+      "connections": 1,
+      "rps": 2.8,
+      "avg": 353.9,
+      "p50": 350,
+      "p99": 394,
+      "max": 394,
+      "non2xx": 0,
+      "errors": 0,
+      "timeouts": 0,
+      "mbps": 0
+    },
+    {
+      "connections": 5,
+      "rps": 9.2,
+      "avg": 533.3,
+      "p50": 514,
+      "p99": 977,
+      "max": 977,
+      "non2xx": 0,
+      "errors": 0,
+      "timeouts": 0,
+      "mbps": 0
+    },
+    {
+      "connections": 10,
+      "rps": 9,
+      "avg": 1062.1,
+      "p50": 1039,
+      "p99": 1700,
+      "max": 1700,
+      "non2xx": 0,
+      "errors": 0,
+      "timeouts": 0,
+      "mbps": 0
+    }
+  ]
+}

@@ -56,6 +56,14 @@ __decorate([
     __metadata("design:type", Boolean)
 ], User.prototype, "is_active", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'integer', default: 0 }),
+    __metadata("design:type", Number)
+], User.prototype, "token_version", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], User.prototype, "must_change_password", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'uuid', nullable: true }),
     __metadata("design:type", String)
 ], User.prototype, "created_by", void 0);
