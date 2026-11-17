@@ -7,6 +7,12 @@ import {
   ReactNode,
 } from 'react';
 import { api } from '../lib/api';
+import {
+  revision18FormError,
+  revision19FormError,
+  revision20FormError,
+  revision21FormError,
+} from '../lib/formRevision';
 import { getSurveyForm, saveSurveyForm, getResponsesForOwner, getPendingResponsesForOwner } from '../lib/db';
 import type { SurveyForm, OfflineResponse } from '../types';
 import { useAuth } from './AuthContext';
@@ -18,7 +24,7 @@ import { useAuth } from './AuthContext';
  * browsers discard stale cached forms and re-fetch.
  */
 const MINIMUM_FORM_VERSION = 2;
-const CURRENT_FORM_CACHE_REVISION = 12;
+const CURRENT_FORM_CACHE_REVISION = 21;
 
 interface SurveyContextValue {
   form:             SurveyForm | null;
@@ -67,14 +73,22 @@ export function SurveyProvider({ children }: { children: ReactNode }) {
       }
       const photoQuestionCodes = new Set(
         data.sections
-          .flatMap((section: any) => section.questions)
-          .filter((question: any) => question.answer_type === 'PHOTO')
-          .map((question: any) => question.question_code),
+          .flatMap((section) => section.questions)
+          .filter((question) => question.answer_type === 'PHOTO')
+          .map((question) => question.question_code),
       );
       if (!photoQuestionCodes.has('L_PHOTO_INTERVIEW_SESSION') ||
           !photoQuestionCodes.has('L_PHOTO_ENTRANCE_SIGNBOARD')) {
         throw new Error('Photo Evidence is missing from the active form. Run database/migration_05_photo_evidence.sql, then download the form again.');
       }
+      const revisionError = revision18FormError(data);
+      if (revisionError) throw new Error(revisionError);
+      const sectionHRevisionError = revision19FormError(data);
+      if (sectionHRevisionError) throw new Error(sectionHRevisionError);
+      const sectionIJRevisionError = revision20FormError(data);
+      if (sectionIJRevisionError) throw new Error(sectionIJRevisionError);
+      const sectionKRevisionError = revision21FormError(data);
+      if (sectionKRevisionError) throw new Error(sectionKRevisionError);
       const currentForm = {
         ...data,
         client_cache_revision: CURRENT_FORM_CACHE_REVISION,

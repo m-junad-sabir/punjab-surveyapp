@@ -1,4 +1,4 @@
-import type { IndustrialUnit } from '../types';
+import type { IndustrialUnit, SurveyForm } from '../types';
 
 /**
  * API client — uses the configured API URL or Vite's local /api proxy.
@@ -92,7 +92,7 @@ export const api = {
   // ── Survey Form ─────────────────────────────────────────────
   form: {
     /** GET /survey-forms/active — requires SURVEY_SUBMIT permission */
-    getActive: () => request<any>('GET', '/survey-forms/active'),
+    getActive: () => request<SurveyForm>('GET', '/survey-forms/active'),
   },
 
   // ── Sync ────────────────────────────────────────────────────

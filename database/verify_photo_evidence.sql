@@ -30,3 +30,11 @@ SELECT f.id AS form_id,
    AND q.question_code = e.question_code
  WHERE f.is_active = true
  ORDER BY f.version DESC, e.question_code;
+
+SELECT conrelid::regclass AS table_name,
+       conname,
+       convalidated,
+       pg_get_constraintdef(oid) AS definition
+  FROM pg_constraint
+ WHERE conname IN ('survey_photo_uploads_accuracy_m_check', 'survey_attachments_photo_accuracy_check')
+ ORDER BY conname;

@@ -5,6 +5,7 @@ import { SurveyForm }     from '../../dal/entities/survey-form.entity';
 import { SurveySection }  from '../../dal/entities/survey-section.entity';
 import { SurveyQuestion } from '../../dal/entities/survey-question.entity';
 import { QUESTION_INPUTS, SURVEY_REFERENCES } from './survey-questionnaire';
+import { DEFAULT_SHARE_CODES } from './section-e-f';
 
 export interface LookupOption {
   id: number;
@@ -12,6 +13,8 @@ export interface LookupOption {
   label: string;
   requires_text: boolean;
   parent_id?: number | null;
+  product_kind?: 'MAIN' | 'SECONDARY' | null;
+  is_selectable?: boolean;
 }
 
 interface MatrixItem {
@@ -29,6 +32,22 @@ const ROMAN_NUMERALS: Record<string, number> = {
   i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8,
   ix: 9, x: 10, xi: 11, xii: 12, xiii: 13, xiv: 14, xv: 15, xvi: 16,
 };
+
+function questionNumberOrder(value: string | null): number {
+  const match = value?.match(/^([ivxlcdm]+)(?:\(([a-z])\))?$/i);
+  if (!match) return 0;
+  const romanOrder = ROMAN_NUMERALS[match[1].toLowerCase()] ?? 0;
+  const subQuestionOrder = match[2] ? match[2].toLowerCase().charCodeAt(0) - 96 : 0;
+  return romanOrder * 100 + subQuestionOrder;
+}
+
+function questionOrder(question: SurveyQuestion, sectionCode: string): number {
+  if (sectionCode === 'B' && question.question_code === 'B_OPERATION_STATUS') return -1;
+  if (sectionCode === 'G' && question.question_code === 'G_INNOVATION_GATE') {
+    return questionNumberOrder(question.question_no) - 1;
+  }
+  return questionNumberOrder(question.question_no);
+}
 
 @Injectable()
 export class SurveyFormService {
@@ -154,6 +173,44 @@ export class SurveyFormService {
           ORDER BY c.code`,
       );
     }
+    if (questions.some((question) => question.question_code === 'D_SKILLS')) {
+      referenceData.workforce_skill_levels = await this.dataSource.query(
+        `SELECT lv.id, lv.code, lv.label, lv.requires_text, lv.is_active AS is_selectable
+           FROM lookup_values lv
+           JOIN lookup_types lt ON lt.id = lv.type_id
+          WHERE lt.code = 'SKILL_LEVEL'
+          ORDER BY lv.sort_order, lv.id`,
+      );
+    }
+    const sectionEfLookupIds = questions
+      .filter((question) =>
+        DEFAULT_SHARE_CODES.some((code) => code === question.question_code) ||
+        question.question_code === 'E_SUPPLY_DISRUPTION_REASON' ||
+        question.question_code === 'F_DEMAND_GAP_REASON',
+      )
+      .map((question) => question.id);
+    if (sectionEfLookupIds.length) {
+      referenceData.section_ef_options = await this.dataSource.query(
+        `SELECT q.id AS parent_id, lv.id, lv.code, lv.label, lv.requires_text,
+                lv.is_active AS is_selectable
+           FROM survey_questions q
+           JOIN lookup_values lv ON lv.type_id = q.lookup_type_id
+          WHERE q.id = ANY($1::int[])
+          ORDER BY q.id, lv.sort_order, lv.id`,
+        [sectionEfLookupIds],
+      );
+    }
+    if (matrixItems.length) {
+      referenceData.matrix_options = await this.dataSource.query(
+        `SELECT mi.id AS parent_id, lv.id, lv.code, lv.label, lv.requires_text,
+                lv.is_active AS is_selectable
+           FROM matrix_items mi
+           JOIN lookup_values lv ON lv.type_id = mi.scale_type_id
+          WHERE mi.id = ANY($1::int[])
+          ORDER BY mi.id, lv.sort_order, lv.id`,
+        [matrixItems.map((item) => item.id)],
+      );
+    }
     const qBySection = new Map<number, SurveyQuestion[]>();
     for (const q of questions) {
       const list = qBySection.get(q.section_id) ?? [];
@@ -173,8 +230,7 @@ export class SurveyFormService {
         sort_order:   sec.sort_order,
         questions: [...(qBySection.get(sec.id) ?? [])]
           .sort((a, b) =>
-            (ROMAN_NUMERALS[a.question_no?.toLowerCase() ?? ''] ?? 0) -
-            (ROMAN_NUMERALS[b.question_no?.toLowerCase() ?? ''] ?? 0),
+            questionOrder(a, sec.section_code) - questionOrder(b, sec.section_code),
           )
           .map((q) => ({
           question_id:    q.id,
