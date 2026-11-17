@@ -191,7 +191,7 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
   F_PAYMENT_TERMS: { fields: [field('payment_terms_id', 'Payment terms', 'SINGLE_CHOICE', { lookup_type: 'PAYMENT_TERMS' })] },
   F_DEMAND_GAP: { fields: [field('had_demand_gap', 'Were there demand gaps?', 'YES_NO')] },
   F_SUBCONTRACT: { fields: [field('subcontract_id', 'Subcontract opportunities', 'SINGLE_CHOICE', { lookup_type: 'SUBCONTRACT_TYPE' })] },
-  G_PLANT_CAPACITY: { fields: [field('plant_processing_capacity', 'Plant processing capacity', 'TEXT')] },
+  G_PLANT_CAPACITY: { fields: [field('plant_processing_capacity', 'Enter processing capacity with units/day or month', 'TEXT')] },
   G_UTILIZATION_RATE: { fields: [field('utilization_rate_id', 'Capacity utilization rate', 'SINGLE_CHOICE', { lookup_type: 'UTILIZATION_BAND' })] },
   G_INTEGRATION_LEVEL: { fields: [field('integration_level_id', 'Integration between machines', 'SINGLE_CHOICE', { lookup_type: 'INTEGRATION_LEVEL' })] },
   G_MACHINE_SOURCE: { fields: [field('machine_source_id', 'Machine source', 'SINGLE_CHOICE', { lookup_type: 'LOCAL_IMPORTED' })] },

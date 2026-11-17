@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation, useMatch } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSurvey } from '../context/SurveyContext';
 import { getResponsesForOwner } from '../lib/db';
@@ -17,6 +17,7 @@ export default function Layout() {
   const { pendingCount, isOnline } = useSurvey();
   const navigate = useNavigate();
   const location = useLocation();
+  const isDashboard = useMatch('/dashboard') !== null;
 
   const title = Object.entries(PAGE_TITLES).find(([k]) =>
     location.pathname.startsWith(k) && k !== '/dashboard'
@@ -73,6 +74,26 @@ export default function Layout() {
           </div>
         </div>
       </div>
+
+      {/* Partner branding is only shown on the dashboard. */}
+      {isDashboard && (
+        <div aria-label="Punjab Industries and NESPAK" style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          padding: '17px 8px 7px',
+        }}>
+          <img
+            src="/logos/punjab-industries.png"
+            alt="Government of Punjab Industries"
+            style={{ width: 36, height: 36, objectFit: 'contain' }}
+          />
+          <span aria-hidden="true" style={{ width: 1, height: 22, background: 'var(--border)' }} />
+          <img
+            src="/logos/nespak.jpeg"
+            alt="NESPAK"
+            style={{ width: 40, height: 28, objectFit: 'contain' }}
+          />
+        </div>
+      )}
 
       {/* Page content — no visible scrollbar */}
       <div className="page-scroll">
