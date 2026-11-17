@@ -377,6 +377,6 @@ test('generated PDF shows Section G labels, historical counts, defaults, gates, 
   await downloadSurveyPdf(empty, form);
   const emptyText = [...captures[1].matchAll(/\(((?:\\.|[^\\)])*)\) Tj/g)]
     .map((match) => match[1].replace(/\\([\\()])/g, '$1'));
-  assert.equal(emptyText.filter((value) => value === 'Not Applicable').length, 3);
+  assert.equal(emptyText.filter((value) => value === 'Not Applicable').length, 5);
   assert.ok(emptyText.includes('New product:'));
 });

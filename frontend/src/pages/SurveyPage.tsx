@@ -22,6 +22,13 @@ import {
   totalGenerationCapacity,
 } from '../lib/sectionH';
 import {
+  changeReinvestmentArea,
+  isReinvestmentOtherVisible,
+  isSectionIOtherTextVisible,
+  reinvestmentAreaError,
+} from '../lib/sectionIJ';
+import { isSectionKFieldVisible } from '../lib/sectionK';
+import {
   EMPLOYMENT_CATEGORIES,
   MAX_WORKFORCE_COUNT,
   WORKFORCE_GENDERS,
@@ -95,7 +102,7 @@ import type {
   SurveyMatrixItem,
 } from '../types';
 
-// ─── GPS capture ──────────────────────────────────────────────────────────────
+// GPS widget: captures coordinates and displays the saved location/accuracy.
 function GpsField({ value, onChange }: { value: any; onChange: (v: any) => void }) {
   const [loading, setLoading] = useState(false);
 
@@ -145,7 +152,7 @@ function GpsField({ value, onChange }: { value: any; onChange: (v: any) => void 
   );
 }
 
-// ─── Photo capture ────────────────────────────────────────────────────────────
+// Photo widget: opens the device camera, captures GPS-tagged evidence, and shows its preview.
 function PhotoField({ photoType, responseId, ownerId, unitName, value, onChange }: {
   photoType: string;
   responseId: string;
@@ -319,6 +326,7 @@ function PhotoField({ photoType, responseId, ownerId, unitName, value, onChange 
 }
 
 // ─── CHOICE (single select) ───────────────────────────────────────────────────
+// Normalize both legacy scalar answers and newer { option_id, ... } answers.
 function selectedOptionId(value: any): number | null {
   const id = value && typeof value === 'object' ? value.option_id : value;
   return Number.isInteger(id) ? id : null;
@@ -330,6 +338,7 @@ function selectedOtherText(value: any): string {
     : '';
 }
 
+// Shared single-choice control; an "Other" option adds a text input below the select.
 function ChoiceField({ options, value, onChange, error, disabled }: {
   options: QuestionOption[]; value: any; onChange: (v: any) => void; error?: string; disabled?: boolean;
 }) {
@@ -373,6 +382,7 @@ function ChoiceField({ options, value, onChange, error, disabled }: {
   );
 }
 
+// Searchable reference picker for long classification lists; its dropdown is portaled to the document body.
 function SearchableReferenceField({ options, value, onChange, disabled, manualValue, onManualChange }: {
   options: QuestionOption[];
   value: any;
@@ -543,7 +553,7 @@ function SearchableReferenceField({ options, value, onChange, disabled, manualVa
   );
 }
 
-// ─── MULTI_CHOICE (checkboxes) ────────────────────────────────────────────────
+// Checkbox list for multi-select answers, including optional "select all" and per-option details.
 function MultiChoiceField({ options, value, onChange, showMonthToggle = false, reasonQuestion, references = {} }: {
   options: QuestionOption[]; value: any; onChange: (v: any) => void;
   showMonthToggle?: boolean;
@@ -642,6 +652,7 @@ function MultiChoiceField({ options, value, onChange, showMonthToggle = false, r
   );
 }
 
+// Percentage breakdown used by sections E/F; shows invalid categories and a running 100% total.
 function SectionEFShareField({ question, value, onChange, references }: {
   question: SurveyQuestion;
   value: unknown;
@@ -748,6 +759,7 @@ function SectionEFShareField({ question, value, onChange, references }: {
   );
 }
 
+// Adapts the machinery-age answer to percentage shares and flags older count-based drafts.
 function MachineryAgeField({ question, value, onChange, references }: {
   question: SurveyQuestion;
   value: unknown;
@@ -786,7 +798,7 @@ function MachineryAgeField({ question, value, onChange, references }: {
   );
 }
 
-// ─── SHARE_PERCENT (percentage breakdown) ─────────────────────────────────────
+// Generic percentage breakdown control used by SHARE_PERCENT questions.
 function SharePercentField({ options, value, onChange }: {
   options: QuestionOption[]; value: any; onChange: (v: any) => void;
 }) {
@@ -853,7 +865,7 @@ function SharePercentField({ options, value, onChange }: {
   );
 }
 
-// ─── MATRIX ───────────────────────────────────────────────────────────────────
+// Matrix question UI: renders one response card for each configured matrix row.
 function MatrixField({ question, value, onChange, references }: {
   question: SurveyQuestion; value: unknown; onChange: (v: unknown) => void;
   references: Record<string, QuestionOption[]>;
@@ -865,6 +877,12 @@ function MatrixField({ question, value, onChange, references }: {
     const next = isSectionEfRecord(value) ? { ...value } : {};
     delete next[item.code];
     delete next[String(item.id)];
+    if (entry && ['I_COMPLIANCE_PERMITS', 'I_CERTIFICATIONS'].includes(question.question_code) &&
+        item.code === 'OTHER') {
+      const selectedId = positiveId(entry.choice_value_id ?? entry.option_id);
+      const optionCode = item.options.find((option) => option.id === selectedId)?.code;
+      if (optionCode === 'NA' || !optionCode) delete entry.other_text;
+    }
     if (entry && Object.values(entry).some((part) => part !== null && part !== undefined && part !== '')) {
       next[String(item.id)] = entry;
     }
@@ -933,7 +951,8 @@ function MatrixField({ question, value, onChange, references }: {
                     : { choice_value_id: selection, other_text: item.allows_text ? otherText : '' })}
               />
             )}
-            {!selectedOption?.requires_text && (item.allows_text || otherText) && (
+            {!selectedOption?.requires_text && (item.allows_text || otherText) &&
+                isSectionIOtherTextVisible(question.question_code, item.code, selectedOption?.code) && (
               <input className="form-input" style={{ marginTop: 8 }} value={otherText}
                 aria-label={`${item.label} description`} placeholder="Please specify"
                 onChange={(event) => update(item, { ...entry, other_text: event.target.value })} />
@@ -950,6 +969,7 @@ function MatrixField({ question, value, onChange, references }: {
   );
 }
 
+// Maps a structured field's data type to its concrete HTML input/control.
 function InputFieldControl({ field, value, onChange, disabled, manualValue, onManualChange, preserveNumericText }: {
   field: SurveyInputField;
   value: any;
@@ -1016,6 +1036,7 @@ function InputFieldControl({ field, value, onChange, disabled, manualValue, onMa
   }
 }
 
+// Responsive grid of fields for one structured answer (or one repeatable row).
 function FieldGroup({ fields, value, onChange, references, questionCode, industryTypeId }: {
   fields: SurveyInputField[];
   value: Record<string, any>;
@@ -1031,6 +1052,7 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
     psic_class_id: 'psic_class_text',
   };
 
+  // Each grid cell contains a label, input control, and any context/validation hint.
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
       {fields.map((field) => {
@@ -1070,6 +1092,9 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
         } else if (questionCode === 'G_WEIGHTS_MEASURES' && field.key === 'equipment_unit_id') {
           options = equipmentUnitOptions(options, map.equipment_type_id, map[field.key]);
         }
+        if (questionCode === 'J_REINVESTMENT_AREA' && field.key === 'reinvestment_area_id') {
+          options = options.map((option) => ({ ...option, requires_text: false }));
+        }
 
         const visibleField = { ...field, options };
         const manualKey = psicTextKeys[field.key];
@@ -1080,8 +1105,13 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
         if (!isProductFieldVisible(questionCode, map, field.key)) return null;
         if (!isSectionGFieldVisible(questionCode, map, field.key)) return null;
         if (!isSectionHFieldVisible(questionCode, map, field.key, fields)) return null;
+        if (!isSectionKFieldVisible(questionCode, map, field.key, fields)) return null;
         if (field.key === 'company_name' && map.has_parent_company === false) return null;
-        if (field.key === 'reinvestment_area_other' && !map.reinvestment_area_id) return null;
+        if (questionCode === 'J_REINVESTMENT_AREA' &&
+            field.key === 'reinvestment_area_other' &&
+            !isReinvestmentOtherVisible(map.reinvestment_area_id, fields.find(
+              (candidate) => candidate.key === 'reinvestment_area_id',
+            )?.options ?? [])) return null;
 
         const selectedKind = productKind(map.product_kind);
         let controlValue = map[field.key];
@@ -1116,6 +1146,12 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
           controlValue = kind === 'BOILER' ? 1 : kind === 'VESSEL' ? 2 : null;
         } else if (questionCode === 'C_PRODUCTS' && field.key === 'product_kind') {
           controlValue = selectedKind === 'MAIN' ? 1 : selectedKind === 'SECONDARY' ? 2 : null;
+        }
+        if (questionCode === 'J_REINVESTMENT_AREA' &&
+            field.key === 'reinvestment_area_other' &&
+            !map.reinvestment_area_other &&
+            isSectionEfRecord(map.reinvestment_area_id)) {
+          controlValue = map.reinvestment_area_id.other_text ?? '';
         }
         const isMonths = field.type === 'MONTHS';
         const needsProductContext = field.reference === 'industry_products' &&
@@ -1177,6 +1213,10 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
                   onChange(updated);
                   return;
                 }
+                if (questionCode === 'J_REINVESTMENT_AREA' && field.key === 'reinvestment_area_id') {
+                  onChange(changeReinvestmentArea(map, field.key, next, field.options ?? []));
+                  return;
+                }
                 const dependentSelectionFields: Record<string, string[]> = {
                   district_id: ['tehsil_id'],
                   psic_division_id: dependentFields.psic_division_id,
@@ -1217,6 +1257,7 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
   );
 }
 
+// Small display helpers shared by the employment and skills tables below.
 function WorkforceTotal({ values }: { values: unknown[] }) {
   const total = totalWorkforceCounts(values);
   return <strong>{total === null ? '—' : total}</strong>;
@@ -1314,6 +1355,7 @@ function UnrecognizedWorkforceRows({ value, skills, onChange }: {
   );
 }
 
+// Section D employment layout: category cards, gender counts, and calculated subtotals.
 function EmploymentDetailsTable({ value, onChange }: {
   value: unknown;
   onChange: (value: unknown) => void;
@@ -1405,6 +1447,7 @@ function EmploymentDetailsTable({ value, onChange }: {
   );
 }
 
+// Section D skills layout: one card per skill level with gender counts and totals.
 function EmploymentSkillsTable({ options, value, onChange }: {
   options: WorkforceSkillOption[];
   value: unknown;
@@ -1509,6 +1552,7 @@ function EmploymentSkillsTable({ options, value, onChange }: {
   );
 }
 
+// Chooses the specialized Section D tables, a single field grid, or repeatable entry cards.
 function StructuredQuestionField({ question, value, onChange, references, industryTypeId }: {
   question: SurveyQuestion;
   value: any;
@@ -1565,7 +1609,7 @@ function StructuredQuestionField({ question, value, onChange, references, indust
   );
 }
 
-// ─── Universal question renderer ──────────────────────────────────────────────
+// Universal question renderer: dispatches each question to its specialized or answer-type control.
 function QuestionField({
   q, value, onChange, error, references, responseId, ownerId, unitName, industryTypeId,
   energyGenerationRows,
@@ -1690,7 +1734,7 @@ function QuestionField({
   }
 }
 
-// ─── Section scroll strip ─────────────────────────────────────────────────────
+// Horizontal section navigator: each button shows the section code and completion state.
 function SectionStrip({
   sections, current, statusForSection, onClick,
 }: {
@@ -1721,8 +1765,8 @@ function SectionStrip({
         background: 'linear-gradient(to left, var(--surface), transparent)', zIndex: 2, pointerEvents: 'none' }} />
 
       <div ref={scrollRef} style={{
-        display: 'flex', gap: 6,
-        overflowX: 'auto', padding: '4px 20px 10px',
+        display: 'flex', gap: 7,
+        overflowX: 'auto', padding: '3px 16px 5px',
         scrollbarWidth: 'thin', scrollbarColor: 'var(--border) transparent',
       } as React.CSSProperties}>
         {sections.map((sec, i) => {
@@ -1739,21 +1783,27 @@ function SectionStrip({
           else if (partial)  { bg = 'var(--warning-bg)'; border = 'var(--warning)'; color = 'var(--warning)'; }
 
           return (
+
             <button key={sec.section_id} onClick={() => onClick(i)} title={sec.title}
               aria-current={isActive ? 'step' : undefined}
               aria-label={`Section ${sec.section_code}: ${isActive ? 'current' : status}`}
+              
               style={{ flexShrink: 0, display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
-                width: 56, height: 52, borderRadius: 10,
+                width: 52, height: 46, borderRadius: 10,
                 border: `2px solid ${border}`, background: bg, color,
                 cursor: 'pointer', padding: 0, transition: 'all 0.15s' }}>
-              <span style={{ fontSize: 18, fontWeight: 800, lineHeight: 1 }}>
+
+              <span style={{ fontSize: 14, fontWeight: 800, lineHeight: 1 }}>
                 {sec.section_code}
               </span>
+
               <span style={{ fontSize: 9, marginTop: 3, fontWeight: 700, opacity: 0.85 }}>
                 {isActive ? 'current' : complete ? '✓ done' : partial ? '…' : 'pending'}
               </span>
+
             </button>
+
           );
         })}
       </div>
@@ -1767,7 +1817,7 @@ function isEmptyAnswer(value: any): boolean {
     (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
 }
 
-// ─── Main SurveyPage ──────────────────────────────────────────────────────────
+// Page controller: loads/saves answers, validates sections, calculates progress, and renders the survey UI.
 export default function SurveyPage() {
   const { id }   = useParams<{ id: string }>();
   const { form, fetchForm, formLoading, formError, isOnline } = useSurvey();
@@ -1902,6 +1952,10 @@ export default function SurveyPage() {
     if (workforce) return workforce.ok ? null : workforce.error;
     if (q.question_code === 'G_MACHINERY_AGE' && legacyMachineryAgeRows(value)) {
       return 'Review the previous machine counts and re-enter percentage shares.';
+    }
+    if (q.question_code === 'J_REINVESTMENT_AREA') {
+      const error = reinvestmentAreaError(q, value);
+      if (error) return error;
     }
     if (isDefaultedShare(q)) {
       const share = normalizeShares(q, value, form.references ?? {});
@@ -2145,19 +2199,24 @@ export default function SurveyPage() {
       }}>
         {/* Title row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+
           <button className="btn btn-ghost btn-sm" onClick={() => navigate('/surveys')}>← Back</button>
+          
           <div style={{ flex: 1, minWidth: 0, textAlign: 'center' }}>
             <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              Survey Form
+              Survey Questionnaire
             </div>
           </div>
+
           <button className="btn btn-ghost btn-sm" onClick={saveAsDraft} disabled={saving}
             style={{ color: savedMsg ? 'var(--success)' : undefined, flexShrink: 0 }}>
             {savedMsg ? '✓ Saved' : saving ? '…' : '💾 Save'}
           </button>
+
         </div>
 
-        <div aria-label="Punjab Industries and NESPAK" style={{
+        {/* Partner branding row: government and NESPAK logos centered beneath the title. */}
+        {/* <div aria-label="Punjab Industries and NESPAK" style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           padding: '0 0 8px',
         }}>
@@ -2172,22 +2231,27 @@ export default function SurveyPage() {
             alt="NESPAK"
             style={{ width: 40, height: 28, objectFit: 'contain' }}
           />
-        </div>
+        </div> */}
 
         {/* Progress bar */}
         <div style={{ marginBottom: 8 }}>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+            
             <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               Required field completion
             </span>
             <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>
               {answeredMandatory}/{totalMandatory} required · {progress}%
             </span>
+
           </div>
+
           <div className="progress-bar">
             <div className={`progress-fill${progress < 40 ? ' danger' : progress < 80 ? ' warning' : ''}`}
               style={{ width: `${progress}%` }} />
           </div>
+
         </div>
 
         {/* Section strip */}
@@ -2197,19 +2261,26 @@ export default function SurveyPage() {
 
         {/* Active section label */}
         <div style={{ padding: '0 4px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+
           <span style={{
-            background: 'var(--primary)', color: '#fff',
+            background: 'var(--primary)', color: '#fff', marginTop: 4,
             borderRadius: 6, padding: '2px 8px', fontSize: 10, fontWeight: 800, letterSpacing: '0.06em',
           }}>
             {currentSection + 1}/{form.sections.length}
           </span>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>
-            {section.title}
+
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginTop: 4 }}>
+            {section.title} Section
           </span>
+          
         </div>
+
+        {/* <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, fontWeight: 800 }}>
+          {section.title}
+        </div> */}
       </div>
 
-      {/* ── Questions ── */}
+      {/* Question list container: validation summary, visible-question count, empty state, and question cards. */}
       <div style={{ padding: '10px 14px' }}>
 
         {/* Section validation banner */}
@@ -2218,10 +2289,10 @@ export default function SurveyPage() {
             ⚠ {Object.keys(errors).length} field{Object.keys(errors).length > 1 ? 's need' : ' needs'} attention.
           </div>
         )}
-
+        
         {/* Question count */}
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10, fontWeight: 600 }}>
-          {section.questions.filter(showQuestion).length} question{section.questions.filter(showQuestion).length !== 1 ? 's' : ''} in this section
+          Total {section.questions.filter(showQuestion).length} question{section.questions.filter(showQuestion).length !== 1 ? 's' : ''} in this section
         </div>
 
         {section.questions.filter(showQuestion).length === 0 ? (
@@ -2232,23 +2303,24 @@ export default function SurveyPage() {
           </div>
         ) : (
           section.questions.filter(showQuestion).map((q) => (
-            <div key={q.question_id} className={`question-card${errors[q.question_id] ? ' error' : ''}`}>
-              {/* Meta row */}
-              <div className="question-meta">
-                <span className="question-code">{q.question_code}</span>
-                {q.is_required && <span className="question-mandatory">★ Required</span>}
-                <span style={{
-                  marginLeft: 'auto', fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
-                  letterSpacing: '0.06em', color: 'var(--text-muted)',
-                }}>{q.answer_type}</span>
-              </div>
 
-              {/* Question text */}
+            <div key={q.question_id} className={`question-card${errors[q.question_id] ? ' error' : ''}`}>
+              
+              
+              {/* One card per visible question; the error class highlights failed validation. */}
+              {/* Only required questions need a badge above the prompt. */}
+              {q.is_required && (
+                <div className="question-meta">
+                  <span className="question-mandatory">★ Required</span>
+                </div>
+              )}
+
+              {/* Prompt shown above the answer control. */}
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 10, lineHeight: 1.5 }}>
                 {q.question_text}
               </div>
 
-              {/* Input */}
+              {/* Answer control selected by QuestionField for this question's type and special rules. */}
               <QuestionField
                 q={q}
                 value={answers[q.question_id]}
@@ -2301,7 +2373,7 @@ export default function SurveyPage() {
         </div>
       )}
 
-      {/* ── Sticky bottom navigation ── */}
+      {/* Sticky footer: previous/next section controls or final submit action. */}
       <div style={{
         position: 'sticky', bottom: 0, background: 'var(--surface)',
         borderTop: '1px solid var(--border)', padding: '10px 14px',

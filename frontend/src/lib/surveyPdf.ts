@@ -37,6 +37,8 @@ import {
   sectionHSelectionId,
   totalGenerationCapacity,
 } from './sectionH';
+import { isReinvestmentOtherVisible } from './sectionIJ';
+import { isSectionKFieldVisible } from './sectionK';
 import type {
   OfflineResponse,
   QuestionOption,
@@ -69,7 +71,7 @@ function displayValue(
   value: unknown,
   options: QuestionOption[] = [],
 ): string {
-  if (value === null || value === undefined || value === '') return 'Not provided';
+  if (value === null || value === undefined || value === '') return 'Not Applicable';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'number') {
     return options.find((option) => option.id === value)?.label ?? String(value);
@@ -245,7 +247,14 @@ function getQuestionAnswers(
     return fields.filter((field) =>
       isProductFieldVisible(question.question_code, row, field.key) &&
       isSectionGFieldVisible(question.question_code, row, field.key) &&
-      isSectionHFieldVisible(question.question_code, row, field.key, question.fields),
+      isSectionHFieldVisible(question.question_code, row, field.key, question.fields) &&
+      isSectionKFieldVisible(question.question_code, row, field.key, fields) &&
+      (question.question_code !== 'J_REINVESTMENT_AREA' ||
+        field.key !== 'reinvestment_area_other' ||
+        isReinvestmentOtherVisible(
+          isRecord(row) ? row.reinvestment_area_id : undefined,
+          question.fields?.find((candidate) => candidate.key === 'reinvestment_area_id')?.options ?? [],
+        )),
     ).map((field) => {
       const value = isRecord(row) ? row[field.key] : undefined;
       const useDefault = (value === undefined || value === null || value === '') &&
@@ -257,6 +266,17 @@ function getQuestionAnswers(
         ? productKind(value)
         : null;
       let display = value;
+      if (question.question_code === 'J_REINVESTMENT_AREA' &&
+          field.key === 'reinvestment_area_id' &&
+          isRecord(value)) {
+        display = value.option_id;
+      }
+      if (question.question_code === 'J_REINVESTMENT_AREA' &&
+          field.key === 'reinvestment_area_other' &&
+          (value === undefined || value === null || value === '') &&
+          isRecord(row) && isRecord(row.reinvestment_area_id)) {
+        display = row.reinvestment_area_id.other_text;
+      }
       if (question.question_code === 'H_SOLID_WASTE' && field.key === 'disposal_method_ids' &&
           isRecord(row) && typeof row.other_text === 'string' && row.other_text.trim()) {
         const selected = Array.isArray(value)

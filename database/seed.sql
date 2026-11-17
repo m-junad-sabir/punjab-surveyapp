@@ -491,11 +491,16 @@ SELECT s.id,v.code,v.no,v.txt,v.at,lt.id,v.st FROM (VALUES
 ('H','H_SOLID_WASTE_GATE','vii','Does the establishment generate solid waste or by-products?','YES_NO',NULL,'sec_h_environment.has_solid_waste_generation'),
 ('H','H_GREEN_PRACTICES','viii(a)','Green practice and circular economy','MATRIX',NULL,'response_matrix_answers'),
 ('H','H_GREEN_PRACTICES_GATE','viii','Does the establishment have green practices or circular-economy activities?','YES_NO',NULL,'sec_h_environment.has_green_practices'),
-('I','I_COMPLIANCE_PERMITS','i','Factory safety and environmental compliances','MATRIX',NULL,'response_matrix_answers'),
-('I','I_CERTIFICATIONS','ii','Quality, safety, export & green certifications','MATRIX',NULL,'response_matrix_answers'),
-('J','J_PLANNING_AREAS','i','Operational planning','MATRIX',NULL,'response_matrix_answers'),
+('I','I_COMPLIANCE_GATE','i','Does the establishment have factory safety and environmental compliance?','YES_NO',NULL,'sec_i_compliance.has_factory_compliance'),
+('I','I_COMPLIANCE_PERMITS','i(a)','Factory safety and environmental compliances','MATRIX',NULL,'response_matrix_answers'),
+('I','I_CERTIFICATIONS_GATE','ii','Does the establishment have quality, safety, export, or green certifications?','YES_NO',NULL,'sec_i_compliance.has_certifications'),
+('I','I_CERTIFICATIONS','ii(a)','Quality, safety, export & green certifications','MATRIX',NULL,'response_matrix_answers'),
+('J','J_STRATEGIC_PLAN_GATE','i','Do you have a Strategic Business Plan?','YES_NO',NULL,'sec_j_strategy.has_strategic_business_plan'),
+('J','J_OPERATIONAL_PLANNING_GATE','i(a)','Does the establishment have operational planning?','YES_NO',NULL,'sec_j_strategy.has_operational_planning'),
+('J','J_PLANNING_AREAS','i(b)','Operational planning','MATRIX',NULL,'response_matrix_answers'),
 ('J','J_UPSCALING_READINESS','vii','Readiness of upscaling (1 = not at all ready, 5 = fully ready)','MATRIX',NULL,'response_matrix_answers'),
-('K','K_BARRIERS','iv','Barriers & bottlenecks','MATRIX',NULL,'response_matrix_answers'),
+('K','K_BARRIERS_GATE','iv','Does the establishment face any barriers or bottlenecks?','YES_NO',NULL,'sec_k_future.has_barriers'),
+('K','K_BARRIERS','iv(a)','Rate barriers and bottlenecks: 1 = Don''t happen, 2 = Rarely happen, 3 = Happens, 4 = Happens more often, 5 = Happens frequently.','MATRIX',NULL,'response_matrix_answers'),
 ('A','A_ESTABLISHMENT_NAME','i','Name of establishment','TEXT',NULL,'industrial_units.name'),
 ('A','A_ESTABLISHMENT_YEAR','ii','Year of establishment','NUMBER',NULL,'industrial_units.establishment_year'),
 ('A','A_LOCATION_GPS','iii','Coordinates (capture from device)','TEXT',NULL,'industrial_units.location'),
@@ -559,7 +564,7 @@ SELECT s.id,v.code,v.no,v.txt,v.at,lt.id,v.st FROM (VALUES
 ) v(sec,code,no,txt,at,lt,st) JOIN survey_sections s ON s.section_code=v.sec LEFT JOIN lookup_types lt ON lt.code=v.lt;
 UPDATE survey_questions
    SET is_required = true
- WHERE question_code IN ('A_ESTABLISHMENT_NAME', 'A_LOCATION');
+ WHERE question_code IN ('A_ESTABLISHMENT_NAME', 'A_LOCATION', 'K_FUTURE_PLAN', 'K_BARRIERS_GATE');
 
 -- Rows of the tick-box tables
 INSERT INTO matrix_items (question_id,group_label,item_code,item_label,answer_type,scale_type_id,allows_text,sort_order)

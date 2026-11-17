@@ -287,12 +287,24 @@ export function normalizeMatrix(
       const selectedChoice = isRecord(choice) ? choice.option_id : choice;
       if (!isBlank(selectedChoice)) {
         const id = matrixChoiceId(choice);
-        if (id === null || !knownMatrixOptions(item, references).some((option) => option.id === id)) {
+        const selectedOption = knownMatrixOptions(item, references).find((option) => option.id === id);
+        if (id === null || !selectedOption) {
           return { ok: false, error: `Choose a valid option for ${item.label}.` };
+        }
+        if (['I_COMPLIANCE_PERMITS', 'I_CERTIFICATIONS'].includes(question.question_code) &&
+            item.code === 'OTHER') {
+          if (selectedOption.code === 'NA') {
+            delete row.other_text;
+          } else if (!row.other_text) {
+            return { ok: false, error: `Specify the Other item for ${item.label}.` };
+          }
         }
         row.choice_value_id = id;
       } else if (defaultCode) {
         row.choice_value_id = fallback!.id;
+      } else if (['I_COMPLIANCE_PERMITS', 'I_CERTIFICATIONS'].includes(question.question_code) &&
+                 item.code === 'OTHER') {
+        delete row.other_text;
       }
     } else if (item.answer_type === 'RATING_1_5') {
       if (defaultCode) return { ok: false, error: `${item.label} must use a choice scale.` };
