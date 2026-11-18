@@ -1,11 +1,12 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
-import { useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from 'react-router-dom';
+import { useBlocker, useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { useSurvey } from '../context/SurveyContext';
 import { useAuth }   from '../context/AuthContext';
 import { deletePhoto, getPhoto, savePhoto, saveResponse, getResponse } from '../lib/db';
 import { getDeviceId } from '../lib/deviceId';
+import { AUTOSAVE_INTERVAL_MS, DraftSaver } from '../lib/draftSaver';
 import { downloadSurveyPdf } from '../lib/surveyPdf';
 import { areAllOptionsSelected, toggleAllOptions } from '../lib/optionSelection';
 import { questionFormatError } from '../lib/surveyValidation';
@@ -1821,7 +1822,7 @@ function isEmptyAnswer(value: any): boolean {
 export default function SurveyPage() {
   const { id }   = useParams<{ id: string }>();
   const { form, fetchForm, formLoading, formError, isOnline } = useSurvey();
-  const { user } = useAuth();
+  const { user, registerSessionEndSave } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const navigationType = useNavigationType();
@@ -1833,10 +1834,104 @@ export default function SurveyPage() {
   const [saving,   setSaving]   = useState(false);
   const [existingResponseLoaded, setExistingResponseLoaded] = useState(!id);
   const [ownerMismatch, setOwnerMismatch] = useState(false);
-  const [savedMsg, setSavedMsg] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [saveError, setSaveError] = useState('');
   const [responseId] = useState(() => id || uuidv4());
   const [startedAt]  = useState(() => new Date().toISOString());
+  const metadataRef = useRef({ startedAt, createdAt: startedAt });
+  const answersRef = useRef(answers);
+  const saverRef = useRef(new DraftSaver<OfflineResponse>(saveResponse));
+  const savingRef = useRef(false);
+  const exclusiveSaveRef = useRef(false);
   const topRef = useRef<HTMLDivElement>(null);
+
+  const buildResponse = useCallback((status: 'draft' | 'pending_sync'): OfflineResponse => {
+    if (!form || !user?.user_id) throw new Error('The survey form or account is unavailable.');
+    const currentAnswers = answersRef.current;
+    const questions = form.sections.flatMap((section) => section.questions);
+    const gpsQ = questions.find((q) => q.answer_type === 'GPS' || q.question_code === 'A_LOCATION_GPS');
+    const gpsVal = gpsQ ? currentAnswers[gpsQ.question_id] : null;
+    const workforceAnswers = materializeWorkforceAnswers(questions, currentAnswers, form.references ?? {});
+    const responseAnswers = materializeSectionEFAnswers(questions, workforceAnswers, form.references ?? {});
+    const sectionHAnswers = materializeSectionHAnswers(questions, responseAnswers);
+
+    return {
+      response_id: responseId,
+      form_id: form.form_id,
+      surveyor_id: user.user_id,
+      device_id: getDeviceId(),
+      gps_lat: gpsVal?.lat,
+      gps_lng: gpsVal?.lng,
+      gps_accuracy_m: gpsVal?.accuracy,
+      started_at: metadataRef.current.startedAt,
+      submitted_at: status === 'pending_sync' ? new Date().toISOString() : undefined,
+      answers: Object.entries(sectionHAnswers)
+        .filter(([qid]) => {
+          const question = questions.find((candidate) => candidate.question_id === Number(qid));
+          return !question || isQuestionVisible(question, questions, currentAnswers) ||
+            (question.question_code === 'G_UNDERUTILIZATION_REASON' &&
+             utilizationBandCode(questions, currentAnswers) === null);
+        })
+        .map(([qid, val]) => ({ question_id: parseInt(qid), answer_value: val })),
+      sync_status: status,
+      created_at: metadataRef.current.createdAt,
+    };
+  }, [form, responseId, user?.user_id]);
+
+  const save = useCallback(async (status: 'draft' | 'pending_sync', force = false) => {
+    try {
+      const written = await saverRef.current.save(() => buildResponse(status), force);
+      setDirty(saverRef.current.dirty);
+      if (written) {
+        setSavedAt(new Date());
+        setSaveError('');
+      }
+    } catch (error) {
+      setSaveError(`Unable to save the survey on this device: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw error;
+    }
+  }, [buildResponse]);
+
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    saverRef.current.dirty && currentLocation.pathname !== nextLocation.pathname,
+  );
+
+  useEffect(() => {
+    if (!form || !existingResponseLoaded || ownerMismatch) return;
+    const autosave = () => {
+      if (!exclusiveSaveRef.current && saverRef.current.dirty) void save('draft').catch(() => {});
+    };
+    const timer = window.setInterval(autosave, AUTOSAVE_INTERVAL_MS);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') autosave();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [form, existingResponseLoaded, ownerMismatch, save]);
+
+  useEffect(() => {
+    if (!dirty && !saving) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!saverRef.current.dirty && !savingRef.current) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty, saving]);
+
+  useEffect(() => registerSessionEndSave(async () => {
+    try {
+      while (saverRef.current.dirty) await save('draft');
+    } catch (error) {
+      setSaveError(`Your session expired and the draft could not be saved: ${error instanceof Error ? error.message : 'Unknown error'}. Retry saving before signing out.`);
+      throw error;
+    }
+  }), [registerSessionEndSave, save]);
 
   useLayoutEffect(() => {
     scrollSurveyToTop(topRef.current);
@@ -1860,6 +1955,8 @@ export default function SurveyPage() {
       }
       const map: Record<number, any> = {};
       r.answers.forEach((a) => { map[a.question_id] = a.answer_value; });
+      metadataRef.current = { startedAt: r.started_at, createdAt: r.created_at };
+      answersRef.current = map;
       setAnswers(map);
     }).catch(() => setOwnerMismatch(true)).finally(() => setExistingResponseLoaded(true));
   }, [id, user?.user_id]);
@@ -1867,17 +1964,22 @@ export default function SurveyPage() {
   useEffect(() => {
     if (!form || !existingResponseLoaded) return;
     const questions = form.sections.flatMap((section) => section.questions);
-    setAnswers((previous) => clearHiddenAnswers(questions, previous));
+    setAnswers((previous) => {
+      const cleaned = clearHiddenAnswers(questions, previous);
+      answersRef.current = cleaned;
+      return cleaned;
+    });
   }, [form, existingResponseLoaded]);
 
   const setAnswer = useCallback((qid: number, val: any) => {
     const questions = form?.sections.flatMap((section) => section.questions) ?? [];
-    const next = { ...answers, [qid]: val };
+    const previousAnswers = answersRef.current;
+    const next = { ...previousAnswers, [qid]: val };
     if (questions.find((question) => question.question_id === qid)?.question_code === 'A_UNIT_TYPE' &&
-        selectedOptionId(answers[qid]) !== selectedOptionId(val)) {
+        selectedOptionId(previousAnswers[qid]) !== selectedOptionId(val)) {
       const psicQuestion = questions.find((question) => question.question_code === 'A_PSIC');
       if (psicQuestion) delete next[psicQuestion.question_id];
-      if (selectedOptionId(answers[qid]) !== null) {
+      if (selectedOptionId(previousAnswers[qid]) !== null) {
         const productQuestion = questions.find((question) => question.question_code === 'C_PRODUCTS');
         if (productQuestion && Object.prototype.hasOwnProperty.call(next, productQuestion.question_id)) {
           next[productQuestion.question_id] = clearProductNames(next[productQuestion.question_id]);
@@ -1885,6 +1987,9 @@ export default function SurveyPage() {
       }
     }
     const cleanedAnswers = clearHiddenAnswers(questions, next);
+    answersRef.current = cleanedAnswers;
+    saverRef.current.changed();
+    setDirty(true);
     setAnswers(cleanedAnswers);
     setErrors((previous) => {
       const remaining = { ...previous };
@@ -1896,7 +2001,7 @@ export default function SurveyPage() {
       }
       return remaining;
     });
-  }, [answers, form]);
+  }, [form]);
 
   if (ownerMismatch) {
     return (
@@ -2082,47 +2187,35 @@ export default function SurveyPage() {
     return Object.keys(errs).length === 0;
   };
 
-  // Resolve GPS answer for the response header
-  const buildResponse = (status: 'draft' | 'pending_sync'): OfflineResponse => {
-    const gpsQ   = allQs.find((q) => q.answer_type === 'GPS' || q.question_code === 'A_LOCATION_GPS');
-    const gpsVal = gpsQ ? answers[gpsQ.question_id] : null;
-    const workforceAnswers = materializeWorkforceAnswers(allQs, answers, form.references ?? {});
-    const responseAnswers = materializeSectionEFAnswers(allQs, workforceAnswers, form.references ?? {});
-    const sectionHAnswers = materializeSectionHAnswers(allQs, responseAnswers);
-
-    return {
-      response_id:    responseId,
-      form_id:        form.form_id,
-      surveyor_id:    user!.user_id,
-      device_id:      getDeviceId(),
-      gps_lat:        gpsVal?.lat,
-      gps_lng:        gpsVal?.lng,
-      gps_accuracy_m: gpsVal?.accuracy,
-      started_at:     startedAt,
-      submitted_at:   status === 'pending_sync' ? new Date().toISOString() : undefined,
-      answers: Object.entries(sectionHAnswers)
-        .filter(([qid]) => {
-          const question = allQs.find((candidate) => candidate.question_id === Number(qid));
-          return !question || showQuestion(question) ||
-            (question.question_code === 'G_UNDERUTILIZATION_REASON' &&
-             utilizationBandCode(allQs, answers) === null);
-        })
-        .map(([qid, val]) => ({
-          question_id:  parseInt(qid),
-          answer_value: val,
-        })),
-      sync_status: status,
-      created_at:  new Date().toISOString(),
-    };
-  };
-
   const saveAsDraft = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
-      await saveResponse(buildResponse('draft'));
-      setSavedMsg(true);
-      setTimeout(() => setSavedMsg(false), 2000);
+      await save('draft', true);
+    } catch {
+      // The save error is shown on the survey page.
     } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
+
+  const saveAndLeave = async () => {
+    if (savingRef.current || blocker.state !== 'blocked') return;
+    savingRef.current = true;
+    exclusiveSaveRef.current = true;
+    setSaving(true);
+    try {
+      do {
+        await save('draft');
+      } while (saverRef.current.dirty);
+      blocker.proceed();
+    } catch {
+      // Keep the dialog open so the user can retry or stay.
+    } finally {
+      savingRef.current = false;
+      exclusiveSaveRef.current = false;
       setSaving(false);
     }
   };
@@ -2151,6 +2244,7 @@ export default function SurveyPage() {
   };
 
   const submitSurvey = async () => {
+    if (savingRef.current) return;
     if (!validateSection()) { scrollTop(); return; }
     const incompleteSection = form.sections.findIndex((candidate) =>
       candidate.questions.some((q) => showQuestion(q) && questionIsIncomplete(q)),
@@ -2168,11 +2262,22 @@ export default function SurveyPage() {
       ));
       return;
     }
+    savingRef.current = true;
+    exclusiveSaveRef.current = true;
     setSaving(true);
     try {
-      await saveResponse(buildResponse('pending_sync'));
+      await save('pending_sync', true);
+      if (saverRef.current.dirty) {
+        await save('draft');
+        setSaveError('The survey changed while submitting. Review the latest answers and submit again.');
+        return;
+      }
       navigate('/surveys');
+    } catch {
+      // The save error is shown on the survey page.
     } finally {
+      savingRef.current = false;
+      exclusiveSaveRef.current = false;
       setSaving(false);
     }
   };
@@ -2209,11 +2314,18 @@ export default function SurveyPage() {
           </div>
 
           <button className="btn btn-ghost btn-sm" onClick={saveAsDraft} disabled={saving}
-            style={{ color: savedMsg ? 'var(--success)' : undefined, flexShrink: 0 }}>
-            {savedMsg ? '✓ Saved' : saving ? '…' : '💾 Save'}
+            style={{ color: savedAt && !dirty ? 'var(--success)' : undefined, flexShrink: 0 }}>
+            {saving ? '…' : '💾 Save'}
           </button>
 
         </div>
+
+        <div role="status" aria-live="polite" style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+          {savedAt
+            ? `Saved ${savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}${dirty ? ' · Unsaved changes' : ''}`
+            : dirty ? 'Unsaved changes' : 'No changes to save'}
+        </div>
+        {saveError && <div className="alert alert-error" role="alert" style={{ marginBottom: 8 }}>{saveError}</div>}
 
         {/* Partner branding row: government and NESPAK logos centered beneath the title. */}
         {/* <div aria-label="Punjab Industries and NESPAK" style={{
@@ -2395,6 +2507,23 @@ export default function SurveyPage() {
           </button>
         )}
       </div>
+      {blocker.state === 'blocked' && (
+        <div className="modal-overlay">
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="leave-survey-title">
+            <div className="modal-header"><h3 id="leave-survey-title">Leave survey?</h3></div>
+            <div className="modal-body">
+              <p>Save your changes as a draft before leaving.</p>
+              {saveError && <div className="alert alert-error" role="alert">{saveError}</div>}
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-ghost" onClick={() => blocker.reset()} disabled={saving} autoFocus>Stay</button>
+              <button className="btn btn-primary" onClick={saveAndLeave} disabled={saving}>
+                {saving ? 'Saving…' : 'Save draft & leave'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

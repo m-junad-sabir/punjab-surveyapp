@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { createServer } from 'vite';
 
 const form = {
@@ -40,7 +40,7 @@ const server = await createServer({
         return `export function useSurvey() { return { form: ${JSON.stringify(form)} }; }`;
       }
       if (id === '\0test-auth-context') {
-        return 'export function useAuth() { return { user: { user_id: "test-surveyor" } }; }';
+        return 'export function useAuth() { return { user: { user_id: "test-surveyor" }, registerSessionEndSave: () => () => {} }; }';
       }
     },
   }],
@@ -48,10 +48,13 @@ const server = await createServer({
 after(() => server.close());
 const { default: SurveyPage } = await server.ssrLoadModule('/src/pages/SurveyPage.tsx');
 
+function renderSurvey() {
+  const router = createMemoryRouter([{ path: '/', element: React.createElement(SurveyPage) }]);
+  return renderToStaticMarkup(React.createElement(RouterProvider, { router }));
+}
+
 test('question cards show prompts and required badges without internal labels', () => {
-  const html = renderToStaticMarkup(
-    React.createElement(MemoryRouter, null, React.createElement(SurveyPage)),
-  );
+  const html = renderSurvey();
   const cards = html.split('<div class="question-card">').slice(1);
 
   assert.equal(cards.length, 2);
@@ -65,8 +68,6 @@ test('question cards show prompts and required badges without internal labels', 
 });
 
 test('survey page does not display dashboard branding', () => {
-  const html = renderToStaticMarkup(
-    React.createElement(MemoryRouter, null, React.createElement(SurveyPage)),
-  );
+  const html = renderSurvey();
   assert.doesNotMatch(html, /src="\/logos\/(?:punjab-industries\.png|nespak\.jpeg)"/);
 });

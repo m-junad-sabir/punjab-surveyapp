@@ -5,7 +5,7 @@ Environments: **localhost** (developer machine) and **testing production** (Netl
 
 ## Delivery Checkpoint - 18 October 2026
 
-Phases 0-4 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 was rolled back after login regressions and is deferred; Phase 6 was skipped for this delivery. Resume the remaining phases after the planned two-to-three-day pause, with fresh verification before deployment. R2 credentials, live database migration state, and physical-device photo capture must still be checked per environment; code completion is not evidence of those operational checks.
+Phases 0-4, 6 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 was rolled back after login regressions and is deferred. R2 credentials, live database migration state, and physical-device photo capture must still be checked per environment; code completion is not evidence of those operational checks.
 
 ## Conventions
 
@@ -143,13 +143,13 @@ Phases 0-4 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 was
 
 ---
 
-## Phase 6 — Leave Guard + 30 s Autosave
+## Phase 6 — Leave Guard + 10 s Autosave
 
-**Deferred for this delivery.** No autosave or leave-protection guarantee is made by the current release; save drafts explicitly.
+**Implemented:** survey changes are saved locally to IndexedDB at 10-second intervals and when the page becomes hidden. The saved-time indicator and storage errors are visible on the survey. A leave dialog offers "Save draft & leave" or "Stay" when there are unsaved changes; navigation between survey sections remains available. Browser and Android back navigation within the app use the same guard. Sign-out and session expiry save the draft before leaving, and a failed save keeps the survey open for recovery.
 
-1. Migrate `BrowserRouter` to `createBrowserRouter` + `RouterProvider` (required for `useBlocker`).
-2. Survey page: `useBlocker` dialog with "Save draft & leave" / "Stay", plus `beforeunload` and Android back-button handling.
-3. Autosave every 30 s when something changed, and on `visibilitychange → hidden`. Show a "Saved hh:mm:ss" indicator.
+Browser reloads, tab closes, and navigation outside the app use the browser's native unsaved-changes warning. Browsers can suspend background timers or terminate a page before an asynchronous save finishes, so an abrupt close or device failure cannot guarantee the latest edits are saved.
+
+**Verification:** targeted frontend tests, TypeScript check and production build passed. Desktop browser checks covered the 10-second save, hidden-page save, section navigation, browser back, sign-out, session expiry, storage failure/retry, and submission. Android hardware-back and background behavior still need verification on a physical device.
 
 ---
 
@@ -212,7 +212,7 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 | 3 Offline ownership + duplicate flag | Implemented; retain account-switch and duplicate-sync regression checks |
 | 4 Photo capture | Implemented; Section L confirmed visible; R2/device capture verification remains environment-specific |
 | 5 Admin users | Deferred; rolled back after login regressions |
-| 6 Leave guard + autosave | Deferred; not implemented |
+| 6 Leave guard + autosave | Implemented at 10 seconds; physical Android verification pending |
 | 7 Type of Unit + filtered PSIC | Working, confirmed by owner on 18 October 2026; migration 07 required per database |
 | 8 Months select all | Not started |
 | 9 Sync progress | Not started |
