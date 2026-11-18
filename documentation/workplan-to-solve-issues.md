@@ -202,6 +202,61 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 
 ---
 
+## Phase 12 — Calendar (Year) Picker for Section A "Year of establishment"
+
+Section A question **ii** (`A_ESTABLISHMENT_YEAR`) stores `industrial_units.establishment_year` — a `smallint`, nullable, with `CHECK (establishment_year BETWEEN 1800 AND 2100)` (`database/schema.sql:244`, `documentation/database-inspection/master-inspection-query.md:155`). It currently renders as a free `NUMBER` input (`backend/src/bll/services/survey-questionnaire.ts:67`), which allows typos such as full dates or impossible years. Replace it with a **year-only picker** that shows a scrollable list of years — no day/month calendar.
+
+**SQL:** none. The existing `CHECK (1800–2100)` stays the source of truth for the allowed range.
+
+**Backend**
+1. Add a new input field type `YEAR` to `SurveyInputField.type` (`backend` DTO and `frontend/src/types/index.ts`).
+2. Change `A_ESTABLISHMENT_YEAR` in `survey-questionnaire.ts` to `field('establishment_year', 'Year of establishment', 'YEAR')` with `min: 1800` and `max:` the current year.
+3. The response writer keeps storing a `smallint` (`survey-response-writer.ts:778`); no change to persistence.
+
+**Frontend**
+1. A `YearField` component (rendered for `type: 'YEAR'`) that opens a bottom-sheet listing **years only**, descending from the current year to 1800, using the existing `.modal`/`.modal-overlay` styling.
+2. The saved year is highlighted and scrolled into view on open; selecting a year stores it as a plain number.
+3. Years outside 1800–current year are not selectable; no free-typing of invalid dates.
+
+**Verify:** Section A question ii shows a year list (not a day/month calendar); selecting a year stores it and round-trips to `industrial_units.establishment_year`; selectable values are limited to 1800–current year; the saved year is highlighted when the picker reopens; an existing draft's year still loads.
+
+---
+
+## Phase 13 — Field-Value Validation (Frontend + Backend API)
+
+**Goal:** every answer is validated against its real column data type. Invalid input shows a **red alert stating the value is not valid and why**, and the API rejects the same values. Source of truth for types, lengths and ranges is the master inspection schema (`documentation/database-inspection/master-inspection-query.md`) and the constraints list (`documentation/database-inspection/Unique-and-check-constraints.md`).
+
+**Representative constraints (from the master inspection query)**
+
+| Field | Column | Type | Rule |
+|---|---|---|---|
+| Year of establishment | `establishment_year` | `smallint` | whole number 1800–2100 |
+| Contact name | `contact_name` | `varchar(120)` | ≤ 120 chars |
+| Contact phone / cell | `contact_phone`, `cell` | `varchar(20)` | 11 digits |
+| Contact email | `contact_email` | `varchar(120)` | valid email, ≤ 120 chars |
+| Website | `website` | `varchar(200)` | ≤ 200 chars |
+| Unit code | `unit_code` | `varchar(30)` | ≤ 30 chars |
+| GPS accuracy | `gps_accuracy_m` | `numeric(8)` | non-negative, precision 8 |
+| Total area | `total_area_value` | `numeric(14)` | non-negative, precision 14 |
+| Capital investment | `total_capital_investment` | `numeric(18)` | non-negative, precision 18 |
+| GPS latitude / longitude | `location` (POINT 4326) | `geometry` | lat −90…90, lng −180…180 |
+
+**Frontend**
+1. Extend `frontend/src/lib/surveyValidation.ts` (`fieldFormatError` / `questionFormatError`) with type-aware checks for text length, integer vs decimal, non-negative values, numeric precision/scale, percentage/share ranges (0–100, shares summing to 100), and GPS ranges. Phone (11 digits) and email format already exist.
+2. Each message names the field and the reason, e.g. "Contact email must be a valid email address of 120 characters or fewer." or "Year of establishment must be a whole number between 1800 and 2100."
+3. Surface errors through the existing red `.alert-error` / `.form-error` styling already used on the survey card; block section advance and submit while any field is invalid (reusing `validateSection` / `submitSurvey`).
+
+**Backend**
+1. Add runtime DTO validation on `/sync` and `/sync/photos` with `class-validator` and a global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })`. Replace the loosely-typed `SyncBody` in `sync.controller.ts` with validated DTOs.
+2. Mirror the same per-field type/length/range checks so bad values return **400** with a specific reason. This extends Phase 10 item 2 (field whitelist, active-form check, required answers, GPS ranges, batch-size limit) with per-field data-type validation.
+3. Keep the DB `CHECK` and `varchar` length constraints as the final guard.
+
+**Shared source of truth:** encode each limit once (a constants map keyed by field/column) so the same bounds drive both the API DTO and the frontend messages and cannot drift apart.
+
+**Verify:** entering an over-length name, a year outside 1800–2100, a non-numeric number, a malformed email or phone, or an out-of-range GPS value shows a red inline alert with the reason and blocks save/submit; posting the same values to `/sync` returns 400 with the reason; valid values pass on both sides; existing drafts still load.
+
+---
+
 ## Progress Tracker
 
 | Phase | Status |
@@ -218,3 +273,5 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 | 9 Sync progress | Not started |
 | 10 Remaining findings | Not started |
 | 11 Responsive UI | Not started |
+| 12 Year picker (Section A) | Not started |
+| 13 Field-value validation | Not started |
