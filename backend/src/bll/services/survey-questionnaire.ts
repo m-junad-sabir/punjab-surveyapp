@@ -3,6 +3,7 @@ export type SurveyInputType =
   | 'PHONE'
   | 'EMAIL'
   | 'NUMBER'
+  | 'YEAR'
   | 'YES_NO'
   | 'SINGLE_CHOICE'
   | 'MULTI_CHOICE'
@@ -44,6 +45,10 @@ export const SECTION_B_WORKING_RANGES = {
 export const SECTION_B_DEFAULT_WORKING_DAYS = 6;
 export const SECTION_D_MAX_COUNT = 2_147_483_647;
 
+// industrial_units.establishment_year is a smallint with CHECK (BETWEEN 1800 AND 2100).
+export const ESTABLISHMENT_YEAR_MIN = 1800;
+export const ESTABLISHMENT_YEAR_MAX = 2100;
+
 const workforceCount = { min: 0, max: SECTION_D_MAX_COUNT, step: 1, default_value: 0 };
 
 const field = (
@@ -64,7 +69,7 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
       field('contact_number', 'Contact number', 'PHONE', undefined, true),
     ],
   },
-  A_ESTABLISHMENT_YEAR: { fields: [field('establishment_year', 'Year of establishment', 'NUMBER')] },
+  A_ESTABLISHMENT_YEAR: { fields: [field('establishment_year', 'Year of establishment', 'YEAR', { min: ESTABLISHMENT_YEAR_MIN, max: new Date().getFullYear() })] },
   A_LOCATION_GPS: { fields: [field('location', 'Coordinates (capture from device)', 'GPS')] },
   A_ADDRESS: { fields: [field('address', 'Address', 'TEXT')] },
   A_LOCATION: {

@@ -204,21 +204,23 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 
 ## Phase 12 — Calendar (Year) Picker for Section A "Year of establishment"
 
-Section A question **ii** (`A_ESTABLISHMENT_YEAR`) stores `industrial_units.establishment_year` — a `smallint`, nullable, with `CHECK (establishment_year BETWEEN 1800 AND 2100)` (`database/schema.sql:244`, `documentation/database-inspection/master-inspection-query.md:155`). It currently renders as a free `NUMBER` input (`backend/src/bll/services/survey-questionnaire.ts:67`), which allows typos such as full dates or impossible years. Replace it with a **year-only picker** that shows a scrollable list of years — no day/month calendar.
+**Implemented.** Section A question **ii** (`A_ESTABLISHMENT_YEAR`) stores `industrial_units.establishment_year` — a `smallint`, nullable, with `CHECK (establishment_year BETWEEN 1800 AND 2100)` (`database/schema.sql:244`, `documentation/database-inspection/master-inspection-query.md:155`). It previously rendered as a free `NUMBER` input, which allowed typos such as full dates or impossible years. It now uses a **year-only picker** that shows a scrollable list of years — no day/month calendar.
 
 **SQL:** none. The existing `CHECK (1800–2100)` stays the source of truth for the allowed range.
 
 **Backend**
-1. Add a new input field type `YEAR` to `SurveyInputField.type` (`backend` DTO and `frontend/src/types/index.ts`).
-2. Change `A_ESTABLISHMENT_YEAR` in `survey-questionnaire.ts` to `field('establishment_year', 'Year of establishment', 'YEAR')` with `min: 1800` and `max:` the current year.
-3. The response writer keeps storing a `smallint` (`survey-response-writer.ts:778`); no change to persistence.
+1. Added input type `YEAR` to `SurveyInputType` and exported `ESTABLISHMENT_YEAR_MIN = 1800` / `ESTABLISHMENT_YEAR_MAX = 2100` (`backend/src/bll/services/survey-questionnaire.ts`).
+2. `A_ESTABLISHMENT_YEAR` now uses `field('establishment_year', 'Year of establishment', 'YEAR', { min: 1800, max: <current year> })`. The field `type`/`min`/`max` already flow to the frontend through `survey-form.service.ts`.
+3. The response writer still stores a `smallint` (`survey-response-writer.ts`); persistence is unchanged.
 
 **Frontend**
-1. A `YearField` component (rendered for `type: 'YEAR'`) that opens a bottom-sheet listing **years only**, descending from the current year to 1800, using the existing `.modal`/`.modal-overlay` styling.
-2. The saved year is highlighted and scrolled into view on open; selecting a year stores it as a plain number.
-3. Years outside 1800–current year are not selectable; no free-typing of invalid dates.
+1. Added `'YEAR'` to `SurveyInputField.type` (`frontend/src/types/index.ts`).
+2. `YearField` (rendered for `type: 'YEAR'` in `InputFieldControl`) opens a bottom-sheet **wheel/drum picker**: a scroll-snapping year list with 3D rotation, faded outer rows and a highlighted center. Touch swipes, mouse-wheel scrolling and keyboard navigation are supported. A short vibration pulse accompanies year changes on devices/browsers supporting the Vibration API; unsupported devices still scroll normally.
+3. The upper bound is `max(field.max, client current year)` and the lower bound is `field.min` (1800). The saved year is centered on open; **Done** stores the centered year as a number, while **Cancel** preserves the previous answer. A "Clear" action resets the value.
 
-**Verify:** Section A question ii shows a year list (not a day/month calendar); selecting a year stores it and round-trips to `industrial_units.establishment_year`; selectable values are limited to 1800–current year; the saved year is highlighted when the picker reopens; an existing draft's year still loads.
+**Verified:** targeted frontend tests (`year-field.test.mjs`), frontend/backend type checks, the frontend production build, and the full backend Jest suite passed. Desktop browser checks confirmed: the field shows a year list (not a day/month calendar) from the current year down to 1800; selecting a year stores `{ establishment_year: <number> }`; the draft round-trips and reopens with the saved year highlighted. (The pre-existing, unrelated Layout/LoginPage branding test failure is not caused by this change.)
+
+**Wheel update verification:** frontend type-check and the focused year-field test passed. Browser checks covered mouse-wheel snapping, 3D row transforms, keyboard navigation to 1800, Done, Cancel, reopening at the saved year, and vibration API calls using a test stub. Physical haptic feedback remains device/browser-dependent.
 
 ---
 
@@ -273,5 +275,5 @@ Section A question **ii** (`A_ESTABLISHMENT_YEAR`) stores `industrial_units.esta
 | 9 Sync progress | Not started |
 | 10 Remaining findings | Not started |
 | 11 Responsive UI | Not started |
-| 12 Year picker (Section A) | Not started |
+| 12 Year picker (Section A) | Implemented; no DB change (relies on existing 1800–2100 CHECK) |
 | 13 Field-value validation | Not started |

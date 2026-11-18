@@ -1,12 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SURVEY_REFERENCES = exports.QUESTION_INPUTS = exports.SECTION_D_MAX_COUNT = exports.SECTION_B_DEFAULT_WORKING_DAYS = exports.SECTION_B_WORKING_RANGES = void 0;
+exports.SURVEY_REFERENCES = exports.QUESTION_INPUTS = exports.ESTABLISHMENT_YEAR_MAX = exports.ESTABLISHMENT_YEAR_MIN = exports.SECTION_D_MAX_COUNT = exports.SECTION_B_DEFAULT_WORKING_DAYS = exports.SECTION_B_WORKING_RANGES = void 0;
 exports.SECTION_B_WORKING_RANGES = {
     working_days_per_week: { min: 1, max: 7, step: 1 },
     working_months_per_year: { min: 1, max: 12, step: 1 },
 };
 exports.SECTION_B_DEFAULT_WORKING_DAYS = 6;
 exports.SECTION_D_MAX_COUNT = 2_147_483_647;
+exports.ESTABLISHMENT_YEAR_MIN = 1800;
+exports.ESTABLISHMENT_YEAR_MAX = 2100;
 const workforceCount = { min: 0, max: exports.SECTION_D_MAX_COUNT, step: 1, default_value: 0 };
 const field = (key, label, type, source, required = false) => ({ key, label, type, ...source, ...(required ? { required } : {}) });
 exports.QUESTION_INPUTS = {
@@ -19,7 +21,7 @@ exports.QUESTION_INPUTS = {
             field('contact_number', 'Contact number', 'PHONE', undefined, true),
         ],
     },
-    A_ESTABLISHMENT_YEAR: { fields: [field('establishment_year', 'Year of establishment', 'NUMBER')] },
+    A_ESTABLISHMENT_YEAR: { fields: [field('establishment_year', 'Year of establishment', 'YEAR', { min: exports.ESTABLISHMENT_YEAR_MIN, max: new Date().getFullYear() })] },
     A_LOCATION_GPS: { fields: [field('location', 'Coordinates (capture from device)', 'GPS')] },
     A_ADDRESS: { fields: [field('address', 'Address', 'TEXT')] },
     A_LOCATION: {

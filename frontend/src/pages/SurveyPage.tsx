@@ -970,6 +970,148 @@ function MatrixField({ question, value, onChange, references }: {
   );
 }
 
+// Scroll snapping keeps the centered drum row aligned with the selected year.
+function YearField({ value, min, max, disabled, onChange }: {
+  value: unknown;
+  min?: number;
+  max?: number;
+  disabled?: boolean;
+  onChange: (value: number | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const activeIndexRef = useRef(0);
+  const lastPulseRef = useRef(0);
+  const rowHeight = 44;
+
+  const currentYear = new Date().getFullYear();
+  const upper = Math.max(max ?? currentYear, currentYear);
+  const lower = Math.min(min ?? 1800, upper);
+  const selected = typeof value === 'number' && Number.isInteger(value)
+    ? value
+    : typeof value === 'string' && value.trim() && Number.isInteger(Number(value))
+      ? Number(value)
+      : null;
+  const inRange = selected !== null && selected >= lower && selected <= upper;
+  const years = Array.from({ length: upper - lower + 1 }, (_, i) => upper - i);
+  const activeIndex = Math.max(0, Math.min(years.length - 1, Math.round(position)));
+
+  const close = () => {
+    setOpen(false);
+    triggerRef.current?.focus({ preventScroll: true });
+  };
+  const scrollToIndex = (index: number) => {
+    listRef.current?.scrollTo({
+      top: Math.max(0, Math.min(years.length - 1, index)) * rowHeight,
+      behavior: 'auto',
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const index = inRange ? upper - selected : 0;
+    activeIndexRef.current = index;
+    setPosition(index);
+    if (listRef.current) {
+      listRef.current.scrollTop = index * rowHeight;
+      listRef.current.focus({ preventScroll: true });
+    }
+  }, [open]);
+
+  return (
+    <div>
+      <button ref={triggerRef} type="button" className="form-input" disabled={disabled}
+        aria-haspopup="dialog" aria-expanded={open}
+        style={{ textAlign: 'left', cursor: disabled ? 'not-allowed' : 'pointer', color: selected === null ? 'var(--text-muted)' : undefined }}
+        onClick={() => setOpen(true)}>
+        {selected === null ? 'Select year' : selected}
+      </button>
+      {selected !== null && !disabled && (
+        <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 4, color: 'var(--danger)' }}
+          onClick={() => onChange(null)}>
+          Clear
+        </button>
+      )}
+
+      {open && (
+        <div className="modal-overlay" style={{ position: 'fixed' }} onClick={close}>
+          <div className="modal year-picker-modal" role="dialog" aria-modal="true" aria-label="Select year"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') { event.preventDefault(); close(); }
+              if (event.key === 'Tab') {
+                const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([tabindex="-1"]), [tabindex="0"]'));
+                const first = controls[0];
+                const last = controls[controls.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                  event.preventDefault(); last?.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                  event.preventDefault(); first?.focus();
+                }
+              }
+            }}>
+            <div className="modal-handle" />
+            <div className="modal-header">
+              <h3>Select year</h3>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={close}>Cancel</button>
+            </div>
+            <div className="year-drum">
+              <div className="year-drum-selection" aria-hidden="true" />
+              <div ref={listRef} className="year-drum-scroll" role="listbox" aria-label="Year of establishment"
+                tabIndex={0} aria-activedescendant={`establishment-year-${years[activeIndex]}`}
+                onScroll={(event) => {
+                  const next = Math.max(0, Math.min(years.length - 1, event.currentTarget.scrollTop / rowHeight));
+                  setPosition(next);
+                  const index = Math.round(next);
+                  if (index !== activeIndexRef.current) {
+                    activeIndexRef.current = index;
+                    const now = performance.now();
+                    if (now - lastPulseRef.current >= 35 && typeof navigator.vibrate === 'function') {
+                      navigator.vibrate(5);
+                      lastPulseRef.current = now;
+                    }
+                  }
+                }}
+                onKeyDown={(event) => {
+                  const steps: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: 10, PageUp: -10 };
+                  if (event.key in steps || event.key === 'Home' || event.key === 'End') {
+                    event.preventDefault();
+                    scrollToIndex(event.key === 'Home' ? 0 : event.key === 'End' ? years.length - 1
+                      : activeIndexRef.current + steps[event.key]);
+                  }
+                }}>
+                {years.map((year, index) => {
+                  const distance = Math.max(-3, Math.min(3, index - position));
+                  return (
+                    <div key={year} className="year-drum-row" role="option"
+                      id={`establishment-year-${year}`} aria-selected={index === activeIndex}
+                      onClick={() => scrollToIndex(index)}>
+                      <span style={{
+                        transform: `perspective(240px) rotateX(${-distance * 24}deg) scale(${1 - Math.abs(distance) * 0.1})`,
+                        opacity: Math.max(0, 1 - Math.abs(distance) * 0.32),
+                      }}>{year}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-primary" onClick={() => {
+                const index = Math.max(0, Math.min(years.length - 1,
+                  Math.round((listRef.current?.scrollTop ?? 0) / rowHeight)));
+                onChange(years[index]);
+                close();
+              }}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Maps a structured field's data type to its concrete HTML input/control.
 function InputFieldControl({ field, value, onChange, disabled, manualValue, onManualChange, preserveNumericText }: {
   field: SurveyInputField;
@@ -1001,6 +1143,8 @@ function InputFieldControl({ field, value, onChange, disabled, manualValue, onMa
         min={field.min} max={field.max} step={field.step}
         onChange={(event) => onChange(event.target.value === '' ? null : Number(event.target.value))}
         placeholder="Enter number" />;
+    case 'YEAR':
+      return <YearField value={value} min={field.min} max={field.max} disabled={disabled} onChange={onChange} />;
     case 'YES_NO':
       return (
         <select className="form-select" value={value === true ? 'true' : value === false ? 'false' : ''}
