@@ -238,24 +238,30 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 | Contact email | `contact_email` | `varchar(120)` | valid email, ≤ 120 chars |
 | Website | `website` | `varchar(200)` | ≤ 200 chars |
 | Unit code | `unit_code` | `varchar(30)` | ≤ 30 chars |
-| GPS accuracy | `gps_accuracy_m` | `numeric(8)` | non-negative, precision 8 |
+| GPS accuracy | `gps_accuracy_m` | `numeric(8,2)` | 0–999999.99 |
 | Total area | `total_area_value` | `numeric(14)` | non-negative, precision 14 |
 | Capital investment | `total_capital_investment` | `numeric(18)` | non-negative, precision 18 |
-| GPS latitude / longitude | `location` (POINT 4326) | `geometry` | lat −90…90, lng −180…180 |
+| GPS latitude / longitude | `survey_responses.gps_lat/gps_lng` | `numeric(9,6)` | lat −90…90, lng −180…180 |
+| GPS point | `industrial_units.location` | `geometry(POINT,4326)` | coordinates must be geographically valid |
 
 **Frontend**
-1. Extend `frontend/src/lib/surveyValidation.ts` (`fieldFormatError` / `questionFormatError`) with type-aware checks for text length, integer vs decimal, non-negative values, numeric precision/scale, percentage/share ranges (0–100, shares summing to 100), and GPS ranges. Phone (11 digits) and email format already exist.
-2. Each message names the field and the reason, e.g. "Contact email must be a valid email address of 120 characters or fewer." or "Year of establishment must be a whole number between 1800 and 2100."
-3. Surface errors through the existing red `.alert-error` / `.form-error` styling already used on the survey card; block section advance and submit while any field is invalid (reusing `validateSection` / `submitSurvey`).
+1. `backend/src/bll/services/survey-questionnaire.ts` is the canonical field-constraint metadata source. The form API sends its limits to `frontend/src/lib/surveyValidation.ts` for text length, integer/decimal, range, precision/scale, share and GPS checks.
+2. Show a red inline alert naming the field and reason as an invalid value is entered. Block section advance and final submit while an answer is invalid; local draft autosave remains available for recovery.
 
 **Backend**
-1. Add runtime DTO validation on `/sync` and `/sync/photos` with `class-validator` and a global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })`. Replace the loosely-typed `SyncBody` in `sync.controller.ts` with validated DTOs.
-2. Mirror the same per-field type/length/range checks so bad values return **400** with a specific reason. This extends Phase 10 item 2 (field whitelist, active-form check, required answers, GPS ranges, batch-size limit) with per-field data-type validation.
+1. Add validated DTOs for `/sync` and `/sync/photos` with `class-validator`; route-level validation pipes whitelist fields. Because the global pipe strips unknown properties first, unknown properties such as `unit_id` are silently discarded and never processed, rather than returning 400. Replace the loosely typed `/sync` body.
+2. Before processing a sync batch, map each submitted question ID to its form question and validate its values against `QUESTION_INPUTS`; invalid values return **400** with a field-specific reason. Validate request-level GPS bounds, batch sizes, and photo metadata in the DTOs.
 3. Keep the DB `CHECK` and `varchar` length constraints as the final guard.
 
 **Shared source of truth:** encode each limit once (a constants map keyed by field/column) so the same bounds drive both the API DTO and the frontend messages and cannot drift apart.
 
-**Verify:** entering an over-length name, a year outside 1800–2100, a non-numeric number, a malformed email or phone, or an out-of-range GPS value shows a red inline alert with the reason and blocks save/submit; posting the same values to `/sync` returns 400 with the reason; valid values pass on both sides; existing drafts still load.
+**Implemented:** frontend field-level alerts and section/submit blocking; backend DTO validation and `/sync` preflight use the questionnaire's field constraints. The UI year picker caps at the current year, while the API honors the database range of 1800–2100. Existing database constraints remain in place.
+
+**Validation regression fix:** only questions with structured fields require field-value objects or repeatable entry lists. Ordinary dropdown, checkbox, text, number, date, and Yes/No answers retain their native answer shapes and no longer incorrectly show "must contain field values"; their existing type checks remain enabled.
+
+**Option ownership check:** `/sync` preflight also rejects dropdown/checkbox option IDs that do not belong to the question's lookup list. The database foreign key only checks that an option exists in some list. Inactive values of the correct list remain accepted so older offline drafts can still sync.
+
+**Verified:** full backend Jest suite (12 suites, 182 tests) and backend/frontend TypeScript checks passed. Full frontend suite: 70/71; the one failure is a pre-existing branding test expecting no logos on the login page, which commit `c58b8fb` intentionally added, unrelated to Phase 13. Live API checks against the local PostgreSQL database passed, covering login, form constraint metadata, DTO rejections, option ownership, year range, ownership (403), unauthenticated access (401), and valid choices for the three reported questions. Metadata lengths and precision match live columns. Rejected probes created no survey responses.
 
 ---
 
@@ -276,4 +282,4 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 | 10 Remaining findings | Not started |
 | 11 Responsive UI | Not started |
 | 12 Year picker (Section A) | Implemented; no DB change (relies on existing 1800–2100 CHECK) |
-| 13 Field-value validation | Not started |
+| 13 Field-value validation | Implemented; focused checks passed |

@@ -47,6 +47,9 @@ export declare class SurveyFormService {
                     min?: number;
                     max?: number;
                     step?: number;
+                    max_length?: number;
+                    precision?: number;
+                    scale?: number;
                     default_value?: number;
                 }[];
                 repeatable: boolean;

@@ -20,6 +20,7 @@ const photo_service_1 = require("../bll/services/photo.service");
 const rbac_guard_1 = require("../common/guards/rbac.guard");
 const permissions_decorator_1 = require("../common/decorators/permissions.decorator");
 const user_decorator_1 = require("../common/decorators/user.decorator");
+const sync_dto_1 = require("./sync.dto");
 let SyncController = class SyncController {
     constructor(syncService, photoService) {
         this.syncService = syncService;
@@ -35,6 +36,7 @@ let SyncController = class SyncController {
         if (body.responses.some((response) => response.surveyor_id !== user.user_id)) {
             throw new common_1.ForbiddenException('A survey response can only be synced by its owning account.');
         }
+        await this.syncService.validateInputValues(body.responses);
         const payload = {
             device_id: body.device_id || 'unknown',
             user_id: user.user_id,
@@ -49,21 +51,31 @@ __decorate([
     (0, common_1.UseGuards)(rbac_guard_1.RbacGuard),
     (0, permissions_decorator_1.RequirePermissions)('SURVEY_SUBMIT'),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', { limits: { fileSize: 3 * 1024 * 1024 } })),
+    (0, common_1.UsePipes)(new common_1.ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+    })),
     __param(0, (0, common_1.UploadedFile)()),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object, Object]),
+    __metadata("design:paramtypes", [Object, sync_dto_1.SyncPhotoDto, Object]),
     __metadata("design:returntype", Promise)
 ], SyncController.prototype, "uploadPhoto", null);
 __decorate([
     (0, common_1.Post)(),
     (0, common_1.UseGuards)(rbac_guard_1.RbacGuard),
     (0, permissions_decorator_1.RequirePermissions)('SURVEY_SUBMIT'),
+    (0, common_1.UsePipes)(new common_1.ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+    })),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:paramtypes", [sync_dto_1.SyncBatchDto, Object]),
     __metadata("design:returntype", Promise)
 ], SyncController.prototype, "syncBatch", null);
 exports.SyncController = SyncController = __decorate([

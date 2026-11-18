@@ -9,7 +9,7 @@ import { getDeviceId } from '../lib/deviceId';
 import { AUTOSAVE_INTERVAL_MS, DraftSaver } from '../lib/draftSaver';
 import { downloadSurveyPdf } from '../lib/surveyPdf';
 import { areAllOptionsSelected, toggleAllOptions } from '../lib/optionSelection';
-import { questionFormatError } from '../lib/surveyValidation';
+import { fieldFormatError, questionFormatError } from '../lib/surveyValidation';
 import { photoMetadataError, PHOTO_ACCURACY_WARNING_M } from '../lib/photoCapture';
 import { scrollSurveyToTop, surveySectionIndex, surveySectionStatus } from '../lib/surveyNavigation';
 import type { SectionStatus } from '../lib/surveyNavigation';
@@ -1299,6 +1299,7 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
           controlValue = map.reinvestment_area_id.other_text ?? '';
         }
         const isMonths = field.type === 'MONTHS';
+        const fieldError = fieldFormatError(field, map[field.key]);
         const needsProductContext = field.reference === 'industry_products' &&
           (industryTypeId === null || selectedKind === null);
         const needsMachineContext = field.reference === 'industry_machines' && industryTypeId === null;
@@ -1378,6 +1379,11 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
                 });
               }}
             />
+            {fieldError && (
+              <div className="alert alert-error" role="alert" style={{ marginTop: 6, padding: '7px 9px' }}>
+                {fieldError}
+              </div>
+            )}
             {needsProductContext && (
               <small style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
                 Select Type of Unit and product kind first.
@@ -2558,9 +2564,14 @@ export default function SurveyPage() {
             <p>This section has no questions in the current form version.</p>
           </div>
         ) : (
-          section.questions.filter(showQuestion).map((q) => (
-
-            <div key={q.question_id} className={`question-card${errors[q.question_id] ? ' error' : ''}`}>
+          section.questions.filter(showQuestion).map((q) => {
+            const liveValidationError = validationError(q);
+            const showLiveError = !q.fields?.length ||
+              q.question_code === 'D_EMPLOYMENT' || q.question_code === 'D_SKILLS';
+            const questionError = errors[q.question_id] ??
+              (showLiveError ? liveValidationError : null);
+            return (
+            <div key={q.question_id} className={`question-card${questionError ? ' error' : ''}`}>
               
               
               {/* One card per visible question; the error class highlights failed validation. */}
@@ -2581,7 +2592,7 @@ export default function SurveyPage() {
                 q={q}
                 value={answers[q.question_id]}
                 onChange={(v) => setAnswer(q.question_id, v)}
-                error={errors[q.question_id]}
+                error={questionError ?? undefined}
                 references={form?.references ?? {}}
                 energyGenerationRows={(() => {
                   const generationQuestion = allQs.find((candidate) =>
@@ -2596,13 +2607,14 @@ export default function SurveyPage() {
                 unitName={String(answerForCode('A_ESTABLISHMENT_NAME')?.name ?? answerForCode('A_ESTABLISHMENT_NAME') ?? 'Industrial unit')}
               />
 
-              {errors[q.question_id] && (
+              {questionError && (
                 <div className="form-error" style={{ marginTop: 6 }}>
-                  ⚠ {errors[q.question_id]}
+                  ⚠ {questionError}
                 </div>
               )}
             </div>
-          ))
+            );
+          })
         )}
       </div>
 

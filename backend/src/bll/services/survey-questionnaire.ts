@@ -21,6 +21,9 @@ export interface SurveyInputField {
   min?: number;
   max?: number;
   step?: number;
+  max_length?: number;
+  precision?: number;
+  scale?: number;
   default_value?: number;
   options?: Array<{
     id: number;
@@ -55,7 +58,7 @@ const field = (
   key: string,
   label: string,
   type: SurveyInputType,
-  source?: Pick<SurveyInputField, 'lookup_type' | 'reference' | 'min' | 'max' | 'step' | 'default_value'>,
+  source?: Pick<SurveyInputField, 'lookup_type' | 'reference' | 'min' | 'max' | 'step' | 'max_length' | 'precision' | 'scale' | 'default_value'>,
   required = false,
 ): SurveyInputField => ({ key, label, type, ...source, ...(required ? { required } : {}) });
 
@@ -69,7 +72,7 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
       field('contact_number', 'Contact number', 'PHONE', undefined, true),
     ],
   },
-  A_ESTABLISHMENT_YEAR: { fields: [field('establishment_year', 'Year of establishment', 'YEAR', { min: ESTABLISHMENT_YEAR_MIN, max: new Date().getFullYear() })] },
+  A_ESTABLISHMENT_YEAR: { fields: [field('establishment_year', 'Year of establishment', 'YEAR', { min: ESTABLISHMENT_YEAR_MIN, max: new Date().getFullYear(), step: 1 })] },
   A_LOCATION_GPS: { fields: [field('location', 'Coordinates (capture from device)', 'GPS')] },
   A_ADDRESS: { fields: [field('address', 'Address', 'TEXT')] },
   A_LOCATION: {
@@ -80,10 +83,10 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
   },
   A_CONTACT: {
     fields: [
-      field('contact_name', 'Contact person', 'TEXT'),
-      field('contact_phone', 'Mobile number', 'PHONE'),
-      field('contact_email', 'Email', 'EMAIL'),
-      field('website', 'Website', 'TEXT'),
+      field('contact_name', 'Contact person', 'TEXT', { max_length: 120 }),
+      field('contact_phone', 'Mobile number', 'PHONE', { max_length: 20 }),
+      field('contact_email', 'Email', 'EMAIL', { max_length: 120 }),
+      field('website', 'Website', 'TEXT', { max_length: 200 }),
     ],
   },
   A_PSIC: {
@@ -99,9 +102,9 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
     fields: [
       field('company_name', 'Parent company name', 'TEXT', undefined, true),
       field('company_address', 'Parent company address', 'TEXT'),
-      field('phone', 'Phone', 'PHONE'),
-      field('cell', 'Cell', 'PHONE'),
-      field('email', 'Email', 'EMAIL'),
+      field('phone', 'Phone', 'PHONE', { max_length: 20 }),
+      field('cell', 'Cell', 'PHONE', { max_length: 20 }),
+      field('email', 'Email', 'EMAIL', { max_length: 120 }),
     ],
   },
   A_ASSOCIATED_ESTABLISHMENTS: {
@@ -114,7 +117,7 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
   },
   A_ESTABLISHMENT_AREA: {
     fields: [
-      field('total_area_value', 'Total establishment area', 'NUMBER'),
+      field('total_area_value', 'Total establishment area', 'NUMBER', { min: 0, precision: 14, scale: 2 }),
       field('total_area_unit_id', 'Area unit', 'SINGLE_CHOICE', { reference: 'area_units' })
       // field('industrial_estate_text', 'Industrial estate (enter name)', 'TEXT'),
       // field('industrial_cluster_text', 'Industrial cluster (enter name)', 'TEXT'),
@@ -122,7 +125,7 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
   },
   A_TOTAL_CAPITAL_INVESTMENT: {
     fields: [
-      field('total_capital_investment', 'Total capital investment', 'NUMBER'),
+      field('total_capital_investment', 'Total capital investment', 'NUMBER', { min: 0, precision: 18, scale: 2 }),
       field('capital_investment_unit_id', 'Currency unit', 'SINGLE_CHOICE', { lookup_type: 'CAPITAL_INVESTMENT_UNIT' }),
     ],
   },
@@ -136,7 +139,7 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
         default_value: SECTION_B_DEFAULT_WORKING_DAYS,
       }),
       field('working_months_per_year', 'Total working months per year', 'NUMBER', SECTION_B_WORKING_RANGES.working_months_per_year),
-      field('daily_hours', 'Daily hours (optional)', 'NUMBER'),
+      field('daily_hours', 'Daily hours (optional)', 'NUMBER', { min: 0, precision: 4, scale: 1 }),
     ],
   },
   C_PRODUCTS: {
@@ -144,15 +147,15 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
     fields: [
       field('product_kind', 'Product kind', 'SINGLE_CHOICE', { reference: 'product_kinds' }, true),
       field('product_name', 'Product name', 'SINGLE_CHOICE', { reference: 'industry_products' }, true),
-      field('daily_avg_output', 'Daily average output', 'NUMBER'),
+      field('daily_avg_output', 'Daily average output', 'NUMBER', { min: 0, precision: 18, scale: 2 }),
       field('daily_output_unit_id', 'Daily output unit', 'SINGLE_CHOICE', { reference: 'product_units' }),
-      field('annual_production', 'Annual total production', 'NUMBER'),
+      field('annual_production', 'Annual total production', 'NUMBER', { min: 0, precision: 18, scale: 2 }),
       field('annual_production_unit_id', 'Annual production unit', 'SINGLE_CHOICE', { reference: 'product_units' }),
-      field('installed_capacity', 'Installed capacity', 'NUMBER'),
+      field('installed_capacity', 'Installed capacity', 'NUMBER', { min: 0, precision: 18, scale: 2 }),
       field('installed_capacity_period', 'Installed capacity period', 'SINGLE_CHOICE', { reference: 'capacity_periods' }),
       field('unit_of_measurement_id', 'Capacity unit of measurement', 'SINGLE_CHOICE', { reference: 'product_units' }),
       field('transformation_stage_ids', 'Transformation stage on arrival', 'MULTI_CHOICE', { lookup_type: 'TRANSFORMATION_STAGE' }),
-      field('revenue_share_pct', 'Share in total revenue (%)', 'NUMBER'),
+      field('revenue_share_pct', 'Share in total revenue (%)', 'NUMBER', { min: 0, max: 100, precision: 5, scale: 2 }),
       field('hs_code_id', 'HS code (code or description)', 'SINGLE_CHOICE', { reference: 'hs_codes' }),
     ],
   },
@@ -184,7 +187,7 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
     fields: [
       field('input_name', 'Major raw material / input', 'TEXT', undefined, true),
       field('unit_id', 'Unit', 'SINGLE_CHOICE', { reference: 'product_units' }),
-      field('cost_share_pct', 'Share of input costs (%)', 'NUMBER'),
+      field('cost_share_pct', 'Share of input costs (%)', 'NUMBER', { min: 0, max: 100, precision: 5, scale: 2 }),
       field('hs_code_id', 'HS code (code or description)', 'SINGLE_CHOICE', { reference: 'hs_codes' }),
       field('transformation_stage_id', 'Transformation stage', 'SINGLE_CHOICE', { lookup_type: 'TRANSFORMATION_STAGE' }),
     ],
@@ -218,10 +221,10 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
       field('equipment_number', 'Boiler / vessel number', 'TEXT', undefined, true),
       field('boiler_type_id', 'Type of boiler', 'SINGLE_CHOICE', { lookup_type: 'G_BOILER_TYPE' }, true),
       field('vessel_category_id', 'Vessel category', 'SINGLE_CHOICE', { lookup_type: 'G_VESSEL_CATEGORY' }, true),
-      field('working_pressure_raw', 'Working pressure', 'NUMBER', { min: 0.001, step: 0.001 }, true),
+      field('working_pressure_raw', 'Working pressure', 'NUMBER', { min: 0.001, step: 0.001, precision: 10, scale: 2 }, true),
       field('pressure_unit_id', 'Working pressure unit', 'SINGLE_CHOICE', { lookup_type: 'G_PRESSURE_UNIT' }, true),
-      field('capacity_litres', 'Capacity (litres)', 'NUMBER', { min: 0.001, step: 0.001 }, true),
-      field('heating_surface_raw', 'Heating surface', 'NUMBER', { min: 0.001, step: 0.001 }, true),
+      field('capacity_litres', 'Capacity (litres)', 'NUMBER', { min: 0.001, step: 0.001, precision: 10, scale: 2 }, true),
+      field('heating_surface_raw', 'Heating surface', 'NUMBER', { min: 0.001, step: 0.001, precision: 10, scale: 2 }, true),
       field('heating_surface_unit_id', 'Heating surface unit', 'SINGLE_CHOICE', { lookup_type: 'G_HEATING_UNIT' }, true),
     ],
   },
@@ -242,9 +245,9 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
     fields: [
       field('energy_source_id', 'Fuel / energy source', 'SINGLE_CHOICE', { lookup_type: 'ENERGY_SOURCE' }, true),
       field('other_text', 'Other source', 'TEXT'),
-      field('quantity_per_month', 'Quantity per month', 'NUMBER', { min: 0, step: 0.01 }),
+      field('quantity_per_month', 'Quantity per month', 'NUMBER', { min: 0, step: 0.01, precision: 16, scale: 2 }),
       field('unit_id', 'Unit', 'SINGLE_CHOICE', { reference: 'energy_source_units' }),
-      field('share_pct', 'Energy use share (%)', 'NUMBER', { min: 0, max: 100, step: 0.01 }),
+      field('share_pct', 'Energy use share (%)', 'NUMBER', { min: 0, max: 100, step: 0.01, precision: 5, scale: 2 }),
     ],
   },
   H_ENERGY_GENERATION: {
@@ -252,14 +255,14 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
     fields: [
       field('power_source_id', 'Power source', 'SINGLE_CHOICE', { lookup_type: 'POWER_SOURCE' }, true),
       field('other_text', 'Other source', 'TEXT'),
-      field('capacity_kw', 'Capacity (kW)', 'NUMBER', { min: 0, step: 0.01 }),
-      field('export_kw', 'Exported power (kW)', 'NUMBER', { min: 0, step: 0.01 }),
+      field('capacity_kw', 'Capacity (kW)', 'NUMBER', { min: 0, step: 0.01, precision: 12, scale: 2 }),
+      field('export_kw', 'Exported power (kW)', 'NUMBER', { min: 0, step: 0.01, precision: 12, scale: 2 }),
     ],
   },
   H_CAPTIVE_EXPORT_CAPACITY: {
     fields: [
-      field('captive_capacity_kw', 'Total captive capacity (kW)', 'NUMBER'),
-      field('export_capacity_kw', 'Export capacity (kW)', 'NUMBER', { min: 0, step: 0.01 }),
+      field('captive_capacity_kw', 'Total captive capacity (kW)', 'NUMBER', { min: 0, precision: 12, scale: 2 }),
+      field('export_capacity_kw', 'Export capacity (kW)', 'NUMBER', { min: 0, step: 0.01, precision: 12, scale: 2 }),
     ],
   },
   H_SOLID_WASTE: {
@@ -269,7 +272,7 @@ export const QUESTION_INPUTS: Record<string, SurveyQuestionInput> = {
       field('disposal_method_ids', 'Disposal methods', 'MULTI_CHOICE', { lookup_type: 'WASTE_DISPOSAL' }),
     ],
   },
-  I_SAFETY_TRAINING: { fields: [field('safety_trained_workers', 'Workers with formal safety training', 'NUMBER')] },
+  I_SAFETY_TRAINING: { fields: [field('safety_trained_workers', 'Workers with formal safety training', 'NUMBER', { min: 0, max: SECTION_D_MAX_COUNT, step: 1 })] },
   J_REINVESTMENT_LEVEL: { fields: [field('reinvestment_level_id', 'Reinvestment strategy', 'SINGLE_CHOICE', { lookup_type: 'REINVESTMENT_BAND' })] },
   J_REINVESTMENT_AREA: {
     fields: [
