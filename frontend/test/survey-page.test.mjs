@@ -63,7 +63,7 @@ test('question cards show prompts and required badges without internal labels', 
   assert.match(cards[0], /type="text"/);
   assert.match(cards[1], /Optional number question/);
   assert.doesNotMatch(cards[1], /class="question-meta"|class="question-mandatory"/);
-  assert.match(cards[1], /type="number"/);
+  assert.match(cards[1], /type="text" inputMode="decimal"/);
   assert.doesNotMatch(html, /A_INTERNAL_TEXT|A_INTERNAL_NUMBER|class="question-code"|>TEXT<\/span>|>NUMBER<\/span>/);
 });
 

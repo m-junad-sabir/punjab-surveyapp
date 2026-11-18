@@ -15,6 +15,18 @@ after(() => server.close());
 const { areAllOptionsSelected, toggleAllOptions } = await server.ssrLoadModule('/src/lib/optionSelection.ts');
 const { fieldFormatError, questionFormatError } = await server.ssrLoadModule('/src/lib/surveyValidation.ts');
 const { clearHiddenAnswers, isQuestionVisible } = await server.ssrLoadModule('/src/lib/surveyVisibility.ts');
+const { caretAfterSignificantChars, formatGroupedNumber, sanitizeNumericText } = await server.ssrLoadModule('/src/lib/numberFormat.ts');
+
+test('numeric inputs show thousands commas but keep plain values', () => {
+  assert.equal(formatGroupedNumber(1234567.5), '1,234,567.5');
+  assert.equal(formatGroupedNumber('999'), '999');
+  assert.equal(formatGroupedNumber('-1000.'), '-1,000.');
+  assert.equal(formatGroupedNumber(null), '');
+  assert.equal(sanitizeNumericText('1,234,567.50'), '1234567.50');
+  assert.equal(sanitizeNumericText('1,2a3.4.5'), '123.45');
+  assert.equal(sanitizeNumericText('12.5', false), '125');
+  assert.equal(caretAfterSignificantChars('1,234,567', 4), 5);
+});
 
 const months = Array.from({ length: 12 }, (_, index) => ({ id: index + 1 }));
 const status = {

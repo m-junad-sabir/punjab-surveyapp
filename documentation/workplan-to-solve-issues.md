@@ -174,12 +174,16 @@ Browser reloads, tab closes, and navigation outside the app use the browser's na
 
 Frontend only: a "Select all 12 months" checkbox (with a partial state) above the `B_OPERATION_MONTHS` options. No DB change.
 
+**Implemented:** Its done in [work plan 2](../documentation/workplan-to-solve-issues-2.md)
+
 ---
 
 ## Phase 9 — Animated Sync Progress
 
 1. Step-by-step sync: wake-up `/health` ping (Render cold start) → per-photo upload with progress (`XMLHttpRequest.upload.onprogress`) → responses in small batches.
 2. Animated progress bar (CSS width transition + moving stripes), counters for synced / duplicate / failed, a per-survey status list, and a "Retry failed" button.
+
+**Status:** Still Pending
 
 ---
 
@@ -194,11 +198,15 @@ Frontend only: a "Select all 12 months" checkbox (with a partial state) above th
 7. Tests: auth, roles, sync ownership, duplicate flag, photos, approval.
 8. Keep the setup script's explicit migration allowlist current as phases are approved. Do not glob every migration, since deferred migrations must not run accidentally.
 
+**Status:** Still Pending
+
 ---
 
 ## Phase 11 — Responsive Mobile UI
 
 Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrapper, fluid layout with breakpoints (360 / 768 / 1024), `100dvh`, safe-area insets, ≥ 44 px tap targets, PWA `display: standalone`.
+
+**Status:** Still Pending
 
 ---
 
@@ -221,6 +229,8 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 **Verified:** targeted frontend tests (`year-field.test.mjs`), frontend/backend type checks, the frontend production build, and the full backend Jest suite passed. Desktop browser checks confirmed: the field shows a year list (not a day/month calendar) from the current year down to 1800; selecting a year stores `{ establishment_year: <number> }`; the draft round-trips and reopens with the saved year highlighted. (The pre-existing, unrelated Layout/LoginPage branding test failure is not caused by this change.)
 
 **Wheel update verification:** frontend type-check and the focused year-field test passed. Browser checks covered mouse-wheel snapping, 3D row transforms, keyboard navigation to 1800, Done, Cancel, reopening at the saved year, and vibration API calls using a test stub. Physical haptic feedback remains device/browser-dependent.
+
+**Implemented:** Its done and Completed
 
 ---
 
@@ -259,9 +269,13 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 
 **Validation regression fix:** only questions with structured fields require field-value objects or repeatable entry lists. Ordinary dropdown, checkbox, text, number, date, and Yes/No answers retain their native answer shapes and no longer incorrectly show "must contain field values"; their existing type checks remain enabled.
 
+**Thousands separators:** numeric inputs (amounts, quantities, areas, capacities, investment, workforce counts) show a comma after every third digit while typing, e.g. `1234567.5` → `1,234,567.5`. Commas are display-only: the saved draft, API payload and database keep the plain number. Years, phone numbers, GPS coordinates, percentages and IDs are not grouped. Integer-only fields (step 1) also block the decimal point.
+
 **Option ownership check:** `/sync` preflight also rejects dropdown/checkbox option IDs that do not belong to the question's lookup list. The database foreign key only checks that an option exists in some list. Inactive values of the correct list remain accepted so older offline drafts can still sync.
 
 **Verified:** full backend Jest suite (12 suites, 182 tests) and backend/frontend TypeScript checks passed. Full frontend suite: 70/71; the one failure is a pre-existing branding test expecting no logos on the login page, which commit `c58b8fb` intentionally added, unrelated to Phase 13. Live API checks against the local PostgreSQL database passed, covering login, form constraint metadata, DTO rejections, option ownership, year range, ownership (403), unauthenticated access (401), and valid choices for the three reported questions. Metadata lengths and precision match live columns. Rejected probes created no survey responses.
+
+**Status:** Its 90% Done.
 
 ---
 
@@ -277,9 +291,9 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 | 5 Admin users | Deferred; rolled back after login regressions |
 | 6 Leave guard + autosave | Implemented at 10 seconds; physical Android verification pending |
 | 7 Type of Unit + filtered PSIC | Working, confirmed by owner on 18 October 2026; migration 07 required per database |
-| 8 Months select all | Not started |
-| 9 Sync progress | Not started |
-| 10 Remaining findings | Not started |
-| 11 Responsive UI | Not started |
+| 8 Months select all | Implemented
+| 9 Sync progress | Pending
+| 10 Remaining findings | Pending
+| 11 Responsive UI | Pending
 | 12 Year picker (Section A) | Implemented; no DB change (relies on existing 1800–2100 CHECK) |
 | 13 Field-value validation | Implemented; focused checks passed |

@@ -10,6 +10,7 @@ import { AUTOSAVE_INTERVAL_MS, DraftSaver } from '../lib/draftSaver';
 import { downloadSurveyPdf } from '../lib/surveyPdf';
 import { areAllOptionsSelected, toggleAllOptions } from '../lib/optionSelection';
 import { fieldFormatError, questionFormatError } from '../lib/surveyValidation';
+import { caretAfterSignificantChars, formatGroupedNumber, sanitizeNumericText } from '../lib/numberFormat';
 import { photoMetadataError, PHOTO_ACCURACY_WARNING_M } from '../lib/photoCapture';
 import { scrollSurveyToTop, surveySectionIndex, surveySectionStatus } from '../lib/surveyNavigation';
 import type { SectionStatus } from '../lib/surveyNavigation';
@@ -1113,6 +1114,68 @@ function YearField({ value, min, max, disabled, onChange }: {
 }
 
 // Maps a structured field's data type to its concrete HTML input/control.
+/** Shows thousands commas while editing; emits the plain number (or plain text when emitText is set). */
+function GroupedNumberInput({
+  value, onChange, emitText, allowDecimal = true, className = 'form-input',
+  placeholder = 'Enter number', readOnly, ariaLabel, selectOnFocus, style,
+}: {
+  value: unknown;
+  onChange?: (value: number | string | null) => void;
+  emitText?: boolean;
+  allowDecimal?: boolean;
+  className?: string;
+  placeholder?: string;
+  readOnly?: boolean;
+  ariaLabel?: string;
+  selectOnFocus?: boolean;
+  style?: React.CSSProperties;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const caretRef = useRef<number | null>(null);
+  const [text, setText] = useState(() => formatGroupedNumber(value));
+
+  useEffect(() => {
+    const raw = sanitizeNumericText(text, allowDecimal);
+    const empty = value === null || value === undefined || value === '';
+    const same = empty ? raw === '' : raw !== '' && Number(raw) === Number(value);
+    if (!same) setText(formatGroupedNumber(value));
+    // Only external value changes should reformat; local typing already updated text.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (caretRef.current !== null && input && document.activeElement === input) {
+      input.setSelectionRange(caretRef.current, caretRef.current);
+    }
+    caretRef.current = null;
+  });
+
+  return (
+    <input ref={inputRef} className={className} type="text"
+      inputMode={allowDecimal ? 'decimal' : 'numeric'}
+      value={text} readOnly={readOnly} aria-readonly={readOnly || undefined}
+      aria-label={ariaLabel} placeholder={placeholder} style={style}
+      onFocus={selectOnFocus ? (event) => event.currentTarget.select() : undefined}
+      onChange={(event) => {
+        const typed = event.target.value;
+        const caret = event.target.selectionStart ?? typed.length;
+        const raw = sanitizeNumericText(typed, allowDecimal);
+        const formatted = formatGroupedNumber(raw);
+        caretRef.current = caretAfterSignificantChars(
+          formatted, sanitizeNumericText(typed.slice(0, caret), allowDecimal).length);
+        setText(formatted);
+        if (!onChange) return;
+        if (raw === '') onChange(null);
+        else if (emitText) onChange(raw);
+        else {
+          const amount = Number(raw);
+          onChange(Number.isFinite(amount) ? amount : raw);
+        }
+      }} />
+  );
+}
+
 function InputFieldControl({ field, value, onChange, disabled, manualValue, onManualChange, preserveNumericText }: {
   field: SurveyInputField;
   value: any;
@@ -1134,15 +1197,8 @@ function InputFieldControl({ field, value, onChange, disabled, manualValue, onMa
       return <input className="form-input" type="email" autoComplete="email" value={value ?? ''}
         onChange={(event) => onChange(event.target.value)} placeholder="name@example.com" />;
     case 'NUMBER':
-      if (preserveNumericText) {
-        return <input className="form-input" type="text" inputMode="decimal" value={value ?? ''}
-          onChange={(event) => onChange(event.target.value === '' ? null : event.target.value)}
-          placeholder="Enter number" />;
-      }
-      return <input className="form-input" type="number" value={value ?? ''}
-        min={field.min} max={field.max} step={field.step}
-        onChange={(event) => onChange(event.target.value === '' ? null : Number(event.target.value))}
-        placeholder="Enter number" />;
+      return <GroupedNumberInput value={value} onChange={onChange} emitText={preserveNumericText}
+        allowDecimal={field.step === undefined || field.step === null || !Number.isInteger(Number(field.step))} />;
     case 'YEAR':
       return <YearField value={value} min={field.min} max={field.max} disabled={disabled} onChange={onChange} />;
     case 'YES_NO':
@@ -1422,17 +1478,14 @@ function WorkforceCountInput({ label, value, onChange }: {
   return (
     <label style={{ minWidth: 0, display: 'block', fontSize: 11, color: 'var(--text-muted)' }}>
       {label}
-      <input
-        className="form-input"
-        type="number"
-        min={0}
-        max={MAX_WORKFORCE_COUNT}
-        step={1}
-        inputMode="numeric"
-        aria-label={label}
+      <GroupedNumberInput
         value={value}
-        onFocus={(event) => event.currentTarget.select()}
-        onChange={(event) => onChange(event.target.value)}
+        emitText
+        allowDecimal={false}
+        ariaLabel={label}
+        placeholder=""
+        selectOnFocus
+        onChange={(count) => onChange(count === null ? '' : String(count))}
         style={{ marginTop: 4, padding: '9px 10px', fontSize: 16 }}
       />
       {workforceCount(value) === null && (
@@ -1791,18 +1844,17 @@ function QuestionField({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700 }}>
           Total captive capacity (kW)
-          <input className="form-input" type="number" value={total} readOnly aria-readonly="true" />
+          <GroupedNumberInput value={total} readOnly placeholder="" />
         </label>
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700 }}>
           Export capacity (kW)
-          <input className={`form-input ${errCls}`} type="number" min={0} step="0.01"
+          <GroupedNumberInput className={`form-input ${errCls}`}
             value={exportValue}
-            onChange={(event) => onChange({
+            onChange={(amount) => onChange({
               ...(value && typeof value === 'object' ? value : {}),
               captive_capacity_kw: total,
-              export_capacity_kw: event.target.value === '' ? null : Number(event.target.value),
-            })}
-            placeholder="Enter number" />
+              export_capacity_kw: amount,
+            })} />
         </label>
       </div>
     );
@@ -1824,10 +1876,7 @@ function QuestionField({
 
     case 'NUMBER':
       return (
-        <input className={`form-input ${errCls}`} type="number"
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
-          placeholder="Enter number" />
+        <GroupedNumberInput className={`form-input ${errCls}`} value={value} onChange={onChange} />
       );
 
     case 'DATE':
