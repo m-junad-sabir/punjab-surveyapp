@@ -1,4 +1,4 @@
-export type SurveyInputType = 'TEXT' | 'PHONE' | 'EMAIL' | 'NUMBER' | 'YES_NO' | 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'SHARE_PERCENT' | 'GPS' | 'MONTHS';
+export type SurveyInputType = 'TEXT' | 'PHONE' | 'EMAIL' | 'NUMBER' | 'YEAR' | 'YES_NO' | 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'SHARE_PERCENT' | 'GPS' | 'MONTHS';
 export interface SurveyInputField {
     key: string;
     label: string;
@@ -9,6 +9,9 @@ export interface SurveyInputField {
     min?: number;
     max?: number;
     step?: number;
+    max_length?: number;
+    precision?: number;
+    scale?: number;
     default_value?: number;
     options?: Array<{
         id: number;
@@ -38,6 +41,8 @@ export declare const SECTION_B_WORKING_RANGES: {
 };
 export declare const SECTION_B_DEFAULT_WORKING_DAYS = 6;
 export declare const SECTION_D_MAX_COUNT = 2147483647;
+export declare const ESTABLISHMENT_YEAR_MIN = 1800;
+export declare const ESTABLISHMENT_YEAR_MAX = 2100;
 export declare const QUESTION_INPUTS: Record<string, SurveyQuestionInput>;
 export declare const SURVEY_REFERENCES: {
     readonly districts: "SELECT d.id, d.code, d.name AS label, false AS requires_text\n                FROM districts d\n                JOIN divisions dv ON dv.id = d.division_id\n                JOIN provinces p ON p.id = dv.province_id\n               WHERE lower(p.name) = 'punjab'\n               ORDER BY d.name";

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { api } from '../lib/api';
 import type { User, AuthState } from '../types';
 
@@ -6,6 +6,7 @@ interface AuthContextValue extends AuthState {
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   hasPermission: (perm: string) => boolean;
+  registerSessionEndSave: (save: () => Promise<void>) => () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -21,6 +22,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() =>
     localStorage.getItem(TOKEN_KEY),
   );
+  const sessionEndSave = useRef<(() => Promise<void>) | null>(null);
+  const endingSession = useRef(false);
 
   const login = useCallback(async (username: string, password: string) => {
     const data = await api.auth.login(username, password);
@@ -38,8 +41,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const registerSessionEndSave = useCallback((save: () => Promise<void>) => {
+    sessionEndSave.current = save;
+    return () => {
+      if (sessionEndSave.current === save) sessionEndSave.current = null;
+    };
+  }, []);
+
   useEffect(() => {
-    const handleUnauthorized = () => logout();
+    const handleUnauthorized = async () => {
+      if (endingSession.current) return;
+      endingSession.current = true;
+      localStorage.removeItem(TOKEN_KEY);
+      try {
+        await sessionEndSave.current?.();
+        logout();
+      } catch {
+        // The survey displays the storage error and remains open for recovery.
+      } finally {
+        endingSession.current = false;
+      }
+    };
     window.addEventListener('survey:unauthorized', handleUnauthorized);
     return () => window.removeEventListener('survey:unauthorized', handleUnauthorized);
   }, [logout]);
@@ -51,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, isAuthenticated: !!token && !!user, login, logout, hasPermission }}
+      value={{ user, token, isAuthenticated: !!token && !!user, login, logout, hasPermission, registerSessionEndSave }}
     >
       {children}
     </AuthContext.Provider>

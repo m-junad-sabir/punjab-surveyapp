@@ -1,14 +1,16 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
-import { useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from 'react-router-dom';
+import { useBlocker, useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { useSurvey } from '../context/SurveyContext';
 import { useAuth }   from '../context/AuthContext';
 import { deletePhoto, getPhoto, savePhoto, saveResponse, getResponse } from '../lib/db';
 import { getDeviceId } from '../lib/deviceId';
+import { AUTOSAVE_INTERVAL_MS, DraftSaver } from '../lib/draftSaver';
 import { downloadSurveyPdf } from '../lib/surveyPdf';
 import { areAllOptionsSelected, toggleAllOptions } from '../lib/optionSelection';
-import { questionFormatError } from '../lib/surveyValidation';
+import { fieldFormatError, questionFormatError } from '../lib/surveyValidation';
+import { caretAfterSignificantChars, formatGroupedNumber, sanitizeNumericText } from '../lib/numberFormat';
 import { photoMetadataError, PHOTO_ACCURACY_WARNING_M } from '../lib/photoCapture';
 import { scrollSurveyToTop, surveySectionIndex, surveySectionStatus } from '../lib/surveyNavigation';
 import type { SectionStatus } from '../lib/surveyNavigation';
@@ -969,7 +971,211 @@ function MatrixField({ question, value, onChange, references }: {
   );
 }
 
+// Scroll snapping keeps the centered drum row aligned with the selected year.
+function YearField({ value, min, max, disabled, onChange }: {
+  value: unknown;
+  min?: number;
+  max?: number;
+  disabled?: boolean;
+  onChange: (value: number | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const activeIndexRef = useRef(0);
+  const lastPulseRef = useRef(0);
+  const rowHeight = 44;
+
+  const currentYear = new Date().getFullYear();
+  const upper = Math.max(max ?? currentYear, currentYear);
+  const lower = Math.min(min ?? 1800, upper);
+  const selected = typeof value === 'number' && Number.isInteger(value)
+    ? value
+    : typeof value === 'string' && value.trim() && Number.isInteger(Number(value))
+      ? Number(value)
+      : null;
+  const inRange = selected !== null && selected >= lower && selected <= upper;
+  const years = Array.from({ length: upper - lower + 1 }, (_, i) => upper - i);
+  const activeIndex = Math.max(0, Math.min(years.length - 1, Math.round(position)));
+
+  const close = () => {
+    setOpen(false);
+    triggerRef.current?.focus({ preventScroll: true });
+  };
+  const scrollToIndex = (index: number) => {
+    listRef.current?.scrollTo({
+      top: Math.max(0, Math.min(years.length - 1, index)) * rowHeight,
+      behavior: 'auto',
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const index = inRange ? upper - selected : 0;
+    activeIndexRef.current = index;
+    setPosition(index);
+    if (listRef.current) {
+      listRef.current.scrollTop = index * rowHeight;
+      listRef.current.focus({ preventScroll: true });
+    }
+  }, [open]);
+
+  return (
+    <div>
+      <button ref={triggerRef} type="button" className="form-input" disabled={disabled}
+        aria-haspopup="dialog" aria-expanded={open}
+        style={{ textAlign: 'left', cursor: disabled ? 'not-allowed' : 'pointer', color: selected === null ? 'var(--text-muted)' : undefined }}
+        onClick={() => setOpen(true)}>
+        {selected === null ? 'Select year' : selected}
+      </button>
+      {selected !== null && !disabled && (
+        <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 4, color: 'var(--danger)' }}
+          onClick={() => onChange(null)}>
+          Clear
+        </button>
+      )}
+
+      {open && (
+        <div className="modal-overlay" style={{ position: 'fixed' }} onClick={close}>
+          <div className="modal year-picker-modal" role="dialog" aria-modal="true" aria-label="Select year"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') { event.preventDefault(); close(); }
+              if (event.key === 'Tab') {
+                const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([tabindex="-1"]), [tabindex="0"]'));
+                const first = controls[0];
+                const last = controls[controls.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                  event.preventDefault(); last?.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                  event.preventDefault(); first?.focus();
+                }
+              }
+            }}>
+            <div className="modal-handle" />
+            <div className="modal-header">
+              <h3>Select year</h3>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={close}>Cancel</button>
+            </div>
+            <div className="year-drum">
+              <div className="year-drum-selection" aria-hidden="true" />
+              <div ref={listRef} className="year-drum-scroll" role="listbox" aria-label="Year of establishment"
+                tabIndex={0} aria-activedescendant={`establishment-year-${years[activeIndex]}`}
+                onScroll={(event) => {
+                  const next = Math.max(0, Math.min(years.length - 1, event.currentTarget.scrollTop / rowHeight));
+                  setPosition(next);
+                  const index = Math.round(next);
+                  if (index !== activeIndexRef.current) {
+                    activeIndexRef.current = index;
+                    const now = performance.now();
+                    if (now - lastPulseRef.current >= 35 && typeof navigator.vibrate === 'function') {
+                      navigator.vibrate(5);
+                      lastPulseRef.current = now;
+                    }
+                  }
+                }}
+                onKeyDown={(event) => {
+                  const steps: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: 10, PageUp: -10 };
+                  if (event.key in steps || event.key === 'Home' || event.key === 'End') {
+                    event.preventDefault();
+                    scrollToIndex(event.key === 'Home' ? 0 : event.key === 'End' ? years.length - 1
+                      : activeIndexRef.current + steps[event.key]);
+                  }
+                }}>
+                {years.map((year, index) => {
+                  const distance = Math.max(-3, Math.min(3, index - position));
+                  return (
+                    <div key={year} className="year-drum-row" role="option"
+                      id={`establishment-year-${year}`} aria-selected={index === activeIndex}
+                      onClick={() => scrollToIndex(index)}>
+                      <span style={{
+                        transform: `perspective(240px) rotateX(${-distance * 24}deg) scale(${1 - Math.abs(distance) * 0.1})`,
+                        opacity: Math.max(0, 1 - Math.abs(distance) * 0.32),
+                      }}>{year}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-primary" onClick={() => {
+                const index = Math.max(0, Math.min(years.length - 1,
+                  Math.round((listRef.current?.scrollTop ?? 0) / rowHeight)));
+                onChange(years[index]);
+                close();
+              }}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Maps a structured field's data type to its concrete HTML input/control.
+/** Shows thousands commas while editing; emits the plain number (or plain text when emitText is set). */
+function GroupedNumberInput({
+  value, onChange, emitText, allowDecimal = true, className = 'form-input',
+  placeholder = 'Enter number', readOnly, ariaLabel, selectOnFocus, style,
+}: {
+  value: unknown;
+  onChange?: (value: number | string | null) => void;
+  emitText?: boolean;
+  allowDecimal?: boolean;
+  className?: string;
+  placeholder?: string;
+  readOnly?: boolean;
+  ariaLabel?: string;
+  selectOnFocus?: boolean;
+  style?: React.CSSProperties;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const caretRef = useRef<number | null>(null);
+  const [text, setText] = useState(() => formatGroupedNumber(value));
+
+  useEffect(() => {
+    const raw = sanitizeNumericText(text, allowDecimal);
+    const empty = value === null || value === undefined || value === '';
+    const same = empty ? raw === '' : raw !== '' && Number(raw) === Number(value);
+    if (!same) setText(formatGroupedNumber(value));
+    // Only external value changes should reformat; local typing already updated text.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (caretRef.current !== null && input && document.activeElement === input) {
+      input.setSelectionRange(caretRef.current, caretRef.current);
+    }
+    caretRef.current = null;
+  });
+
+  return (
+    <input ref={inputRef} className={className} type="text"
+      inputMode={allowDecimal ? 'decimal' : 'numeric'}
+      value={text} readOnly={readOnly} aria-readonly={readOnly || undefined}
+      aria-label={ariaLabel} placeholder={placeholder} style={style}
+      onFocus={selectOnFocus ? (event) => event.currentTarget.select() : undefined}
+      onChange={(event) => {
+        const typed = event.target.value;
+        const caret = event.target.selectionStart ?? typed.length;
+        const raw = sanitizeNumericText(typed, allowDecimal);
+        const formatted = formatGroupedNumber(raw);
+        caretRef.current = caretAfterSignificantChars(
+          formatted, sanitizeNumericText(typed.slice(0, caret), allowDecimal).length);
+        setText(formatted);
+        if (!onChange) return;
+        if (raw === '') onChange(null);
+        else if (emitText) onChange(raw);
+        else {
+          const amount = Number(raw);
+          onChange(Number.isFinite(amount) ? amount : raw);
+        }
+      }} />
+  );
+}
+
 function InputFieldControl({ field, value, onChange, disabled, manualValue, onManualChange, preserveNumericText }: {
   field: SurveyInputField;
   value: any;
@@ -991,15 +1197,10 @@ function InputFieldControl({ field, value, onChange, disabled, manualValue, onMa
       return <input className="form-input" type="email" autoComplete="email" value={value ?? ''}
         onChange={(event) => onChange(event.target.value)} placeholder="name@example.com" />;
     case 'NUMBER':
-      if (preserveNumericText) {
-        return <input className="form-input" type="text" inputMode="decimal" value={value ?? ''}
-          onChange={(event) => onChange(event.target.value === '' ? null : event.target.value)}
-          placeholder="Enter number" />;
-      }
-      return <input className="form-input" type="number" value={value ?? ''}
-        min={field.min} max={field.max} step={field.step}
-        onChange={(event) => onChange(event.target.value === '' ? null : Number(event.target.value))}
-        placeholder="Enter number" />;
+      return <GroupedNumberInput value={value} onChange={onChange} emitText={preserveNumericText}
+        allowDecimal={field.step === undefined || field.step === null || !Number.isInteger(Number(field.step))} />;
+    case 'YEAR':
+      return <YearField value={value} min={field.min} max={field.max} disabled={disabled} onChange={onChange} />;
     case 'YES_NO':
       return (
         <select className="form-select" value={value === true ? 'true' : value === false ? 'false' : ''}
@@ -1154,6 +1355,7 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
           controlValue = map.reinvestment_area_id.other_text ?? '';
         }
         const isMonths = field.type === 'MONTHS';
+        const fieldError = fieldFormatError(field, map[field.key]);
         const needsProductContext = field.reference === 'industry_products' &&
           (industryTypeId === null || selectedKind === null);
         const needsMachineContext = field.reference === 'industry_machines' && industryTypeId === null;
@@ -1233,6 +1435,11 @@ function FieldGroup({ fields, value, onChange, references, questionCode, industr
                 });
               }}
             />
+            {fieldError && (
+              <div className="alert alert-error" role="alert" style={{ marginTop: 6, padding: '7px 9px' }}>
+                {fieldError}
+              </div>
+            )}
             {needsProductContext && (
               <small style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
                 Select Type of Unit and product kind first.
@@ -1271,17 +1478,14 @@ function WorkforceCountInput({ label, value, onChange }: {
   return (
     <label style={{ minWidth: 0, display: 'block', fontSize: 11, color: 'var(--text-muted)' }}>
       {label}
-      <input
-        className="form-input"
-        type="number"
-        min={0}
-        max={MAX_WORKFORCE_COUNT}
-        step={1}
-        inputMode="numeric"
-        aria-label={label}
+      <GroupedNumberInput
         value={value}
-        onFocus={(event) => event.currentTarget.select()}
-        onChange={(event) => onChange(event.target.value)}
+        emitText
+        allowDecimal={false}
+        ariaLabel={label}
+        placeholder=""
+        selectOnFocus
+        onChange={(count) => onChange(count === null ? '' : String(count))}
         style={{ marginTop: 4, padding: '9px 10px', fontSize: 16 }}
       />
       {workforceCount(value) === null && (
@@ -1640,18 +1844,17 @@ function QuestionField({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700 }}>
           Total captive capacity (kW)
-          <input className="form-input" type="number" value={total} readOnly aria-readonly="true" />
+          <GroupedNumberInput value={total} readOnly placeholder="" />
         </label>
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700 }}>
           Export capacity (kW)
-          <input className={`form-input ${errCls}`} type="number" min={0} step="0.01"
+          <GroupedNumberInput className={`form-input ${errCls}`}
             value={exportValue}
-            onChange={(event) => onChange({
+            onChange={(amount) => onChange({
               ...(value && typeof value === 'object' ? value : {}),
               captive_capacity_kw: total,
-              export_capacity_kw: event.target.value === '' ? null : Number(event.target.value),
-            })}
-            placeholder="Enter number" />
+              export_capacity_kw: amount,
+            })} />
         </label>
       </div>
     );
@@ -1673,10 +1876,7 @@ function QuestionField({
 
     case 'NUMBER':
       return (
-        <input className={`form-input ${errCls}`} type="number"
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
-          placeholder="Enter number" />
+        <GroupedNumberInput className={`form-input ${errCls}`} value={value} onChange={onChange} />
       );
 
     case 'DATE':
@@ -1821,7 +2021,7 @@ function isEmptyAnswer(value: any): boolean {
 export default function SurveyPage() {
   const { id }   = useParams<{ id: string }>();
   const { form, fetchForm, formLoading, formError, isOnline } = useSurvey();
-  const { user } = useAuth();
+  const { user, registerSessionEndSave } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const navigationType = useNavigationType();
@@ -1833,10 +2033,104 @@ export default function SurveyPage() {
   const [saving,   setSaving]   = useState(false);
   const [existingResponseLoaded, setExistingResponseLoaded] = useState(!id);
   const [ownerMismatch, setOwnerMismatch] = useState(false);
-  const [savedMsg, setSavedMsg] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [saveError, setSaveError] = useState('');
   const [responseId] = useState(() => id || uuidv4());
   const [startedAt]  = useState(() => new Date().toISOString());
+  const metadataRef = useRef({ startedAt, createdAt: startedAt });
+  const answersRef = useRef(answers);
+  const saverRef = useRef(new DraftSaver<OfflineResponse>(saveResponse));
+  const savingRef = useRef(false);
+  const exclusiveSaveRef = useRef(false);
   const topRef = useRef<HTMLDivElement>(null);
+
+  const buildResponse = useCallback((status: 'draft' | 'pending_sync'): OfflineResponse => {
+    if (!form || !user?.user_id) throw new Error('The survey form or account is unavailable.');
+    const currentAnswers = answersRef.current;
+    const questions = form.sections.flatMap((section) => section.questions);
+    const gpsQ = questions.find((q) => q.answer_type === 'GPS' || q.question_code === 'A_LOCATION_GPS');
+    const gpsVal = gpsQ ? currentAnswers[gpsQ.question_id] : null;
+    const workforceAnswers = materializeWorkforceAnswers(questions, currentAnswers, form.references ?? {});
+    const responseAnswers = materializeSectionEFAnswers(questions, workforceAnswers, form.references ?? {});
+    const sectionHAnswers = materializeSectionHAnswers(questions, responseAnswers);
+
+    return {
+      response_id: responseId,
+      form_id: form.form_id,
+      surveyor_id: user.user_id,
+      device_id: getDeviceId(),
+      gps_lat: gpsVal?.lat,
+      gps_lng: gpsVal?.lng,
+      gps_accuracy_m: gpsVal?.accuracy,
+      started_at: metadataRef.current.startedAt,
+      submitted_at: status === 'pending_sync' ? new Date().toISOString() : undefined,
+      answers: Object.entries(sectionHAnswers)
+        .filter(([qid]) => {
+          const question = questions.find((candidate) => candidate.question_id === Number(qid));
+          return !question || isQuestionVisible(question, questions, currentAnswers) ||
+            (question.question_code === 'G_UNDERUTILIZATION_REASON' &&
+             utilizationBandCode(questions, currentAnswers) === null);
+        })
+        .map(([qid, val]) => ({ question_id: parseInt(qid), answer_value: val })),
+      sync_status: status,
+      created_at: metadataRef.current.createdAt,
+    };
+  }, [form, responseId, user?.user_id]);
+
+  const save = useCallback(async (status: 'draft' | 'pending_sync', force = false) => {
+    try {
+      const written = await saverRef.current.save(() => buildResponse(status), force);
+      setDirty(saverRef.current.dirty);
+      if (written) {
+        setSavedAt(new Date());
+        setSaveError('');
+      }
+    } catch (error) {
+      setSaveError(`Unable to save the survey on this device: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw error;
+    }
+  }, [buildResponse]);
+
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    saverRef.current.dirty && currentLocation.pathname !== nextLocation.pathname,
+  );
+
+  useEffect(() => {
+    if (!form || !existingResponseLoaded || ownerMismatch) return;
+    const autosave = () => {
+      if (!exclusiveSaveRef.current && saverRef.current.dirty) void save('draft').catch(() => {});
+    };
+    const timer = window.setInterval(autosave, AUTOSAVE_INTERVAL_MS);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') autosave();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [form, existingResponseLoaded, ownerMismatch, save]);
+
+  useEffect(() => {
+    if (!dirty && !saving) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!saverRef.current.dirty && !savingRef.current) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty, saving]);
+
+  useEffect(() => registerSessionEndSave(async () => {
+    try {
+      while (saverRef.current.dirty) await save('draft');
+    } catch (error) {
+      setSaveError(`Your session expired and the draft could not be saved: ${error instanceof Error ? error.message : 'Unknown error'}. Retry saving before signing out.`);
+      throw error;
+    }
+  }), [registerSessionEndSave, save]);
 
   useLayoutEffect(() => {
     scrollSurveyToTop(topRef.current);
@@ -1860,6 +2154,8 @@ export default function SurveyPage() {
       }
       const map: Record<number, any> = {};
       r.answers.forEach((a) => { map[a.question_id] = a.answer_value; });
+      metadataRef.current = { startedAt: r.started_at, createdAt: r.created_at };
+      answersRef.current = map;
       setAnswers(map);
     }).catch(() => setOwnerMismatch(true)).finally(() => setExistingResponseLoaded(true));
   }, [id, user?.user_id]);
@@ -1867,17 +2163,22 @@ export default function SurveyPage() {
   useEffect(() => {
     if (!form || !existingResponseLoaded) return;
     const questions = form.sections.flatMap((section) => section.questions);
-    setAnswers((previous) => clearHiddenAnswers(questions, previous));
+    setAnswers((previous) => {
+      const cleaned = clearHiddenAnswers(questions, previous);
+      answersRef.current = cleaned;
+      return cleaned;
+    });
   }, [form, existingResponseLoaded]);
 
   const setAnswer = useCallback((qid: number, val: any) => {
     const questions = form?.sections.flatMap((section) => section.questions) ?? [];
-    const next = { ...answers, [qid]: val };
+    const previousAnswers = answersRef.current;
+    const next = { ...previousAnswers, [qid]: val };
     if (questions.find((question) => question.question_id === qid)?.question_code === 'A_UNIT_TYPE' &&
-        selectedOptionId(answers[qid]) !== selectedOptionId(val)) {
+        selectedOptionId(previousAnswers[qid]) !== selectedOptionId(val)) {
       const psicQuestion = questions.find((question) => question.question_code === 'A_PSIC');
       if (psicQuestion) delete next[psicQuestion.question_id];
-      if (selectedOptionId(answers[qid]) !== null) {
+      if (selectedOptionId(previousAnswers[qid]) !== null) {
         const productQuestion = questions.find((question) => question.question_code === 'C_PRODUCTS');
         if (productQuestion && Object.prototype.hasOwnProperty.call(next, productQuestion.question_id)) {
           next[productQuestion.question_id] = clearProductNames(next[productQuestion.question_id]);
@@ -1885,6 +2186,9 @@ export default function SurveyPage() {
       }
     }
     const cleanedAnswers = clearHiddenAnswers(questions, next);
+    answersRef.current = cleanedAnswers;
+    saverRef.current.changed();
+    setDirty(true);
     setAnswers(cleanedAnswers);
     setErrors((previous) => {
       const remaining = { ...previous };
@@ -1896,7 +2200,7 @@ export default function SurveyPage() {
       }
       return remaining;
     });
-  }, [answers, form]);
+  }, [form]);
 
   if (ownerMismatch) {
     return (
@@ -2082,47 +2386,35 @@ export default function SurveyPage() {
     return Object.keys(errs).length === 0;
   };
 
-  // Resolve GPS answer for the response header
-  const buildResponse = (status: 'draft' | 'pending_sync'): OfflineResponse => {
-    const gpsQ   = allQs.find((q) => q.answer_type === 'GPS' || q.question_code === 'A_LOCATION_GPS');
-    const gpsVal = gpsQ ? answers[gpsQ.question_id] : null;
-    const workforceAnswers = materializeWorkforceAnswers(allQs, answers, form.references ?? {});
-    const responseAnswers = materializeSectionEFAnswers(allQs, workforceAnswers, form.references ?? {});
-    const sectionHAnswers = materializeSectionHAnswers(allQs, responseAnswers);
-
-    return {
-      response_id:    responseId,
-      form_id:        form.form_id,
-      surveyor_id:    user!.user_id,
-      device_id:      getDeviceId(),
-      gps_lat:        gpsVal?.lat,
-      gps_lng:        gpsVal?.lng,
-      gps_accuracy_m: gpsVal?.accuracy,
-      started_at:     startedAt,
-      submitted_at:   status === 'pending_sync' ? new Date().toISOString() : undefined,
-      answers: Object.entries(sectionHAnswers)
-        .filter(([qid]) => {
-          const question = allQs.find((candidate) => candidate.question_id === Number(qid));
-          return !question || showQuestion(question) ||
-            (question.question_code === 'G_UNDERUTILIZATION_REASON' &&
-             utilizationBandCode(allQs, answers) === null);
-        })
-        .map(([qid, val]) => ({
-          question_id:  parseInt(qid),
-          answer_value: val,
-        })),
-      sync_status: status,
-      created_at:  new Date().toISOString(),
-    };
-  };
-
   const saveAsDraft = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
-      await saveResponse(buildResponse('draft'));
-      setSavedMsg(true);
-      setTimeout(() => setSavedMsg(false), 2000);
+      await save('draft', true);
+    } catch {
+      // The save error is shown on the survey page.
     } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
+
+  const saveAndLeave = async () => {
+    if (savingRef.current || blocker.state !== 'blocked') return;
+    savingRef.current = true;
+    exclusiveSaveRef.current = true;
+    setSaving(true);
+    try {
+      do {
+        await save('draft');
+      } while (saverRef.current.dirty);
+      blocker.proceed();
+    } catch {
+      // Keep the dialog open so the user can retry or stay.
+    } finally {
+      savingRef.current = false;
+      exclusiveSaveRef.current = false;
       setSaving(false);
     }
   };
@@ -2151,6 +2443,7 @@ export default function SurveyPage() {
   };
 
   const submitSurvey = async () => {
+    if (savingRef.current) return;
     if (!validateSection()) { scrollTop(); return; }
     const incompleteSection = form.sections.findIndex((candidate) =>
       candidate.questions.some((q) => showQuestion(q) && questionIsIncomplete(q)),
@@ -2168,11 +2461,22 @@ export default function SurveyPage() {
       ));
       return;
     }
+    savingRef.current = true;
+    exclusiveSaveRef.current = true;
     setSaving(true);
     try {
-      await saveResponse(buildResponse('pending_sync'));
+      await save('pending_sync', true);
+      if (saverRef.current.dirty) {
+        await save('draft');
+        setSaveError('The survey changed while submitting. Review the latest answers and submit again.');
+        return;
+      }
       navigate('/surveys');
+    } catch {
+      // The save error is shown on the survey page.
     } finally {
+      savingRef.current = false;
+      exclusiveSaveRef.current = false;
       setSaving(false);
     }
   };
@@ -2209,11 +2513,18 @@ export default function SurveyPage() {
           </div>
 
           <button className="btn btn-ghost btn-sm" onClick={saveAsDraft} disabled={saving}
-            style={{ color: savedMsg ? 'var(--success)' : undefined, flexShrink: 0 }}>
-            {savedMsg ? '✓ Saved' : saving ? '…' : '💾 Save'}
+            style={{ color: savedAt && !dirty ? 'var(--success)' : undefined, flexShrink: 0 }}>
+            {saving ? '…' : '💾 Save'}
           </button>
 
         </div>
+
+        <div role="status" aria-live="polite" style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+          {savedAt
+            ? `Saved ${savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}${dirty ? ' · Unsaved changes' : ''}`
+            : dirty ? 'Unsaved changes' : 'No changes to save'}
+        </div>
+        {saveError && <div className="alert alert-error" role="alert" style={{ marginBottom: 8 }}>{saveError}</div>}
 
         {/* Partner branding row: government and NESPAK logos centered beneath the title. */}
         {/* <div aria-label="Punjab Industries and NESPAK" style={{
@@ -2302,9 +2613,14 @@ export default function SurveyPage() {
             <p>This section has no questions in the current form version.</p>
           </div>
         ) : (
-          section.questions.filter(showQuestion).map((q) => (
-
-            <div key={q.question_id} className={`question-card${errors[q.question_id] ? ' error' : ''}`}>
+          section.questions.filter(showQuestion).map((q) => {
+            const liveValidationError = validationError(q);
+            const showLiveError = !q.fields?.length ||
+              q.question_code === 'D_EMPLOYMENT' || q.question_code === 'D_SKILLS';
+            const questionError = errors[q.question_id] ??
+              (showLiveError ? liveValidationError : null);
+            return (
+            <div key={q.question_id} className={`question-card${questionError ? ' error' : ''}`}>
               
               
               {/* One card per visible question; the error class highlights failed validation. */}
@@ -2325,7 +2641,7 @@ export default function SurveyPage() {
                 q={q}
                 value={answers[q.question_id]}
                 onChange={(v) => setAnswer(q.question_id, v)}
-                error={errors[q.question_id]}
+                error={questionError ?? undefined}
                 references={form?.references ?? {}}
                 energyGenerationRows={(() => {
                   const generationQuestion = allQs.find((candidate) =>
@@ -2340,13 +2656,14 @@ export default function SurveyPage() {
                 unitName={String(answerForCode('A_ESTABLISHMENT_NAME')?.name ?? answerForCode('A_ESTABLISHMENT_NAME') ?? 'Industrial unit')}
               />
 
-              {errors[q.question_id] && (
+              {questionError && (
                 <div className="form-error" style={{ marginTop: 6 }}>
-                  ⚠ {errors[q.question_id]}
+                  ⚠ {questionError}
                 </div>
               )}
             </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -2395,6 +2712,23 @@ export default function SurveyPage() {
           </button>
         )}
       </div>
+      {blocker.state === 'blocked' && (
+        <div className="modal-overlay">
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="leave-survey-title">
+            <div className="modal-header"><h3 id="leave-survey-title">Leave survey?</h3></div>
+            <div className="modal-body">
+              <p>Save your changes as a draft before leaving.</p>
+              {saveError && <div className="alert alert-error" role="alert">{saveError}</div>}
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-ghost" onClick={() => blocker.reset()} disabled={saving} autoFocus>Stay</button>
+              <button className="btn btn-primary" onClick={saveAndLeave} disabled={saving}>
+                {saving ? 'Saving…' : 'Save draft & leave'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
