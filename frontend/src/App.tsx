@@ -1,5 +1,7 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { useEffect } from 'react';
 import { AuthProvider } from './context/AuthContext';
+import { useAuth } from './context/AuthContext';
 import { SurveyProvider } from './context/SurveyContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
@@ -12,37 +14,47 @@ import UnitDetailPage from './pages/UnitDetailPage';
 import AdminPage from './pages/AdminPage';
 import Layout from './components/Layout';
 
+function SignOut() {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+  useEffect(() => {
+    logout();
+    navigate('/login', { replace: true });
+  }, [logout, navigate]);
+  return null;
+}
+
+function SurveyRoute() {
+  const { id } = useParams();
+  return <SurveyPage key={id ?? 'new'} />;
+}
+
+const router = createBrowserRouter([
+  { path: '/login', element: <LoginPage /> },
+  { path: '/sign-out', element: <SignOut /> },
+  {
+    path: '/',
+    element: <ProtectedRoute><Layout /></ProtectedRoute>,
+    children: [
+      { index: true, element: <Navigate to="/dashboard" replace /> },
+      { path: 'dashboard', element: <DashboardPage /> },
+      { path: 'surveys', element: <SurveyListPage /> },
+      { path: 'surveys/new', element: <SurveyRoute /> },
+      { path: 'surveys/:id', element: <SurveyRoute /> },
+      { path: 'sync', element: <SyncPage /> },
+      { path: 'supervisor', element: <SupervisorPage /> },
+      { path: 'supervisor/units/:id', element: <UnitDetailPage /> },
+      { path: 'admin', element: <AdminPage /> },
+    ],
+  },
+  { path: '*', element: <Navigate to="/" replace /> },
+], { future: { v7_relativeSplatPath: true } });
+
 export default function App() {
   return (
     <AuthProvider>
       <SurveyProvider>
-        <BrowserRouter future={{
-          v7_startTransition: true,
-          v7_relativeSplatPath: true,
-        }}>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <Layout />
-                </ProtectedRoute>
-              }
-            >
-              <Route index element={<Navigate to="/dashboard" replace />} />
-              <Route path="dashboard" element={<DashboardPage />} />
-              <Route path="surveys" element={<SurveyListPage />} />
-              <Route path="surveys/new" element={<SurveyPage />} />
-              <Route path="surveys/:id" element={<SurveyPage />} />
-              <Route path="sync" element={<SyncPage />} />
-              <Route path="supervisor" element={<SupervisorPage />} />
-              <Route path="supervisor/units/:id" element={<UnitDetailPage />} />
-              <Route path="admin" element={<AdminPage />} />
-            </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
+        <RouterProvider router={router} future={{ v7_startTransition: true }} />
       </SurveyProvider>
     </AuthProvider>
   );

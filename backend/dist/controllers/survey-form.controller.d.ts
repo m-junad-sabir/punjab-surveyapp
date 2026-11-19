@@ -32,6 +32,9 @@ export declare class SurveyFormController {
                     min?: number;
                     max?: number;
                     step?: number;
+                    max_length?: number;
+                    precision?: number;
+                    scale?: number;
                     default_value?: number;
                 }[];
                 repeatable: boolean;
@@ -40,7 +43,7 @@ export declare class SurveyFormController {
                     code: string;
                     label: string;
                     group_label: string;
-                    answer_type: "RATING_1_5" | "CHOICE";
+                    answer_type: "CHOICE" | "RATING_1_5";
                     allows_text: boolean;
                     options: import("../bll/services/survey-form.service").LookupOption[];
                 }[];
