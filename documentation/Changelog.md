@@ -2,6 +2,26 @@
 
 All notable application changes are recorded here, grouped by the categories below.
 
+## 2026-11-23 — Issue #56 (fake GPS): Punjab location check
+
+### Added
+
+- Added a shared Punjab location envelope (latitude 27.6 to 34.1, longitude 69.2 to 75.5) in `backend/src/bll/services/gps-bounds.ts`, mirrored on the client in `photoCapture.ts`. The envelope is provisional, taken from `workplan-to-solve-issues-3.md`, and awaits owner approval in that plan's Phase 0. It also excludes the (0, 0) point.
+- Added regression tests for photo uploads and sync with locations outside Punjab (Karachi, London, null island, just outside each edge) and for locations exactly on the envelope edges.
+
+### Changed
+
+- `POST /sync/photos` now rejects a photo whose capture coordinates are outside Punjab, before anything is written or stored.
+- `POST /sync` now fails a survey whose unit GPS is outside Punjab. Only that survey is reported as `failed`; other surveys in the batch are unaffected.
+- The camera capture check (`photoMetadataError`) and the unit GPS widget now reject an outside-Punjab device location at capture time. The widget shows an alert and keeps any previously captured location.
+
+### Validation
+
+- Full backend Jest suite (12 suites, 193 tests) and the backend and frontend TypeScript checks passed. Frontend tests passed 72 of 73; the remaining failure is the login-page logo assertion that predates this work.
+- Checked by hand in Chrome with DevTools location overrides: a Karachi location was rejected with the new message, and a Lahore location was captured normally.
+
+No database migration, form-cache revision change, or deployment was needed. The remaining Phase 4 and Phase 5 items (integrity flags, multi-sample GPS capture) depend on the planned migration 17 and the owner's Phase 0 decisions, and were not started.
+
 ## 2026-11-18 — Workplan 1 Phases 6, 12, and 13
 
 ### Added
