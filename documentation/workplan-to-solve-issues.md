@@ -55,6 +55,8 @@ Phases 0-4, 6 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 
 
 **Verify:** `git ls-files | findstr .env` shows only `.env.example` files; the app runs on localhost and on Render with the new secrets.
 
+**Status:** Done and Completed
+
 ---
 
 ## Phase 1 — JWT Fallback (+ Dev Quick Sign-in Removal)
@@ -68,6 +70,8 @@ Phases 0-4, 6 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 
 4. `LoginPage.tsx`: render the quick sign-in panel only when `import.meta.env.DEV`.
 
 **Verify:** no secret means no boot; a forged or expired token gets 401; a deactivated user gets 401 on their next request; the production build has no quick sign-in.
+
+**Status:** Done and Completed
 
 ---
 
@@ -84,6 +88,8 @@ Phases 0-4, 6 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 
 
 **Verify:** each UI role creates a user with the matching `roles.code` and permissions; a Section D survey with "Other" counts syncs.
 
+**Status:** Done and Completed
+
 ---
 
 ## Phase 3 — Offline Ownership + Duplicate-Flag Fix
@@ -99,6 +105,8 @@ Phases 0-4, 6 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 
 6. `sync.service.ts`: `reason` is `NAME_SIMILARITY`, `GPS_PROXIMITY` or `BOTH`; the readable sentence goes into `details`. Update the entity to match.
 
 **Verify:** user B can't sync user A's pending work; A's work survives logout/login; a near-duplicate survey commits as `duplicate_flagged`.
+
+**Status:** Done and Completed
 
 ---
 
@@ -126,6 +134,8 @@ Phases 0-4, 6 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 
 
 **Verify:** both photos taken offline, then synced; rows appear in `survey_attachments` and files in R2/disk; gallery upload is impossible; photos > 100 m accuracy are blocked.
 
+**Status:** Done and Completed
+
 ---
 
 ## Phase 5 — Admin User Management Page
@@ -141,6 +151,8 @@ Phases 0-4, 6 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 
 
 **Frontend:** user list (cards on mobile, table on desktop), edit drawer, activate/deactivate with confirmation, reset-password dialog.
 
+**Status:** Total Deffered
+
 ---
 
 ## Phase 6 — Leave Guard + 10 s Autosave
@@ -150,6 +162,8 @@ Phases 0-4, 6 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 
 Browser reloads, tab closes, and navigation outside the app use the browser's native unsaved-changes warning. Browsers can suspend background timers or terminate a page before an asynchronous save finishes, so an abrupt close or device failure cannot guarantee the latest edits are saved.
 
 **Verification:** targeted frontend tests, TypeScript check and production build passed. Desktop browser checks covered the 10-second save, hidden-page save, section navigation, browser back, sign-out, session expiry, storage failure/retry, and submission. Android hardware-back and background behavior still need verification on a physical device.
+
+**Status:** Done and Completed
 
 ---
 
@@ -168,6 +182,8 @@ Browser reloads, tab closes, and navigation outside the app use the browser's na
 
 **Verified:** the owner confirmed the form works; all 60 L1 labels plus Other and all 94 L4 pairs were checked against the migration. Three mocked persistence tests, backend/frontend type checks, and the frontend production build passed. No database scripts were executed by the assistant. Run the migration separately against each target database before deploying the API/frontend changes.
 
+**Status:** Done and Completed
+
 ---
 
 ## Phase 8 — Months of Operation "Select All"
@@ -175,6 +191,8 @@ Browser reloads, tab closes, and navigation outside the app use the browser's na
 Frontend only: a "Select all 12 months" checkbox (with a partial state) above the `B_OPERATION_MONTHS` options. No DB change.
 
 **Implemented:** Its done in [work plan 2](../documentation/workplan-to-solve-issues-2.md)
+
+**Status:** Done and Completed
 
 ---
 
@@ -230,7 +248,7 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 
 **Wheel update verification:** frontend type-check and the focused year-field test passed. Browser checks covered mouse-wheel snapping, 3D row transforms, keyboard navigation to 1800, Done, Cancel, reopening at the saved year, and vibration API calls using a test stub. Physical haptic feedback remains device/browser-dependent.
 
-**Implemented:** Its done and Completed
+**Status:** Done and Completed
 
 ---
 
@@ -283,17 +301,17 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 
 | Phase | Status |
 |---|---|
-| 0 Secrets & env | Done |
-| 1 JWT fallback | Implemented in delivery baseline; verify environment secrets and migration 01 per deployment |
-| 2 Roles + Gender | Implemented; verify live role audit and migration 03 per deployment |
-| 3 Offline ownership + duplicate flag | Implemented; retain account-switch and duplicate-sync regression checks |
-| 4 Photo capture | Implemented; Section L confirmed visible; R2/device capture verification remains environment-specific |
-| 5 Admin users | Deferred; rolled back after login regressions |
-| 6 Leave guard + autosave | Implemented at 10 seconds; physical Android verification pending |
-| 7 Type of Unit + filtered PSIC | Working, confirmed by owner on 18 October 2026; migration 07 required per database |
+| 0 Secrets & env | Implemented |
+| 1 JWT fallback | Implemented |
+| 2 Roles + Gender | Implemented |
+| 3 Offline ownership + duplicate flag | Implemented |
+| 4 Photo capture | Implemented |
+| 5 Admin users | Deferred |
+| 6 Leave guard + autosave | Implemented |
+| 7 Type of Unit + filtered PSIC | Implemented |
 | 8 Months select all | Implemented
 | 9 Sync progress | Pending
 | 10 Remaining findings | Pending
 | 11 Responsive UI | Pending
-| 12 Year picker (Section A) | Implemented; no DB change (relies on existing 1800–2100 CHECK) |
-| 13 Field-value validation | Implemented; focused checks passed |
+| 12 Year picker (Section A) | Implemented |
+| 13 Field-value validation | Implemented |
