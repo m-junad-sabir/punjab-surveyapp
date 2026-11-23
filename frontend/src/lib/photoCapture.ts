@@ -1,6 +1,16 @@
 export const MAX_PHOTO_ACCURACY_M = 250;
 export const PHOTO_ACCURACY_WARNING_M = 50;
 
+// Keep in sync with backend/src/bll/services/gps-bounds.ts.
+// Provisional envelope, pending owner approval (workplan-to-solve-issues-3, Phase 0).
+export const PUNJAB_BOUNDS = { minLat: 27.6, maxLat: 34.1, minLng: 69.2, maxLng: 75.5 } as const;
+
+export function isInsidePunjab(latitude: number, longitude: number): boolean {
+  return Number.isFinite(latitude) && Number.isFinite(longitude) &&
+    latitude >= PUNJAB_BOUNDS.minLat && latitude <= PUNJAB_BOUNDS.maxLat &&
+    longitude >= PUNJAB_BOUNDS.minLng && longitude <= PUNJAB_BOUNDS.maxLng;
+}
+
 export function photoMetadataError(value: unknown): string | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return 'Capture a photo with valid location metadata.';
@@ -10,6 +20,9 @@ export function photoMetadataError(value: unknown): string | null {
   if (typeof latitude !== 'number' || !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
       typeof longitude !== 'number' || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
     return 'Valid capture coordinates are required.';
+  }
+  if (!isInsidePunjab(latitude, longitude)) {
+    return 'This location is outside Punjab. Take the photo at the unit premises.';
   }
   if (typeof accuracy_m !== 'number' || !Number.isFinite(accuracy_m) ||
       accuracy_m < 0 || accuracy_m > MAX_PHOTO_ACCURACY_M) {

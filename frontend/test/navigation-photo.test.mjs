@@ -7,7 +7,7 @@ const server = await createServer({
   server: { middlewareMode: true, hmr: false, watch: { ignored: ['**'] } },
 });
 after(() => server.close());
-const { photoMetadataError, MAX_PHOTO_ACCURACY_M, PHOTO_ACCURACY_WARNING_M } =
+const { photoMetadataError, isInsidePunjab, MAX_PHOTO_ACCURACY_M, PHOTO_ACCURACY_WARNING_M } =
   await server.ssrLoadModule('/src/lib/photoCapture.ts');
 const { surveySectionStatus, surveySectionIndex, scrollSurveyToTop } =
   await server.ssrLoadModule('/src/lib/surveyNavigation.ts');
@@ -37,6 +37,19 @@ test('photo capture and draft validation accept the exact 250 m boundary but rej
   }
   for (const invalid of [{ latitude: null }, { longitude: undefined }, { latitude: 91 }, { captured_at: '' }]) {
     assert.ok(photoMetadataError({ ...photo, ...invalid }));
+  }
+});
+
+test('photo capture rejects locations outside the Punjab envelope but accepts its edges', () => {
+  for (const [latitude, longitude] of [[24.86, 67.01], [0, 0], [51.5, -0.12], [27.59, 74.3], [31.5, 75.51]]) {
+    assert.match(photoMetadataError({ ...photo, latitude, longitude }), /outside Punjab/);
+    assert.match(questionFormatError(question(1, 'L_PHOTO_INTERVIEW_SESSION', 'PHOTO'),
+      { ...photo, latitude, longitude }), /outside Punjab/);
+    assert.equal(isInsidePunjab(latitude, longitude), false);
+  }
+  for (const [latitude, longitude] of [[27.6, 69.2], [34.1, 75.5], [31.5, 74.3]]) {
+    assert.equal(photoMetadataError({ ...photo, latitude, longitude }), null);
+    assert.equal(isInsidePunjab(latitude, longitude), true);
   }
 });
 
