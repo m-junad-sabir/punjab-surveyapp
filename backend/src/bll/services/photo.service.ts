@@ -8,6 +8,7 @@ import { createHash } from 'crypto';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { PhotoStorageService } from './photo-storage.service';
+import { isInsidePunjab } from './gps-bounds';
 
 const PHOTO_TYPES = new Set([
   'L_PHOTO_INTERVIEW_SESSION',
@@ -78,6 +79,10 @@ export class PhotoService {
         !Number.isFinite(accuracy) || accuracy < 0 || accuracy > MAX_PHOTO_ACCURACY_M ||
         Number.isNaN(capturedAt.getTime())) {
       throw new BadRequestException(`Valid capture coordinates, accuracy between 0 and ${MAX_PHOTO_ACCURACY_M} m, and timestamp are required.`);
+    }
+
+    if (!isInsidePunjab(latitude, longitude)) {
+      throw new BadRequestException('Photo location is outside Punjab. Capture the photo at the unit premises.');
     }
 
     const sha256 = createHash('sha256').update(file.buffer).digest('hex');

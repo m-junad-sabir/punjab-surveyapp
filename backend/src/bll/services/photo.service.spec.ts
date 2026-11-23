@@ -61,6 +61,27 @@ describe('Section L photo accuracy policy', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['Karachi', '24.86', '67.01'],
+    ['null island', '0', '0'],
+    ['London', '51.5', '-0.12'],
+    ['just south of the envelope', '27.59', '74.3'],
+    ['just east of the envelope', '31.5', '75.51'],
+  ])('rejects a photo captured outside Punjab (%s) before writing or storing', async (_place, latitude, longitude) => {
+    await expect(service.uploadPhoto({ ...metadata, latitude, longitude }, file, 'owner'))
+      .rejects.toThrow('outside Punjab');
+    expect(query).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['south-west corner', '27.6', '69.2'],
+    ['north-east corner', '34.1', '75.5'],
+  ])('accepts a photo exactly on the Punjab envelope edge (%s)', async (_edge, latitude, longitude) => {
+    await expect(service.uploadPhoto({ ...metadata, latitude, longitude }, file, 'owner'))
+      .resolves.toEqual({ photo_id: photoId, status: 'uploaded' });
+  });
+
   it('keeps JPEG, size, photo-type, UUID, and ownership restrictions', async () => {
     await expect(service.uploadPhoto(metadata, { ...file, mimetype: 'image/png' }, 'owner'))
       .rejects.toThrow('Only captured JPEG images');
