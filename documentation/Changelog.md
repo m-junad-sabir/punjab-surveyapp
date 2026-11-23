@@ -2,6 +2,25 @@
 
 All notable application changes are recorded here, grouped by the categories below.
 
+## 2026-11-18 — Workplan 1 Phases 6, 12, and 13
+
+### Added
+
+- Added 10-second and page-hidden local draft autosave, visible save status/errors, and a leave guard for unsaved survey changes. Sign-out and session expiry save before leaving; failed saves keep the survey open.
+- Added a year-only picker for establishment year (1800 through the current year), with keyboard, wheel, and touch navigation plus Done, Cancel, and Clear actions.
+- Added field-specific validation alerts and section/submit blocking, with matching backend DTO and `/sync` preflight validation against questionnaire constraints.
+- Added display-only thousands separators to applicable numeric inputs; saved drafts and API/database values remain unformatted.
+
+### Changed
+
+- `/sync` now validates dropdown and checkbox option ownership against the question's lookup list, while still allowing inactive historical options to sync.
+- Integer-only fields reject decimal input; the API retains the database-supported establishment-year range through 2100.
+
+### Validation
+
+- Backend Jest suite (12 suites, 182 tests), backend/frontend TypeScript checks, and frontend production build passed. Local API checks covered validation errors, option ownership, year bounds, authorization, and valid choices.
+- Frontend tests passed 70 of 71; the remaining branding assertion predates this work. Physical Android back-button/background-save behavior and haptic feedback remain device-dependent. Workplan 1 Phase 13 remains in progress pending the full regression/release checks.
+
 ## 2026-11-16 — Workplan 2 Phase 10
 
 ### Added

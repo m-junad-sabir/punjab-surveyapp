@@ -4,12 +4,17 @@
 - **Backend**: NestJS 10 + TypeORM + PostgreSQL/PostGIS
 - **Frontend**: React 18 + Vite + PWA (offline-capable)
 
-## Delivery Status - 18 October 2026
+## Delivery Status - 19 November 2026
 
-Phases 0-4 and 7 are implemented. Phase 7 was confirmed working by the owner.
-Phase 5 user-management/password-reset changes were rolled back after login
-regressions; Phase 6 autosave/leave protection is deferred. Remaining work
-resumes after the delivery pause. See the [workplan](documentation/workplan-to-solve-issues.md).
+Workplan 1 phases 0-4, 6-8, 12, and 13 are implemented (Phase 13's full
+regression/release checks remain). Phase 5 user-management/password-reset
+changes were rolled back after login regressions and stay deferred; phases
+9-11 (sync progress, remaining findings, responsive UI) are pending. Workplan 2
+phases 0-12 (Sections A-L, navigation, and section status) are implemented;
+its Phase 13 regression/release pass is not started. See the workplans:
+[1](documentation/workplan-to-solve-issues.md),
+[2](documentation/workplan-to-solve-issues-2.md), and
+[3 (GPS/timestamp integrity, not started)](documentation/workplan-to-solve-issues-3.md).
 
 - Required JWT configuration and code-based role assignment.
 - Account-scoped offline surveys and sync history; drafts survive logout.
@@ -18,7 +23,13 @@ resumes after the delivery pause. See the [workplan](documentation/workplan-to-s
 - Section A vii has 60 industry types plus Other (specify). Section A viii
    lists only PSIC classes mapped to that industry by L4. The server validates
    the pair and derives group/division. Other uses official PSIC class 9609.
-- Form cache revision is 14. Save drafts explicitly; autosave is not implemented.
+- Drafts autosave locally every 10 seconds and when the page is hidden; a
+   leave guard offers "Save draft & leave" when unsaved changes exist.
+- Establishment year uses a year-only picker (1800 through the current year).
+- Field values are validated in the UI and by `/sync` DTO/preflight checks,
+   including dropdown/checkbox option ownership.
+- Form cache revision is 21; clients must reload online after the API and
+   migrations through 16 are deployed.
 
 ---
 
@@ -39,7 +50,7 @@ must target the intended database independently.
 
 The script stops on the first SQL error. Fresh mode runs the base
 schema and seed, then reference seeds/updates and implemented migrations
-**01, 02 (read-only audit), 03, 04, 05, 07, 08, 09**. Phase 5/migration 06 and legacy
+**01-05 (02 is a read-only audit) and 07-16**. Phase 5/migration 06 and legacy
 cleanup/credential-reset scripts are excluded. Earlier files can already have
 committed if a later file fails; inspect the error before retrying.
 
@@ -59,6 +70,8 @@ For manual upgrades, run these against each target database in order using
 11. [Migration 12: Section G machinery](database/migration_12_section_g_machinery.sql)
 12. [Migration 13: Section H energy and gates](database/migration_13_section_h_energy_and_gates.sql)
 13. [Migration 14: photo GPS accuracy up to 250 m](database/migration_14_photo_accuracy_250m.sql)
+14. [Migration 15: Section I/J gates](database/migration_15_section_i_j_gates.sql)
+15. [Migration 16: Section K gates](database/migration_16_section_k_gates.sql)
 
 Load classification references before migration 07; it fails if a mapped
 class is missing. Apply SQL before deploying its code, then reopen online to
@@ -209,7 +222,7 @@ the shortcuts are absent from production builds.
 
 1. Login → Dashboard → click **Download Form** (requires internet once)
 2. In browser DevTools → Application → Service Workers → check **Offline**
-3. Fill out a survey and explicitly save the draft to IndexedDB
+3. Fill out a survey; drafts autosave to IndexedDB every 10 seconds (explicit save still works)
 4. Uncheck Offline → go to **Sync** → click **Sync Now**
 
 Records and photo Blobs belong to their creator; another account cannot sync

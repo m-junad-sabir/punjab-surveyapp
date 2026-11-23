@@ -8,12 +8,14 @@ This guide explains how to set up and run the application on a new Windows compu
 
 The frontend can save drafts offline in the browser. The backend and database must be running to sign in, download the latest survey form, and synchronize responses.
 
-Delivery checkpoint, 18 October 2026: Phases 0-4 and 7 are implemented. Phase 7
-was confirmed working by the owner. Phase 5 was rolled back after login regressions;
-Phase 6 autosave/leave protection is deferred. Save drafts explicitly. See the
-[workplan](workplan-to-solve-issues.md) for the remaining phases.
+Delivery checkpoint, 19 November 2026: Workplan 1 phases 0-4, 6-8, 12, and 13
+are implemented (Phase 13's full regression/release checks remain). Phase 5 was
+rolled back after login regressions and stays deferred; phases 9-11 are pending.
+Drafts autosave locally every 10 seconds, and a leave guard protects unsaved
+changes. See the [workplan](workplan-to-solve-issues.md) for the remaining phases.
 
-For Workplan 2, the Section E major-input unit change and Section G/H implementations
+For Workplan 2, the Section A-L changes (migrations 08-16, including Section E
+major-input units, Section G/H, the I/J/K gates, and 250 m photo accuracy)
 require owner-managed database migration and live verification. See
 [Workplan 2](workplan-to-solve-issues-2.md).
 
@@ -103,7 +105,7 @@ SQL execution and stop on the first SQL error. No arguments show help only;
 `/plan` prints the exact sequence without connecting to PostgreSQL.
 
 Fresh setup enables required extensions, loads the schema/base seed,
-then reference seeds/updates and implemented migrations 01-05 and 07-14. Existing
+then reference seeds/updates and implemented migrations 01-05 and 07-16. Existing
 database migration requires an active form version 3 or newer. Back up before:
 
 ```powershell
@@ -149,6 +151,8 @@ psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_11_
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_12_section_g_machinery.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_13_section_h_energy_and_gates.sql
 psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_14_photo_accuracy_250m.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_15_section_i_j_gates.sql
+psql -X -v ON_ERROR_STOP=1 -d punjab_industrial_survey -f database\migration_16_section_k_gates.sql
 ```
 
 These examples use your psql PG environment; adjust it for the target server.
@@ -167,7 +171,7 @@ Run its verification queries separately: confirm 15 active product units and
 Review historical secondary-product and transformation-stage violations before
 validating any `NOT VALID` constraint; the migration does not rewrite those rows.
 Apply it before deploying the API that loads the Section C references. Reload
-the form online after deployment so the current revision 18 is cached before offline use.
+the form online after deployment so the current revision (21) is cached before offline use.
 Previously selected legacy units and free-text product names are retained.
 
 Review and back up each target before applying migration 11 after migration 10.
@@ -176,8 +180,8 @@ both Section E bands, `DK_NA` for strength and `NA` for digital presence. Check
 that each F matrix question is present and `matrix_rows` equals
 `rows_with_active_default` (six strength and five digital rows in the checked-in
 seed). The migration preserves lookup IDs and does not backfill historical
-responses. Deploy the API before the frontend, refresh the revision-18 form
-online, then verify live sync, stored share totals, PDFs, and an offline-device
+responses. Deploy the API before the frontend, refresh the current form (revision
+21) online, then verify live sync, stored share totals, PDFs, and an offline-device
 draft round trip. Do not assume the migration has already been applied.
 
 Review and back up each target before applying migration 12 after the preceding
@@ -188,9 +192,10 @@ option for every innovation matrix row. Review historical rows before validating
 the new `NOT VALID` checks. The migration does not rewrite machine counts or
 backfill responses. Historical equipment rows are also left intact.
 
-Deploy the updated API before the frontend and download revision 18 online before
-working offline. The frontend reports an error instead of caching an older API
-form as revision 18. Old drafts containing machinery-age counts require the
+Deploy the updated API before the frontend and download the current form
+(revision 21) online before working offline. The frontend reports an error
+instead of caching an older API form as the current revision. Old drafts
+containing machinery-age counts require the
 surveyor to re-enter percentages; the old counts remain attached separately.
 Previously saved equipment fields are retained when the rows are corrected, and
 old drafts must answer the new innovation Yes/No question. Raw L3/L5 values and
@@ -338,8 +343,10 @@ Offline drafts are stored in the browser's local storage (IndexedDB). Clearing s
 
 Drafts, pending records and sync logs are scoped to their creator. Logout does not
 delete them, but another account cannot upload them. Photos remain in the local
-Blob store for preview/PDF use. Save explicitly before leaving: autosave and leave
-guards are not implemented. Complete an offline-to-online photo sync and confirm
+Blob store for preview/PDF use. Drafts autosave every 10 seconds and when the page
+is hidden, and a leave guard offers "Save draft & leave" on unsaved changes; abrupt
+browser/device termination can still lose the newest edits, so sync promptly.
+Complete an offline-to-online photo sync and confirm
 both attachment rows and actual stored/retrievable files before client testing.
 
 ## Troubleshooting
@@ -365,7 +372,7 @@ Run `database\seed_classification_codes.sql` against the same database named by 
 
 If `DATABASE_URL` is set, inspect that target instead. For PSIC, apply migration
 07 and select an industry first; only its mapped classes are offered. Reload
-online to fetch form cache revision 14. Do not manually choose group/division.
+online to fetch form cache revision 21. Do not manually choose group/division.
 
 ### Photo Evidence is missing
 
@@ -394,7 +401,7 @@ Refresh online and reopen the installed PWA after closing its tabs. Try a fresh
 browser profile to distinguish a stale service worker from a server problem.
 Do not use Clear site data or delete IndexedDB while unsynced work exists.
 Sync/back up important records before removing any browser data. Form revision
-12 refreshes the questionnaire without deleting drafts or photo Blobs.
+21 refreshes the questionnaire without deleting drafts or photo Blobs.
 
 ## 10. Client-testing deployment
 

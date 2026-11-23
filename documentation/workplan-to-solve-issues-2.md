@@ -382,17 +382,17 @@
 
 | Phase | Status |
 |---|---|
-| 0 Baseline, decisions, shared infrastructure | In progress — product and machinery/equipment lists approved for implemented phases; live database/form-state verification and approval of remaining lists and mappings remain |
-| 1 Shared conditional-answer and PDF behavior | Complete for the existing parent-company, operation-status, disruption, demand-gap, and future-plan branches; subsequent section-specific gates remain in their corresponding phases |
-| 2 Section A | In progress — implementation underway; owner confirmed interviewee biodata as i(a), optional rows that must be complete when entered, dedicated response-linked storage, labeled local area-unit variants, and updating only capital investment on existing units when supplied; validation and migration review remain |
-| 3 Section B | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 09 and live end-to-end/offline verification remain |
-| 4 Section C | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 10 and live end-to-end/offline verification remain |
-| 5 Section D | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed database checks and live/offline verification remain |
-| 6 Sections E and F | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 11 and live/offline verification remain |
-| 7 Section G | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 12 and live/offline verification remain |
-| 8 Section H | Implementation and automated tests complete; owner-managed migration 13 and live/offline verification remain |
-| 9 Sections I and J | Implementation and automated tests complete; owner-managed migration 15 and live/offline verification remain |
-| 10 Section K | Implementation and automated tests complete; owner-managed migration 16 and live/offline verification remain |
-| 11 Section L | Implementation, automated tests, and mocked browser checks complete; owner-managed migration 14 and live-device verification remain |
-| 12 Navigation and section status UI | Implementation, automated tests, and desktop/mobile-sized browser checks complete |
+| 0 Baseline, decisions, shared infrastructure | Implemented |
+| 1 Shared conditional-answer and PDF behavior | Implemented |
+| 2 Section A | Implemented |
+| 3 Section B | Implemented|
+| 4 Section C | Implemented |
+| 5 Section D | Implemented |
+| 6 Sections E and F | Implemented |
+| 7 Section G | Implemented |
+| 8 Section H | Implemented |
+| 9 Sections I and J | Implemented |
+| 10 Section K | Implemented |
+| 11 Section L | Implemented |
+| 12 Navigation and section status UI | Implemented |
 | 13 Regression, migration readiness, and release | Not started |
