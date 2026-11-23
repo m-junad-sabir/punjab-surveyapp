@@ -24,6 +24,8 @@ const section_g_1 = require("./section-g");
 const section_h_1 = require("./section-h");
 const section_i_j_1 = require("./section-i-j");
 const section_k_1 = require("./section-k");
+const sync_validation_1 = require("./sync-validation");
+const survey_questionnaire_1 = require("./survey-questionnaire");
 const survey_response_writer_1 = require("./survey-response-writer");
 function nameSimilarity(a, b) {
     const s1 = (a ?? '').toLowerCase().trim();
@@ -48,11 +50,140 @@ function finiteNumber(value) {
         return Number(value);
     return null;
 }
+function unstructuredAnswerError(code, type, value) {
+    if (value === undefined || value === null || value === '')
+        return null;
+    if (type === 'YES_NO' && typeof value !== 'boolean')
+        return 'Answer must be Yes or No.';
+    if (type === 'NUMBER' && finiteNumber(value) === null)
+        return 'Answer must be a valid number.';
+    if (type === 'TEXT' && typeof value !== 'string')
+        return 'Answer must be text.';
+    if (type === 'SINGLE_CHOICE') {
+        const raw = value && typeof value === 'object' && !Array.isArray(value)
+            ? value.option_id
+            : value;
+        if (!(typeof raw === 'number' && Number.isInteger(raw) && raw >= 0) &&
+            !(typeof raw === 'string' && /^\d+$/.test(raw))) {
+            return 'Select a valid available option.';
+        }
+    }
+    if (type === 'MULTI_CHOICE') {
+        const selected = Array.isArray(value) ? value
+            : value && typeof value === 'object' && !Array.isArray(value)
+                ? value.option_ids
+                : null;
+        if (!Array.isArray(selected) || selected.some((item) => !(typeof item === 'number' && Number.isInteger(item) && item >= 0) &&
+            !(typeof item === 'string' && /^\d+$/.test(item)))) {
+            return 'Answer must contain valid selected options.';
+        }
+    }
+    const legacyEmptyAgeShares = code === 'G_MACHINERY_AGE' && Array.isArray(value) && value.length === 0;
+    if (type === 'SHARE_PERCENT' && !legacyEmptyAgeShares) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return 'Answer must contain valid share categories.';
+        }
+        let total = 0;
+        for (const [key, entry] of Object.entries(value)) {
+            if (!/^[1-9]\d*$/.test(key))
+                return 'Share categories must use valid option IDs.';
+            const entryRecord = entry && typeof entry === 'object' && !Array.isArray(entry)
+                ? entry
+                : null;
+            if (entryRecord && (Object.keys(entryRecord).some((field) => field !== 'percent' && field !== 'other_text') ||
+                (entryRecord.other_text !== undefined && entryRecord.other_text !== null &&
+                    typeof entryRecord.other_text !== 'string'))) {
+                return 'Share category contains unsupported or invalid description data.';
+            }
+            const raw = entryRecord ? entryRecord.percent : entry;
+            const amount = finiteNumber(raw);
+            if (amount === null || amount < 0 || amount > 100 ||
+                decimalPlaces(raw) > 2) {
+                return 'Each share must be between 0 and 100 with at most two decimal places.';
+            }
+            total += amount;
+        }
+        if (total > 100)
+            return 'The share total cannot exceed 100%.';
+    }
+    if (type === 'MATRIX' && (!value || typeof value !== 'object' || Array.isArray(value))) {
+        return 'Answer must contain valid matrix entries.';
+    }
+    return null;
+}
+function selectedChoiceIds(type, value) {
+    const record = value && typeof value === 'object' && !Array.isArray(value)
+        ? value
+        : null;
+    const raw = type === 'SINGLE_CHOICE'
+        ? [record ? record.option_id : value]
+        : type === 'MULTI_CHOICE'
+            ? (Array.isArray(value) ? value : record?.option_ids)
+            : null;
+    if (!Array.isArray(raw))
+        return [];
+    return raw
+        .filter((item) => item !== undefined && item !== null && item !== '')
+        .map(Number)
+        .filter((item) => Number.isInteger(item));
+}
+function decimalPlaces(value) {
+    const [coefficient, exponentText] = String(value).trim().toLowerCase().split('e');
+    return Math.max(0, (coefficient.split('.')[1]?.length ?? 0) - Number(exponentText ?? 0));
+}
 let SyncService = class SyncService {
     constructor(responseRepo, dataSource, photoService) {
         this.responseRepo = responseRepo;
         this.dataSource = dataSource;
         this.photoService = photoService;
+    }
+    async validateInputValues(responses) {
+        for (const response of responses) {
+            const questionIds = [...new Set(response.answers.map((answer) => answer.question_id))];
+            if (questionIds.length === 0)
+                continue;
+            const questions = await this.dataSource.query(`SELECT q.id, q.question_code, q.answer_type, q.lookup_type_id
+           FROM survey_questions q
+           JOIN survey_sections s ON s.id = q.section_id
+          WHERE s.form_id = $2 AND q.id = ANY($1::int[])`, [questionIds, response.form_id]);
+            const questionById = new Map(questions.map((question) => [Number(question.id), question]));
+            const selectedOptions = [];
+            for (const answer of response.answers) {
+                const question = questionById.get(answer.question_id);
+                if (!question) {
+                    throw new common_1.BadRequestException(`Question ${answer.question_id} does not belong to survey form ${response.form_id}.`);
+                }
+                const error = (0, sync_validation_1.surveyAnswerFormatError)(question.question_code, answer.answer_value);
+                if (error) {
+                    throw new common_1.BadRequestException(`${question.question_code}: ${error}`);
+                }
+                if (!survey_questionnaire_1.QUESTION_INPUTS[question.question_code]) {
+                    const error = unstructuredAnswerError(question.question_code, question.answer_type, answer.answer_value);
+                    if (error)
+                        throw new common_1.BadRequestException(`${question.question_code}: ${error}`);
+                    if (question.lookup_type_id != null) {
+                        const optionIds = selectedChoiceIds(question.answer_type, answer.answer_value);
+                        if (optionIds.length) {
+                            selectedOptions.push({
+                                code: question.question_code,
+                                typeId: Number(question.lookup_type_id),
+                                optionIds,
+                            });
+                        }
+                    }
+                }
+            }
+            const allOptionIds = [...new Set(selectedOptions.flatMap((entry) => entry.optionIds))];
+            if (!allOptionIds.length)
+                continue;
+            const optionRows = await this.dataSource.query(`SELECT id, type_id FROM lookup_values WHERE id = ANY($1::int[])`, [allOptionIds]);
+            const optionType = new Map(optionRows.map((row) => [Number(row.id), Number(row.type_id)]));
+            for (const entry of selectedOptions) {
+                if (entry.optionIds.some((id) => optionType.get(id) !== entry.typeId)) {
+                    throw new common_1.BadRequestException(`${entry.code}: Select a valid available option.`);
+                }
+            }
+        }
     }
     async syncBatch(payload) {
         const { device_id, user_id, responses } = payload;

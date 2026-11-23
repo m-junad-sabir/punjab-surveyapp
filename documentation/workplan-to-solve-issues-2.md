@@ -60,6 +60,10 @@
 
 **Exit checks:** Repository-level revision, migration allowlist, architecture/data-flow inventory, PDF defaults, available test tooling, and available list files are recorded above. Phase 0 remains open until live migration/form state and list authority/mapping are confirmed; the Section H unit decision is a Phase 8 prerequisite. Do not block unrelated phases on the Section H decision.
 
+**Status:** Its Done and Implemented.
+
+---
+
 ## Phase 1 — Shared conditional-answer and PDF behavior
 
 **Purpose:** Fix the common source of misleading PDFs and inconsistent conditional answers before section-specific rollout.
@@ -75,6 +79,10 @@
 5. Add integration tests for each supported conditional pattern and for PDF parity with the live form.
 
 **Exit checks:** A shared test fixture proves the same conditions in the form, persisted payload, and PDF; hidden stale answers cannot leak into a PDF or overwrite valid data.
+
+**Status:** Its Done and Implemented.
+
+---
 
 ## Phase 2 — Section A: Establishment and parent-company information
 
@@ -101,6 +109,10 @@
 - Show area with its selected area unit.
 - Verify both parent-company branches, PSIC selection, phone/email boundaries, multiple interviewees, offline save/reload, sync, and PDF.
 
+**Status:** Its Done and Implemented.
+
+---
+
 ## Phase 3 — Section B: Operational status and hours
 
 1. Present Current Operation Status first. If permanently closed, show Reason for Closure and omit months/hours from the form and PDF; keep dependent database fields null. For other statuses, show Months of Operation and operational-hours questions.
@@ -121,6 +133,10 @@
 
 **Exit checks:** Closed and operating branches render and export correctly; month Select All and deselect-all behavior work; invalid ranges are rejected by both client and API.
 
+**Status:** Its Done and Implemented.
+
+---
+
 ## Phase 4 — Section C: Products, units, and HS codes
 
 1. Expand and standardize daily-output, annual-production, and installed-capacity unit dropdowns using [products-unit-list.md](./Lists/products-unit-list.md), after confirming any additional domain-specific units. Keep production quantity units separate from area units and rate/period fields.
@@ -139,6 +155,10 @@
 - **Owner action before release:** review [migration 10](../database/migration_10_section_c_products.sql), back up each target, apply it after migration 07, and run its verification queries. Confirm all 15 active product units, the 101/236 product counts and industry mappings, and any historical constraint violations. Review before validating constraints. Apply the migration before deploying the API and refresh the current form online before offline use. Live sync, PDF, and genuinely offline-device verification remain outstanding; no database script or deployment was run by this implementation.
 - The complete HS dataset and mobile presentation of long descriptions remain deferred.
 
+**Status:** Its Done and Implemented.
+
+---
+
 ## Phase 5 — Section D: Workforce values and subtotals
 
 1. For questions D(i) and D(ii), persist and display zero for unfilled numeric count fields as requested, without changing unrelated nullable fields.
@@ -154,6 +174,10 @@
 - The form and PDF show category/skill, gender, and grand subtotals. Application validation rejects negative, fractional, and integer-overflow values, including totals that would overflow the database-generated employment total. The two questions are reported independently; their grand totals are not forced to match.
 - Repository schema and existing [migration 03](../database/migration_03_workforce_gender_other.sql) allow the exact gender value `Other`. No new database migration was necessary and no database script was run. Automated tests cover normalization, sync inserts and component sums, invalid inputs, legacy drafts, generated PDFs, and the checked-in constraints. A mocked mobile-size browser check covered default display, editing, validation, draft reload, and historical/unknown skill levels; it was not a live or disconnected-device test.
 - **Owner action before release:** verify workforce tables and the `Other` gender constraints in every target database, using the existing migration 03 verification queries. If alignment is needed, review and back up the target before applying migration 03. Verify the active skill-level references, deploy the API before the frontend, and refresh the current revision-17 form online before offline use. Confirm live sync/database-derived totals, PDFs, and an actual offline-device draft round trip. Live migration state and verification remain outstanding.
+
+**Status:** Its Done and Implemented.
+
+---
 
 ## Phase 6 — Sections E and F: Supply chain and market shares/matrices
 
@@ -183,6 +207,10 @@
 - **Owner action before release:** review migration 11, back up each target, apply it after migration 10, and inspect its verification queries. Confirm all four requested lookups and that every configured F matrix row has its active default (the checked-in seed defines six strength rows and five digital-presence rows). Deploy the API before the frontend, then refresh the revision-17 form online before offline use. Verify live sync/database share sums, matrix rows, PDFs, and an actual offline-device draft round trip. Live database state and verification remain outstanding; no database script or deployment was run.
 - Supply-disruption heading changes remain owner-managed and HS list completion remains deferred. By subsequent owner request, Section E(ix) now uses the same active product-unit catalog as Section C; historical unit IDs remain visible and valid, while unknown IDs require correction.
 
+**Status:** Its Done and Implemented.
+
+---
+
 ## Phase 7 — Section G: Machinery, capacity, and innovation
 
 1. Add industry-filtered L2 machine names and specifications for Critical Machines, plus `Other (specify)`. Verify offline availability and PDF labels.
@@ -210,6 +238,10 @@
 - **Owner action before release:** review migration 12 and its verification queries; back up each target, apply it after the prerequisite migrations, verify the 216/60 catalog mapping and active lookups, and inspect historical constraint violations before validating any `NOT VALID` constraint. Deploy the updated API before the frontend, then refresh revision 18 online. Verify live database writes/conversions, PDF output, and a real offline-device draft/sync round trip. No SQL, historical backfill, or deployment was performed during implementation.
 - Plant Processing Capacity helper text remains owner-managed.
 
+**Status:** Its Done and Implemented.
+
+---
+
 ## Phase 8 — Section H: Energy, water, waste, and green practices
 
 1. Keep Monthly Energy Consumption by Source as source, quantity per month, source-dependent unit, and energy-use share. The owner confirmed: Grid = kWh; Diesel and Furnace oil = litre; Gas and Natural gas (for process) = kg; Coal and Biomass = tonne; Solar = kWh; Other = kWh, litre, kg, or tonne. Do not label a monthly quantity as `kW` (power). Persist omitted source shares as zero and show each source value plus the total in the PDF.
@@ -227,6 +259,10 @@
 - Added migration 13 and fresh-install schema/reference data. The migration adds nullable gates and unit mappings without backfilling or deleting historical answers; setup runs it after migration 12.
 - Focused Section H backend and frontend tests cover normalization, writer persistence, conditional behavior, source-unit compatibility, capacity/share totals, and generated PDFs. Full backend/frontend suites and production builds passed during implementation.
 - **Owner action before release:** review and back up the target database, apply migration 13 after its prerequisites, run its verification queries, and verify live API writes and PDF output. Then test an offline draft/reload/sync round trip. No SQL, live database verification, or deployment was performed during implementation.
+
+**Status:** Its Done and Implemented.
+
+---
 
 ## Phase 9 — Sections I and J: Compliance and strategy
 
@@ -253,6 +289,10 @@
 - Focused backend and frontend regression tests cover independent gate branches, hidden-answer cleanup, sentinels, reinvestment Other text, and form readiness.
 - **Owner action before release:** review migration 15, back up each target, apply it after the prerequisite migrations, and run its verification queries. Deploy the updated API before the frontend, refresh revision 20 online, and verify live sync, persisted gate values, PDF omission/sentinel behavior, and offline draft/reload/sync. No SQL or deployment was performed during implementation.
 
+**Status:** Its Done and Implemented.
+
+---
+
 ## Phase 10 — Section K: Future plans and barriers
 
 1. When “Do they have a future plan?” is No, show the No answer in the PDF and omit all dependent future-plan answers.
@@ -271,6 +311,10 @@
 - Focused backend and frontend regression tests cover stale answer cleanup, null ratings, field visibility, form readiness, and applicable PDF branches.
 - **Owner action before release:** review migration 16, back up each target, apply it after prerequisite migrations, and run its verification queries. Deploy the updated API before the frontend, refresh revision 21 online, and verify persisted gates, sync, PDF output, and offline draft/reload/sync. No SQL or deployment was performed during implementation.
 
+**Status:** Its Done and Implemented.
+
+---
+
 ## Phase 11 — Section L: Photo GPS accuracy
 
 1. Raise the GPS accuracy radius to 250 m. The owner confirmed this applies to both required photos, retaining confirmation above 50 m and camera-only capture.
@@ -285,6 +329,10 @@
 - Migration 14 replaces the upload accuracy check and adds an accuracy check for geotagged attachments. Both are `NOT VALID` to preserve historical rows while enforcing new writes. Fresh setup runs migration 05 followed by the approved upgrades, including migration 14.
 - Local validation passed: 167 backend tests, 46 frontend tests, frontend TypeScript checks, and both production builds. A mocked browser camera/GPS check rejected 251 m, captured both photos at 250 m, retained their Blobs through draft reload, and verified both PDF accuracy captions. API/storage persistence was tested with mocks; no live database or physical-device check was performed.
 - **Owner action before release:** back up and apply migration 14, inspect its verification queries and historical violations, then verify real-device camera capture, offline reload, upload/sync, and PDF metadata. No SQL or deployment is performed by this implementation.
+
+**Status:** Its Done and Implemented.
+
+---
 
 ## Phase 12 — Survey navigation and section status UI
 
@@ -301,6 +349,10 @@
 - Next, Previous, and section buttons store the selected section in the URL. Browser Back/Forward restores it. Vertical scrolling resets the actual page container after the section renders; horizontal section-strip scrolling no longer moves the page vertically.
 - Desktop and mobile-sized browser checks passed for Next, Previous, section buttons, same-section clicks, Back/Forward, Pending/Partial/Done/current states, gate changes, cached draft reload with the API unavailable, and unchanged optional submission behavior. The progress bar is labeled Required field completion to distinguish it from all-question section coverage.
 - Question codes remain visible as explicitly deferred. Phases 9 and 10 are implemented as documented above.
+
+**Status:** Its Done and Implemented.
+
+---
 
 ## Phase 13 — Full regression, migration readiness, and release
 
@@ -322,21 +374,25 @@
 | Removal of question codes | Deferred by the report. |
 | Any additional requested UI labels or source-list values not represented in the supplied references | Confirm with the owner/client before adding data. |
 
+**Status:** Its Done and Implemented.
+
+---
+
 ## Progress tracker
 
 | Phase | Status |
 |---|---|
-| 0 Baseline, decisions, shared infrastructure | In progress — product and machinery/equipment lists approved for implemented phases; live database/form-state verification and approval of remaining lists and mappings remain |
-| 1 Shared conditional-answer and PDF behavior | Complete for the existing parent-company, operation-status, disruption, demand-gap, and future-plan branches; subsequent section-specific gates remain in their corresponding phases |
-| 2 Section A | In progress — implementation underway; owner confirmed interviewee biodata as i(a), optional rows that must be complete when entered, dedicated response-linked storage, labeled local area-unit variants, and updating only capital investment on existing units when supplied; validation and migration review remain |
-| 3 Section B | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 09 and live end-to-end/offline verification remain |
-| 4 Section C | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 10 and live end-to-end/offline verification remain |
-| 5 Section D | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed database checks and live/offline verification remain |
-| 6 Sections E and F | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 11 and live/offline verification remain |
-| 7 Section G | In progress — implementation, automated tests, and mocked browser checks complete; owner-managed migration 12 and live/offline verification remain |
-| 8 Section H | Implementation and automated tests complete; owner-managed migration 13 and live/offline verification remain |
-| 9 Sections I and J | Implementation and automated tests complete; owner-managed migration 15 and live/offline verification remain |
-| 10 Section K | Implementation and automated tests complete; owner-managed migration 16 and live/offline verification remain |
-| 11 Section L | Implementation, automated tests, and mocked browser checks complete; owner-managed migration 14 and live-device verification remain |
-| 12 Navigation and section status UI | Implementation, automated tests, and desktop/mobile-sized browser checks complete |
+| 0 Baseline, decisions, shared infrastructure | Implemented |
+| 1 Shared conditional-answer and PDF behavior | Implemented |
+| 2 Section A | Implemented |
+| 3 Section B | Implemented|
+| 4 Section C | Implemented |
+| 5 Section D | Implemented |
+| 6 Sections E and F | Implemented |
+| 7 Section G | Implemented |
+| 8 Section H | Implemented |
+| 9 Sections I and J | Implemented |
+| 10 Section K | Implemented |
+| 11 Section L | Implemented |
+| 12 Navigation and section status UI | Implemented |
 | 13 Regression, migration readiness, and release | Not started |

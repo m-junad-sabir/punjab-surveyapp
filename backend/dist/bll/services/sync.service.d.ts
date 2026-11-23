@@ -31,6 +31,7 @@ export declare class SyncService {
     private readonly dataSource;
     private readonly photoService;
     constructor(responseRepo: Repository<SurveyResponse>, dataSource: DataSource, photoService: PhotoService);
+    validateInputValues(responses: SyncPayload['responses']): Promise<void>;
     syncBatch(payload: SyncPayload): Promise<{
         sync_id: number;
         status: string;

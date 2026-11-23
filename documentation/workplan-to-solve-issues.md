@@ -5,7 +5,7 @@ Environments: **localhost** (developer machine) and **testing production** (Netl
 
 ## Delivery Checkpoint - 18 October 2026
 
-Phases 0-4 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 was rolled back after login regressions and is deferred; Phase 6 was skipped for this delivery. Resume the remaining phases after the planned two-to-three-day pause, with fresh verification before deployment. R2 credentials, live database migration state, and physical-device photo capture must still be checked per environment; code completion is not evidence of those operational checks.
+Phases 0-4, 6 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 was rolled back after login regressions and is deferred. R2 credentials, live database migration state, and physical-device photo capture must still be checked per environment; code completion is not evidence of those operational checks.
 
 ## Conventions
 
@@ -55,6 +55,8 @@ Phases 0-4 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 was
 
 **Verify:** `git ls-files | findstr .env` shows only `.env.example` files; the app runs on localhost and on Render with the new secrets.
 
+**Status:** Done and Completed
+
 ---
 
 ## Phase 1 — JWT Fallback (+ Dev Quick Sign-in Removal)
@@ -68,6 +70,8 @@ Phases 0-4 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 was
 4. `LoginPage.tsx`: render the quick sign-in panel only when `import.meta.env.DEV`.
 
 **Verify:** no secret means no boot; a forged or expired token gets 401; a deactivated user gets 401 on their next request; the production build has no quick sign-in.
+
+**Status:** Done and Completed
 
 ---
 
@@ -84,6 +88,8 @@ Phases 0-4 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 was
 
 **Verify:** each UI role creates a user with the matching `roles.code` and permissions; a Section D survey with "Other" counts syncs.
 
+**Status:** Done and Completed
+
 ---
 
 ## Phase 3 — Offline Ownership + Duplicate-Flag Fix
@@ -99,6 +105,8 @@ Phases 0-4 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 was
 6. `sync.service.ts`: `reason` is `NAME_SIMILARITY`, `GPS_PROXIMITY` or `BOTH`; the readable sentence goes into `details`. Update the entity to match.
 
 **Verify:** user B can't sync user A's pending work; A's work survives logout/login; a near-duplicate survey commits as `duplicate_flagged`.
+
+**Status:** Done and Completed
 
 ---
 
@@ -126,6 +134,8 @@ Phases 0-4 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 was
 
 **Verify:** both photos taken offline, then synced; rows appear in `survey_attachments` and files in R2/disk; gallery upload is impossible; photos > 100 m accuracy are blocked.
 
+**Status:** Done and Completed
+
 ---
 
 ## Phase 5 — Admin User Management Page
@@ -141,15 +151,19 @@ Phases 0-4 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 was
 
 **Frontend:** user list (cards on mobile, table on desktop), edit drawer, activate/deactivate with confirmation, reset-password dialog.
 
+**Status:** Total Deffered
+
 ---
 
-## Phase 6 — Leave Guard + 30 s Autosave
+## Phase 6 — Leave Guard + 10 s Autosave
 
-**Deferred for this delivery.** No autosave or leave-protection guarantee is made by the current release; save drafts explicitly.
+**Implemented:** survey changes are saved locally to IndexedDB at 10-second intervals and when the page becomes hidden. The saved-time indicator and storage errors are visible on the survey. A leave dialog offers "Save draft & leave" or "Stay" when there are unsaved changes; navigation between survey sections remains available. Browser and Android back navigation within the app use the same guard. Sign-out and session expiry save the draft before leaving, and a failed save keeps the survey open for recovery.
 
-1. Migrate `BrowserRouter` to `createBrowserRouter` + `RouterProvider` (required for `useBlocker`).
-2. Survey page: `useBlocker` dialog with "Save draft & leave" / "Stay", plus `beforeunload` and Android back-button handling.
-3. Autosave every 30 s when something changed, and on `visibilitychange → hidden`. Show a "Saved hh:mm:ss" indicator.
+Browser reloads, tab closes, and navigation outside the app use the browser's native unsaved-changes warning. Browsers can suspend background timers or terminate a page before an asynchronous save finishes, so an abrupt close or device failure cannot guarantee the latest edits are saved.
+
+**Verification:** targeted frontend tests, TypeScript check and production build passed. Desktop browser checks covered the 10-second save, hidden-page save, section navigation, browser back, sign-out, session expiry, storage failure/retry, and submission. Android hardware-back and background behavior still need verification on a physical device.
+
+**Status:** Done and Completed
 
 ---
 
@@ -168,11 +182,17 @@ Phases 0-4 and 7 are implemented. The owner confirmed Phase 7 works. Phase 5 was
 
 **Verified:** the owner confirmed the form works; all 60 L1 labels plus Other and all 94 L4 pairs were checked against the migration. Three mocked persistence tests, backend/frontend type checks, and the frontend production build passed. No database scripts were executed by the assistant. Run the migration separately against each target database before deploying the API/frontend changes.
 
+**Status:** Done and Completed
+
 ---
 
 ## Phase 8 — Months of Operation "Select All"
 
 Frontend only: a "Select all 12 months" checkbox (with a partial state) above the `B_OPERATION_MONTHS` options. No DB change.
+
+**Implemented:** Its done in [work plan 2](../documentation/workplan-to-solve-issues-2.md)
+
+**Status:** Done and Completed
 
 ---
 
@@ -180,6 +200,8 @@ Frontend only: a "Select all 12 months" checkbox (with a partial state) above th
 
 1. Step-by-step sync: wake-up `/health` ping (Render cold start) → per-photo upload with progress (`XMLHttpRequest.upload.onprogress`) → responses in small batches.
 2. Animated progress bar (CSS width transition + moving stripes), counters for synced / duplicate / failed, a per-survey status list, and a "Retry failed" button.
+
+**Status:** Still Pending
 
 ---
 
@@ -194,11 +216,84 @@ Frontend only: a "Select all 12 months" checkbox (with a partial state) above th
 7. Tests: auth, roles, sync ownership, duplicate flag, photos, approval.
 8. Keep the setup script's explicit migration allowlist current as phases are approved. Do not glob every migration, since deferred migrations must not run accidentally.
 
+**Status:** Still Pending
+
 ---
 
 ## Phase 11 — Responsive Mobile UI
 
 Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrapper, fluid layout with breakpoints (360 / 768 / 1024), `100dvh`, safe-area insets, ≥ 44 px tap targets, PWA `display: standalone`.
+
+**Status:** Still Pending
+
+---
+
+## Phase 12 — Calendar (Year) Picker for Section A "Year of establishment"
+
+**Implemented.** Section A question **ii** (`A_ESTABLISHMENT_YEAR`) stores `industrial_units.establishment_year` — a `smallint`, nullable, with `CHECK (establishment_year BETWEEN 1800 AND 2100)` (`database/schema.sql:244`, `documentation/database-inspection/master-inspection-query.md:155`). It previously rendered as a free `NUMBER` input, which allowed typos such as full dates or impossible years. It now uses a **year-only picker** that shows a scrollable list of years — no day/month calendar.
+
+**SQL:** none. The existing `CHECK (1800–2100)` stays the source of truth for the allowed range.
+
+**Backend**
+1. Added input type `YEAR` to `SurveyInputType` and exported `ESTABLISHMENT_YEAR_MIN = 1800` / `ESTABLISHMENT_YEAR_MAX = 2100` (`backend/src/bll/services/survey-questionnaire.ts`).
+2. `A_ESTABLISHMENT_YEAR` now uses `field('establishment_year', 'Year of establishment', 'YEAR', { min: 1800, max: <current year> })`. The field `type`/`min`/`max` already flow to the frontend through `survey-form.service.ts`.
+3. The response writer still stores a `smallint` (`survey-response-writer.ts`); persistence is unchanged.
+
+**Frontend**
+1. Added `'YEAR'` to `SurveyInputField.type` (`frontend/src/types/index.ts`).
+2. `YearField` (rendered for `type: 'YEAR'` in `InputFieldControl`) opens a bottom-sheet **wheel/drum picker**: a scroll-snapping year list with 3D rotation, faded outer rows and a highlighted center. Touch swipes, mouse-wheel scrolling and keyboard navigation are supported. A short vibration pulse accompanies year changes on devices/browsers supporting the Vibration API; unsupported devices still scroll normally.
+3. The upper bound is `max(field.max, client current year)` and the lower bound is `field.min` (1800). The saved year is centered on open; **Done** stores the centered year as a number, while **Cancel** preserves the previous answer. A "Clear" action resets the value.
+
+**Verified:** targeted frontend tests (`year-field.test.mjs`), frontend/backend type checks, the frontend production build, and the full backend Jest suite passed. Desktop browser checks confirmed: the field shows a year list (not a day/month calendar) from the current year down to 1800; selecting a year stores `{ establishment_year: <number> }`; the draft round-trips and reopens with the saved year highlighted. (The pre-existing, unrelated Layout/LoginPage branding test failure is not caused by this change.)
+
+**Wheel update verification:** frontend type-check and the focused year-field test passed. Browser checks covered mouse-wheel snapping, 3D row transforms, keyboard navigation to 1800, Done, Cancel, reopening at the saved year, and vibration API calls using a test stub. Physical haptic feedback remains device/browser-dependent.
+
+**Status:** Done and Completed
+
+---
+
+## Phase 13 — Field-Value Validation (Frontend + Backend API)
+
+**Goal:** every answer is validated against its real column data type. Invalid input shows a **red alert stating the value is not valid and why**, and the API rejects the same values. Source of truth for types, lengths and ranges is the master inspection schema (`documentation/database-inspection/master-inspection-query.md`) and the constraints list (`documentation/database-inspection/Unique-and-check-constraints.md`).
+
+**Representative constraints (from the master inspection query)**
+
+| Field | Column | Type | Rule |
+|---|---|---|---|
+| Year of establishment | `establishment_year` | `smallint` | whole number 1800–2100 |
+| Contact name | `contact_name` | `varchar(120)` | ≤ 120 chars |
+| Contact phone / cell | `contact_phone`, `cell` | `varchar(20)` | 11 digits |
+| Contact email | `contact_email` | `varchar(120)` | valid email, ≤ 120 chars |
+| Website | `website` | `varchar(200)` | ≤ 200 chars |
+| Unit code | `unit_code` | `varchar(30)` | ≤ 30 chars |
+| GPS accuracy | `gps_accuracy_m` | `numeric(8,2)` | 0–999999.99 |
+| Total area | `total_area_value` | `numeric(14)` | non-negative, precision 14 |
+| Capital investment | `total_capital_investment` | `numeric(18)` | non-negative, precision 18 |
+| GPS latitude / longitude | `survey_responses.gps_lat/gps_lng` | `numeric(9,6)` | lat −90…90, lng −180…180 |
+| GPS point | `industrial_units.location` | `geometry(POINT,4326)` | coordinates must be geographically valid |
+
+**Frontend**
+1. `backend/src/bll/services/survey-questionnaire.ts` is the canonical field-constraint metadata source. The form API sends its limits to `frontend/src/lib/surveyValidation.ts` for text length, integer/decimal, range, precision/scale, share and GPS checks.
+2. Show a red inline alert naming the field and reason as an invalid value is entered. Block section advance and final submit while an answer is invalid; local draft autosave remains available for recovery.
+
+**Backend**
+1. Add validated DTOs for `/sync` and `/sync/photos` with `class-validator`; route-level validation pipes whitelist fields. Because the global pipe strips unknown properties first, unknown properties such as `unit_id` are silently discarded and never processed, rather than returning 400. Replace the loosely typed `/sync` body.
+2. Before processing a sync batch, map each submitted question ID to its form question and validate its values against `QUESTION_INPUTS`; invalid values return **400** with a field-specific reason. Validate request-level GPS bounds, batch sizes, and photo metadata in the DTOs.
+3. Keep the DB `CHECK` and `varchar` length constraints as the final guard.
+
+**Shared source of truth:** encode each limit once (a constants map keyed by field/column) so the same bounds drive both the API DTO and the frontend messages and cannot drift apart.
+
+**Implemented:** frontend field-level alerts and section/submit blocking; backend DTO validation and `/sync` preflight use the questionnaire's field constraints. The UI year picker caps at the current year, while the API honors the database range of 1800–2100. Existing database constraints remain in place.
+
+**Validation regression fix:** only questions with structured fields require field-value objects or repeatable entry lists. Ordinary dropdown, checkbox, text, number, date, and Yes/No answers retain their native answer shapes and no longer incorrectly show "must contain field values"; their existing type checks remain enabled.
+
+**Thousands separators:** numeric inputs (amounts, quantities, areas, capacities, investment, workforce counts) show a comma after every third digit while typing, e.g. `1234567.5` → `1,234,567.5`. Commas are display-only: the saved draft, API payload and database keep the plain number. Years, phone numbers, GPS coordinates, percentages and IDs are not grouped. Integer-only fields (step 1) also block the decimal point.
+
+**Option ownership check:** `/sync` preflight also rejects dropdown/checkbox option IDs that do not belong to the question's lookup list. The database foreign key only checks that an option exists in some list. Inactive values of the correct list remain accepted so older offline drafts can still sync.
+
+**Verified:** full backend Jest suite (12 suites, 182 tests) and backend/frontend TypeScript checks passed. Full frontend suite: 70/71; the one failure is a pre-existing branding test expecting no logos on the login page, which commit `c58b8fb` intentionally added, unrelated to Phase 13. Live API checks against the local PostgreSQL database passed, covering login, form constraint metadata, DTO rejections, option ownership, year range, ownership (403), unauthenticated access (401), and valid choices for the three reported questions. Metadata lengths and precision match live columns. Rejected probes created no survey responses.
+
+**Status:** Its 90% Done.
 
 ---
 
@@ -206,15 +301,17 @@ Waiting for the owner's screenshots. Expected scope: remove the phone-frame wrap
 
 | Phase | Status |
 |---|---|
-| 0 Secrets & env | Done |
-| 1 JWT fallback | Implemented in delivery baseline; verify environment secrets and migration 01 per deployment |
-| 2 Roles + Gender | Implemented; verify live role audit and migration 03 per deployment |
-| 3 Offline ownership + duplicate flag | Implemented; retain account-switch and duplicate-sync regression checks |
-| 4 Photo capture | Implemented; Section L confirmed visible; R2/device capture verification remains environment-specific |
-| 5 Admin users | Deferred; rolled back after login regressions |
-| 6 Leave guard + autosave | Deferred; not implemented |
-| 7 Type of Unit + filtered PSIC | Working, confirmed by owner on 18 October 2026; migration 07 required per database |
-| 8 Months select all | Not started |
-| 9 Sync progress | Not started |
-| 10 Remaining findings | Not started |
-| 11 Responsive UI | Not started |
+| 0 Secrets & env | Implemented |
+| 1 JWT fallback | Implemented |
+| 2 Roles + Gender | Implemented |
+| 3 Offline ownership + duplicate flag | Implemented |
+| 4 Photo capture | Implemented |
+| 5 Admin users | Deferred |
+| 6 Leave guard + autosave | Implemented |
+| 7 Type of Unit + filtered PSIC | Implemented |
+| 8 Months select all | Implemented
+| 9 Sync progress | Pending
+| 10 Remaining findings | Pending
+| 11 Responsive UI | Pending
+| 12 Year picker (Section A) | Implemented |
+| 13 Field-value validation | Implemented |

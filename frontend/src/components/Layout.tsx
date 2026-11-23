@@ -13,7 +13,7 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 export default function Layout() {
-  const { user, logout, hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const { pendingCount, isOnline } = useSurvey();
   const navigate = useNavigate();
   const location = useLocation();
@@ -67,7 +67,7 @@ export default function Layout() {
               const message = unsynced
                 ? `You have ${unsynced} unsynced survey${unsynced === 1 ? '' : 's'}. They will remain on this device and be available when you sign back in. Sign out?`
                 : 'Sign out?';
-              if (confirm(message)) { logout(); navigate('/login'); }
+              if (confirm(message)) navigate('/sign-out');
             }}
           >
             {user?.full_name?.charAt(0)?.toUpperCase() || '?'}

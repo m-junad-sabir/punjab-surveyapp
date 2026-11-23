@@ -79,13 +79,16 @@ export type AnswerType =
 export interface SurveyInputField {
   key:          string;
   label:        string;
-  type:         'TEXT' | 'PHONE' | 'EMAIL' | 'NUMBER' | 'YES_NO' | 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'SHARE_PERCENT' | 'GPS' | 'MONTHS';
+  type:         'TEXT' | 'PHONE' | 'EMAIL' | 'NUMBER' | 'YEAR' | 'YES_NO' | 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'SHARE_PERCENT' | 'GPS' | 'MONTHS';
   lookup_type?: string;
   reference?:   string;
   required?:    boolean;
   min?:         number;
   max?:         number;
   step?:        number;
+  max_length?:  number;
+  precision?:   number;
+  scale?:       number;
   default_value?: number;
   options:      QuestionOption[];
 }

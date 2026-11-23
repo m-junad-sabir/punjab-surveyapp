@@ -13,8 +13,20 @@ const server = await createServer({
 after(() => server.close());
 
 const { areAllOptionsSelected, toggleAllOptions } = await server.ssrLoadModule('/src/lib/optionSelection.ts');
-const { questionFormatError } = await server.ssrLoadModule('/src/lib/surveyValidation.ts');
+const { fieldFormatError, questionFormatError } = await server.ssrLoadModule('/src/lib/surveyValidation.ts');
 const { clearHiddenAnswers, isQuestionVisible } = await server.ssrLoadModule('/src/lib/surveyVisibility.ts');
+const { caretAfterSignificantChars, formatGroupedNumber, sanitizeNumericText } = await server.ssrLoadModule('/src/lib/numberFormat.ts');
+
+test('numeric inputs show thousands commas but keep plain values', () => {
+  assert.equal(formatGroupedNumber(1234567.5), '1,234,567.5');
+  assert.equal(formatGroupedNumber('999'), '999');
+  assert.equal(formatGroupedNumber('-1000.'), '-1,000.');
+  assert.equal(formatGroupedNumber(null), '');
+  assert.equal(sanitizeNumericText('1,234,567.50'), '1234567.50');
+  assert.equal(sanitizeNumericText('1,2a3.4.5'), '123.45');
+  assert.equal(sanitizeNumericText('12.5', false), '125');
+  assert.equal(caretAfterSignificantChars('1,234,567', 4), 5);
+});
 
 const months = Array.from({ length: 12 }, (_, index) => ({ id: index + 1 }));
 const status = {
@@ -109,6 +121,66 @@ test('working-day and working-month validation handles blanks, boundaries, and i
       'Total working months per year must be a whole number between 1 and 12.',
     );
   }
+});
+
+test('field validation reports database length, type, and range constraints', () => {
+  const email = { key: 'contact_email', label: 'Email', type: 'EMAIL', max_length: 120 };
+  assert.equal(fieldFormatError(email, `${'a'.repeat(111)}@test.com`), null);
+  assert.equal(fieldFormatError(email, `${'a'.repeat(112)}@test.com`), 'Email must be 120 characters or fewer.');
+  assert.equal(fieldFormatError(email, 'not-an-email'), 'Email must be a valid email address.');
+
+  const year = { key: 'establishment_year', label: 'Year of establishment', type: 'YEAR', min: 1800, max: 2026 };
+  assert.equal(fieldFormatError(year, 1800), null);
+  assert.equal(fieldFormatError(year, 1799), 'Year of establishment must be a whole number between 1800 and 2026.');
+  assert.equal(fieldFormatError(year, 'not-a-year'), 'Year of establishment must be a whole number between 1800 and 2026.');
+});
+
+test('ordinary survey answers do not require structured field objects', () => {
+  const cases = [
+    ['A_UNIT_TYPE', 'Type of Unit', 'SINGLE_CHOICE', [12, { option_id: 12, other_text: 'Other industry' }]],
+    ['D_HIRING_CHANNEL', 'Hiring channel', 'MULTI_CHOICE', [[1, 2], { option_ids: [1], other_text: {} }, []]],
+    ['F_DEMAND_ASSESSMENT', 'Demand assessment', 'MULTI_CHOICE', [[3], { option_ids: [3] }]],
+    ['EXAMPLE_TEXT', 'Text answer', 'TEXT', ['Valid text', '']],
+    ['EXAMPLE_NUMBER', 'Numeric answer', 'NUMBER', [0, 12.5]],
+    ['EXAMPLE_GATE', 'Yes/No answer', 'YES_NO', [true, false]],
+    ['EXAMPLE_DATE', 'Date answer', 'DATE', ['2026-01-01']],
+  ];
+  for (const [question_code, question_text, answer_type, values] of cases) {
+    for (const fields of [undefined, []]) {
+      const question = { question_code, question_text, answer_type, fields, repeatable: false };
+      for (const value of [...values, undefined, null]) {
+        assert.equal(questionFormatError(question, value), null,
+          `${question_code} should accept ${JSON.stringify(value)}`);
+      }
+    }
+  }
+});
+
+test('ordinary answer type checks still reject malformed values', () => {
+  const cases = [
+    ['SINGLE_CHOICE', 'invalid', 'Answer must be selected from the available options.'],
+    ['MULTI_CHOICE', [1, 'invalid'], 'Answer contains an invalid selection.'],
+    ['YES_NO', 'true', 'Answer must be Yes or No.'],
+    ['NUMBER', 'invalid', 'Answer must be a valid number.'],
+    ['TEXT', 12, 'Answer must be text.'],
+  ];
+  for (const [answer_type, value, expected] of cases) {
+    assert.equal(questionFormatError({
+      question_code: 'EXAMPLE', question_text: 'Answer', answer_type, fields: [],
+    }, value), expected);
+  }
+});
+
+test('structured questions still require field objects and repeatable entry lists', () => {
+  const question = {
+    question_code: 'A_CONTACT', question_text: 'Contact details',
+    fields: [{ key: 'contact_email', label: 'Email', type: 'EMAIL' }],
+  };
+  assert.equal(questionFormatError(question, 12), 'Contact details must contain field values.');
+  assert.equal(questionFormatError(question, { contact_email: 'invalid' }), 'Email must be a valid email address.');
+  assert.equal(questionFormatError({ ...question, repeatable: true }, {}),
+    'Contact details must be a list of entries.');
+  assert.equal(questionFormatError({ ...question, repeatable: true }, [{ contact_email: 'test@example.com' }]), null);
 });
 
 test('generated PDFs show the applicable Section B branch and working-month value', async (t) => {
