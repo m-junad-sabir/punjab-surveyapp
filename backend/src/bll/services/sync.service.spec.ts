@@ -109,6 +109,34 @@ describe('Section B sync', () => {
     expect(operationInsert?.[1]).toEqual(['response-id', null, 10, null, null, null, 6, null]);
   });
 
+    it.each([
+    ['Karachi', 24.86, 67.01],
+    ['null island', 0, 0],
+    ['London', 51.5, -0.12],
+  ])('rejects a unit location outside Punjab (%s) before writing the response', async (_place, lat, lng) => {
+    const { service, trx, payload } = setup('RUNNING');
+    const body = payload([{ question_id: 1, answer_value: 10 }]);
+    body.responses[0].gps_lat = lat;
+    body.responses[0].gps_lng = lng;
+    const result = await service.syncBatch(body);
+
+    expect(result.results[0]).toMatchObject({
+      status: 'failed',
+      message: 'Unit GPS location is outside Punjab. Capture the unit location at the premises.',
+    });
+    expect(trx.save).not.toHaveBeenCalled();
+  });
+
+  it('accepts a unit location inside Punjab', async () => {
+    const { service, payload } = setup('RUNNING');
+    const body = payload([{ question_id: 1, answer_value: 10 }]);
+    body.responses[0].gps_lat = 31.5;
+    body.responses[0].gps_lng = 74.3;
+    const result = await service.syncBatch(body);
+
+    expect(result.results[0].status).toBe('synced');
+  });
+
   it('discards stale hours and months for a permanently closed response', async () => {
     const { service, query, payload } = setup('PERM_CLOSED');
     const result = await service.syncBatch(payload([

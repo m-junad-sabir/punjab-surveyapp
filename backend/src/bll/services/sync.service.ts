@@ -14,6 +14,7 @@ import { normalizeSectionHAnswers } from './section-h';
 import { normalizeSectionIJAnswers } from './section-i-j';
 import { normalizeSectionKAnswers } from './section-k';
 import { surveyAnswerFormatError } from './sync-validation';
+import { isInsidePunjab } from './gps-bounds';
 import { QUESTION_INPUTS } from './survey-questionnaire';
 import {
   clearHiddenSurveyAnswers,
@@ -345,6 +346,10 @@ export class SyncService {
           const gpsLat = resp.gps_lat ?? finiteNumber(gpsLocation.lat);
           const gpsLng = resp.gps_lng ?? finiteNumber(gpsLocation.lng);
           const gpsAccuracy = resp.gps_accuracy_m ?? finiteNumber(gpsLocation.accuracy);
+
+          if (gpsLat !== null && gpsLng !== null && !isInsidePunjab(gpsLat, gpsLng)) {
+            throw new BadRequestException('Unit GPS location is outside Punjab. Capture the unit location at the premises.');
+          }
 
           const nameValue = answers.get('A_ESTABLISHMENT_NAME');
           const structuredName = nameValue && typeof nameValue === 'object'
