@@ -11,7 +11,7 @@ import { downloadSurveyPdf } from '../lib/surveyPdf';
 import { areAllOptionsSelected, toggleAllOptions } from '../lib/optionSelection';
 import { fieldFormatError, questionFormatError } from '../lib/surveyValidation';
 import { caretAfterSignificantChars, formatGroupedNumber, sanitizeNumericText } from '../lib/numberFormat';
-import { photoMetadataError, PHOTO_ACCURACY_WARNING_M } from '../lib/photoCapture';
+import { photoMetadataError, isInsidePunjab, PHOTO_ACCURACY_WARNING_M } from '../lib/photoCapture';
 import { scrollSurveyToTop, surveySectionIndex, surveySectionStatus } from '../lib/surveyNavigation';
 import type { SectionStatus } from '../lib/surveyNavigation';
 import { clearHiddenAnswers, isQuestionVisible, utilizationBandCode } from '../lib/surveyVisibility';
@@ -113,8 +113,13 @@ function GpsField({ value, onChange }: { value: any; onChange: (v: any) => void 
     setLoading(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        onChange({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+        const { latitude, longitude, accuracy } = pos.coords;
         setLoading(false);
+        if (!isInsidePunjab(latitude, longitude)) {
+          alert('This location is outside Punjab. Capture the unit location at the premises.');
+          return;
+        }
+        onChange({ lat: latitude, lng: longitude, accuracy });
       },
       (err) => { alert('GPS error: ' + err.message); setLoading(false); },
       { enableHighAccuracy: true, timeout: 20000 },
