@@ -266,4 +266,13 @@ SELECT 'T8_sync_lag', count(*) FROM survey_responses
 
 | Run date | Database (branch/main/local) | Run by | T1 | T2 | T3 | T4 | T5 | T6 | T7 devices flagged | T8 | T9 | T10 | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| | | | | | | | | | | | | | |
+| 2026-11-24 | local `punjab_industrial_survey` (2 surveys, 0 photos) | hashimz | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Local baseline. Photo checks had nothing to examine. |
+| 2026-11-24 | local `punjab_stress_test` (synthetic load data) | hashimz | 0 | 0 | 5 | 2 | 0 | 765885 | 0 | 0 | 0 | 0 | Not field data; see notes. |
+
+**Run notes (2026-11-24)**
+
+- The local `punjab_industrial_survey` holds only 2 surveys (`admin` and `surveyor1`, 12 Oct 2026) and 0 photos, so the photo parts of T1, T4, T5 and T9 had nothing to check, and the T10 photo row has no data. For the 2 surveys themselves, no check fired: interviews lasted about 57 and 42 minutes, and each synced within about 20 seconds of submission. No device clock is ahead of the server (T7).
+- Both surveys were submitted from the same device ID (`DEV-E0F3A918`) under two different accounts (`admin` and `surveyor1`). Device IDs are supplied by the client, so this is only a note for reviewers.
+- `punjab_stress_test` is a throwaway copy filled by our load-test scripts (1,533 surveys, 3,062 photos, 3 accounts), so its counts are synthetic and are not findings. They only show that the queries run at scale. T6 returned 765,885 pairs because the scripts reused the same start and submit times, and it compares every pair of surveys per enumerator, so on a large production table it will be slow. Run it on a Neon branch, or limit it to a date range.
+- In the T7 column, the number is devices with a clock ahead of the server (0 in both databases). In the T10 column, the number is whole-minute timestamps found (0 in both).
+- All statements ran without errors on both databases. Neither is a Neon branch, so repeat the run there before treating any numbers as real field data.

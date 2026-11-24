@@ -324,4 +324,12 @@ Use this to prioritise field back-checks; it is **not** proof of fraud on its ow
 
 | Run date | Database | Run by | G1 | G2 | G3 | G4 | G5 | G6 | G7 | G8 enumerators | G9 | G10 | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| | | | | | | | | | | | | | |
+| 2026-11-24 | local `punjab_industrial_survey` (2 surveys, 0 photos) | hashimz | 0 | 0 (inactive: no polygons) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | Local baseline. G3, G4, G7 had no photos to check. |
+| 2026-11-24 | local `punjab_stress_test` (synthetic load data) | hashimz | 2 | 0 (inactive: no polygons) | 48 | 0 | 13 | 12 | 2 | 1 | 4592 | 3 | Not field data; see notes. |
+
+**Run notes (2026-11-24)**
+
+- The local `punjab_industrial_survey` holds only 2 surveys (`admin` and `surveyor1`, 12 Oct 2026) and 0 photos, so G3, G4 and G7 had nothing to check. None of the 36 districts or 130 tehsils has boundary polygons, so G2 could not run. Load the polygons first (workplan Phase 0).
+- G10 on the local database: both surveys have no unit GPS (latitude, longitude and accuracy are all empty). The server accepts a survey with no unit location, so this is a gap, not evidence of faking. Whether a missing location should be blocked or flagged needs an owner decision.
+- `punjab_stress_test` is a throwaway copy filled by our load-test scripts (1,533 surveys, 3,062 photos, 3 accounts), so its counts are synthetic and are not findings. They only show that the queries run at scale. G9 (4,592 rows) matches nearly every record, probably because the scripts wrote coordinates with few decimals. The 2 rows for G1 were not investigated.
+- All statements ran without errors on both databases. Neither is a Neon branch, so repeat the run there before treating any numbers as real field data.
